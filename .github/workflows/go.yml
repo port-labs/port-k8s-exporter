@@ -1,0 +1,30 @@
+name: Go
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: 1.19
+        cache: true
+
+    - name: Build
+      run: go build -v ./...
+
+    - name: Test
+      run: go test -v ./...
+      env:
+        PORT_CLIENT_ID: ${{ secrets.PORT_CLIENT_ID }}
+        PORT_CLIENT_SECRET: ${{ secrets.PORT_CLIENT_SECRET }}
+
