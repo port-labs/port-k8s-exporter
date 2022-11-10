@@ -36,6 +36,7 @@ func (c *PortClient) CreateEntity(ctx context.Context, e *port.Entity, runID str
 		SetBody(e).
 		SetPathParam(("blueprint"), e.Blueprint).
 		SetQueryParam("upsert", "true").
+		SetQueryParam("merge", "true").
 		SetQueryParam("run_id", runID).
 		SetResult(&pb).
 		Post(url)
