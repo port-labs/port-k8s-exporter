@@ -10,10 +10,12 @@ import (
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/klog/v2"
 	"os"
+	"time"
 )
 
 var (
 	configFilePath   string
+	resyncInterval   uint
 	portBaseURL      string
 	portClientId     string
 	portClientSecret string
@@ -42,7 +44,8 @@ func main() {
 		klog.Fatalf("Error building Port client: %s", err.Error())
 	}
 
-	informersFactory := dynamicinformer.NewDynamicSharedInformerFactory(k8sClient.DynamicClient, 0)
+	resync := time.Minute * time.Duration(resyncInterval)
+	informersFactory := dynamicinformer.NewDynamicSharedInformerFactory(k8sClient.DynamicClient, resync)
 	controllers := make([]*k8s.Controller, 0, len(exporterConfig.Resources))
 
 	for _, resource := range exporterConfig.Resources {
@@ -76,6 +79,7 @@ func main() {
 
 func init() {
 	flag.StringVar(&configFilePath, "config", "", "Path to Port K8s Exporter config file. Required.")
+	flag.UintVar(&resyncInterval, "resync-interval", 0, "The re-sync interval in minutes. Optional.")
 	flag.StringVar(&portBaseURL, "port-base-url", "https://api.getport.io", "Port base URL. Optional.")
 	portClientId = os.Getenv("PORT_CLIENT_ID")
 	portClientSecret = os.Getenv("PORT_CLIENT_SECRET")
