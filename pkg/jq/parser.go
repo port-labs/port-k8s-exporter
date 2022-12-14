@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"github.com/itchyny/gojq"
 	"strings"
+	"sync"
 )
+
+var mutex = &sync.Mutex{}
 
 func runJQQuery(jqQuery string, obj interface{}) (interface{}, error) {
 	query, err := gojq.Parse(jqQuery)
@@ -12,7 +15,9 @@ func runJQQuery(jqQuery string, obj interface{}) (interface{}, error) {
 		return nil, err
 	}
 
+	mutex.Lock()
 	queryRes, ok := query.Run(obj).Next()
+	mutex.Unlock()
 
 	if !ok {
 		return nil, fmt.Errorf("query should return at least one value")
