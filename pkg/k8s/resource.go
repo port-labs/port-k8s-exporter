@@ -17,9 +17,13 @@ func GetGVRFromResource(discoveryMapper *restmapper.DeferredDiscoveryRESTMapper,
 		gvr = schema.GroupVersionResource{Group: "", Version: s[0], Resource: s[1]}
 	}
 
-	if _, err := discoveryMapper.ResourcesFor(gvr); err != nil {
+	gvrs, err := discoveryMapper.ResourcesFor(gvr)
+	if err != nil {
 		return schema.GroupVersionResource{}, err
 	}
+	if len(gvrs) == 0 {
+		return gvr, nil
+	}
 
-	return gvr, nil
+	return gvrs[0], nil
 }
