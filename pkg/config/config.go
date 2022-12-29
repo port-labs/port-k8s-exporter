@@ -26,7 +26,9 @@ type Resource struct {
 }
 
 type Config struct {
-	Resources []Resource
+	Resources      []Resource
+	ResyncInterval uint
+	StateKey       string
 }
 
 func New(filepath string) (*Config, error) {

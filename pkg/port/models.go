@@ -101,13 +101,25 @@ type (
 		Required   bool   `json:"required,omitempty"`
 		Many       bool   `json:"many,omitempty"`
 	}
+
+	Rule struct {
+		Property string      `json:"property"`
+		Operator string      `json:"operator"`
+		Value    interface{} `json:"value"`
+	}
 )
 
-type PortBody struct {
+type SearchBody struct {
+	Rules      []Rule `json:"rules"`
+	Combinator string `json:"combinator"`
+}
+
+type ResponseBody struct {
 	OK        bool      `json:"ok"`
 	Entity    Entity    `json:"entity"`
 	Blueprint Blueprint `json:"blueprint"`
 	Action    Action    `json:"action"`
+	Entities  []Entity  `json:"entities"`
 }
 
 type EntityMapping struct {
