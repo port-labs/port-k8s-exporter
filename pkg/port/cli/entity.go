@@ -7,6 +7,7 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"k8s.io/klog/v2"
 	"net/url"
+	"strconv"
 )
 
 func (c *PortClient) SearchEntities(ctx context.Context, body port.SearchBody) ([]port.Entity, error) {
@@ -69,12 +70,13 @@ func (c *PortClient) CreateEntity(ctx context.Context, e *port.Entity, runID str
 	return &pb.Entity, nil
 }
 
-func (c *PortClient) DeleteEntity(ctx context.Context, id string, blueprint string) error {
+func (c *PortClient) DeleteEntity(ctx context.Context, id string, blueprint string, deleteDependents bool) error {
 	pb := &port.ResponseBody{}
 	resp, err := c.Client.R().
 		SetHeader("Accept", "application/json").
 		SetPathParam("blueprint", blueprint).
 		SetPathParam("identifier", id).
+		SetQueryParam("delete_dependents", strconv.FormatBool(deleteDependents)).
 		SetResult(pb).
 		Delete("v1/blueprints/{blueprint}/entities/{identifier}")
 	if err != nil {
@@ -109,7 +111,7 @@ func (c *PortClient) DeleteStaleEntities(ctx context.Context, stateKey string, e
 	for _, portEntity := range portEntities {
 		_, ok := existingEntitiesSet[c.GetEntityIdentifierKey(&portEntity)]
 		if !ok {
-			err := c.DeleteEntity(ctx, portEntity.Identifier, portEntity.Blueprint)
+			err := c.DeleteEntity(ctx, portEntity.Identifier, portEntity.Blueprint, c.DeleteDependents)
 			if err != nil {
 				klog.Errorf("error deleting Port entity '%s' of blueprint '%s': %v", portEntity.Identifier, portEntity.Blueprint, err)
 				continue

@@ -240,7 +240,7 @@ func (c *Controller) entityHandler(portEntity port.Entity, action EventActionTyp
 		}
 		klog.Infof("Successfully upserted entity '%s' of blueprint '%s'", portEntity.Identifier, portEntity.Blueprint)
 	case DeleteAction:
-		err := c.portClient.DeleteEntity(context.Background(), portEntity.Identifier, portEntity.Blueprint)
+		err := c.portClient.DeleteEntity(context.Background(), portEntity.Identifier, portEntity.Blueprint, c.portClient.DeleteDependents)
 		if err != nil {
 			return fmt.Errorf("error deleting Port entity '%s' of blueprint '%s': %v", portEntity.Identifier, portEntity.Blueprint, err)
 		}

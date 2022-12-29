@@ -12,9 +12,10 @@ import (
 type (
 	Option     func(*PortClient)
 	PortClient struct {
-		Client       *resty.Client
-		ClientID     string
-		ClientSecret string
+		Client           *resty.Client
+		ClientID         string
+		ClientSecret     string
+		DeleteDependents bool
 	}
 )
 
@@ -79,5 +80,11 @@ func WithClientID(clientID string) Option {
 func WithClientSecret(clientSecret string) Option {
 	return func(pc *PortClient) {
 		pc.ClientSecret = clientSecret
+	}
+}
+
+func WithDeleteDependents(deleteDependents bool) Option {
+	return func(pc *PortClient) {
+		pc.DeleteDependents = deleteDependents
 	}
 }
