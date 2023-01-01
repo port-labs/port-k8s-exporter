@@ -39,7 +39,7 @@ func main() {
 	}
 
 	portClient, err := cli.New(portBaseURL,
-		cli.WithHeader("User-Agent", fmt.Sprintf("port-k8s-exporter/0.1 (statekey/%s)", stateKey)),
+		cli.WithHeader("User-Agent", fmt.Sprintf("port-k8s-exporter/0.1 (statekey/%s)", exporterConfig.StateKey)),
 		cli.WithClientID(portClientId), cli.WithClientSecret(portClientSecret), cli.WithDeleteDependents(deleteDependents),
 	)
 	if err != nil {
