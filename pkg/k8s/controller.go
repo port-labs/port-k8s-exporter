@@ -9,7 +9,9 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/mapping"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/informers"
 	"time"
 
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -19,40 +21,42 @@ import (
 	"k8s.io/klog/v2"
 )
 
-type EventItemType string
+type EventActionType string
 
 const (
-	CreateEventItem EventItemType = "create"
-	UpdateEventItem EventItemType = "update"
-	DeleteEventItem EventItemType = "delete"
-	MaxNumRequeues  int           = 4
+	CreateAction   EventActionType = "create"
+	UpdateAction   EventActionType = "update"
+	DeleteAction   EventActionType = "delete"
+	MaxNumRequeues int             = 4
 )
 
 type EventItem struct {
-	Key  string
-	Type EventItemType
+	Key        string
+	ActionType EventActionType
 }
 
 type Controller struct {
 	resource   config.Resource
 	portClient *cli.PortClient
 	informer   cache.SharedIndexInformer
+	lister     cache.GenericLister
 	workqueue  workqueue.RateLimitingInterface
 }
 
-func NewController(resource config.Resource, portClient *cli.PortClient, informer cache.SharedIndexInformer) *Controller {
+func NewController(resource config.Resource, portClient *cli.PortClient, informer informers.GenericInformer) *Controller {
 	controller := &Controller{
 		resource:   resource,
 		portClient: portClient,
-		informer:   informer,
+		informer:   informer.Informer(),
+		lister:     informer.Lister(),
 		workqueue:  workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 	}
 
-	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	controller.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			var err error
 			var item EventItem
-			item.Type = CreateEventItem
+			item.ActionType = CreateAction
 			item.Key, err = cache.MetaNamespaceKeyFunc(obj)
 			if err == nil {
 				controller.workqueue.Add(item)
@@ -61,7 +65,7 @@ func NewController(resource config.Resource, portClient *cli.PortClient, informe
 		UpdateFunc: func(old interface{}, new interface{}) {
 			var err error
 			var item EventItem
-			item.Type = UpdateEventItem
+			item.ActionType = UpdateAction
 			item.Key, err = cache.MetaNamespaceKeyFunc(new)
 			if err == nil {
 				controller.workqueue.Add(item)
@@ -70,7 +74,7 @@ func NewController(resource config.Resource, portClient *cli.PortClient, informe
 		DeleteFunc: func(obj interface{}) {
 			var err error
 			var item EventItem
-			item.Type = DeleteEventItem
+			item.ActionType = DeleteAction
 			item.Key, err = cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
 			if err == nil {
 				err = controller.objectHandler(obj, item)
@@ -82,6 +86,12 @@ func NewController(resource config.Resource, portClient *cli.PortClient, informe
 	})
 
 	return controller
+}
+
+func (c *Controller) Shutdown() {
+	klog.Infof("Shutting down controller for resource '%s'", c.resource.Kind)
+	c.workqueue.ShutDown()
+	klog.Infof("Closed controller for resource '%s'", c.resource.Kind)
 }
 
 func (c *Controller) Run(workers int, stopCh <-chan struct{}) error {
@@ -165,28 +175,9 @@ func (c *Controller) syncHandler(item EventItem) error {
 }
 
 func (c *Controller) objectHandler(obj interface{}, item EventItem) error {
-	unstructuredObj, ok := obj.(*unstructured.Unstructured)
-	if !ok {
-		utilruntime.HandleError(fmt.Errorf("error casting to unstructured for key: %s", item.Key))
-		return nil
-	}
-	var structuredObj interface{}
-	err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.Object, &structuredObj)
+	portEntities, err := c.getObjectEntities(obj)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("error converting from unstructured for key: %s", item.Key))
-		return nil
-	}
-
-	var selectorResult = true
-	if c.resource.Selector.Query != "" {
-		selectorResult, err = jq.ParseBool(c.resource.Selector.Query, structuredObj)
-		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("invalid selector query '%s': %v", c.resource.Selector.Query, err))
-			return nil
-		}
-	}
-	if !selectorResult {
-		klog.Infof("Selector query evaluated to false, skip syncing '%s' of resource '%s'", item.Key, c.resource.Kind)
+		utilruntime.HandleError(fmt.Errorf("error getting entities for object key '%s': %v", item.Key, err))
 		return nil
 	}
 
@@ -195,35 +186,85 @@ func (c *Controller) objectHandler(obj interface{}, item EventItem) error {
 		return fmt.Errorf("error authenticating with Port: %v", err)
 	}
 
-	for _, entityMapping := range c.resource.Port.Entity.Mappings {
-		var portEntity *port.Entity
-		portEntity, err = mapping.NewEntity(structuredObj, entityMapping)
+	for _, portEntity := range portEntities {
+		err = c.entityHandler(portEntity, item.ActionType)
 		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("invalid entity mapping '%#v': %v", entityMapping, err))
-			return nil
-		}
-
-		switch item.Type {
-		case CreateEventItem, UpdateEventItem:
-			_, err = c.portClient.CreateEntity(context.Background(), portEntity, "")
-			if err != nil {
-				return fmt.Errorf("error upserting Port entity '%s' of blueprint '%s': %v", portEntity.Identifier, portEntity.Blueprint, err)
-			}
-			klog.Infof("Successfully upserted entity '%s' of blueprint '%s'", portEntity.Identifier, portEntity.Blueprint)
-		case DeleteEventItem:
-			err = c.portClient.DeleteEntity(context.Background(), portEntity.Identifier, portEntity.Blueprint)
-			if err != nil {
-				return fmt.Errorf("error deleting Port entity '%s' of blueprint '%s': %v", portEntity.Identifier, portEntity.Blueprint, err)
-			}
-			klog.Infof("Successfully deleted entity '%s' of blueprint '%s'", portEntity.Identifier, portEntity.Blueprint)
+			return fmt.Errorf("error handling entity for object key '%s': %v", item.Key, err)
 		}
 	}
 
 	return nil
 }
 
-func (c *Controller) Shutdown() {
-	klog.Infof("Shutting down controller for resource '%s'", c.resource.Kind)
-	c.workqueue.ShutDown()
-	klog.Infof("Closed controller for resource '%s'", c.resource.Kind)
+func (c *Controller) getObjectEntities(obj interface{}) ([]port.Entity, error) {
+	unstructuredObj, ok := obj.(*unstructured.Unstructured)
+	if !ok {
+		return nil, fmt.Errorf("error casting to unstructured")
+	}
+	var structuredObj interface{}
+	err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.Object, &structuredObj)
+	if err != nil {
+		return nil, fmt.Errorf("error converting from unstructured: %v", err)
+	}
+
+	var selectorResult = true
+	if c.resource.Selector.Query != "" {
+		selectorResult, err = jq.ParseBool(c.resource.Selector.Query, structuredObj)
+		if err != nil {
+			return nil, fmt.Errorf("invalid selector query '%s': %v", c.resource.Selector.Query, err)
+		}
+	}
+	if !selectorResult {
+		return nil, nil
+	}
+
+	entities := make([]port.Entity, 0, len(c.resource.Port.Entity.Mappings))
+	for _, entityMapping := range c.resource.Port.Entity.Mappings {
+		var portEntity *port.Entity
+		portEntity, err = mapping.NewEntity(structuredObj, entityMapping)
+		if err != nil {
+			return nil, fmt.Errorf("invalid entity mapping '%#v': %v", entityMapping, err)
+		}
+		entities = append(entities, *portEntity)
+	}
+
+	return entities, nil
+}
+
+func (c *Controller) entityHandler(portEntity port.Entity, action EventActionType) error {
+	switch action {
+	case CreateAction, UpdateAction:
+		_, err := c.portClient.CreateEntity(context.Background(), &portEntity, "")
+		if err != nil {
+			return fmt.Errorf("error upserting Port entity '%s' of blueprint '%s': %v", portEntity.Identifier, portEntity.Blueprint, err)
+		}
+		klog.Infof("Successfully upserted entity '%s' of blueprint '%s'", portEntity.Identifier, portEntity.Blueprint)
+	case DeleteAction:
+		err := c.portClient.DeleteEntity(context.Background(), portEntity.Identifier, portEntity.Blueprint, c.portClient.DeleteDependents)
+		if err != nil {
+			return fmt.Errorf("error deleting Port entity '%s' of blueprint '%s': %v", portEntity.Identifier, portEntity.Blueprint, err)
+		}
+		klog.Infof("Successfully deleted entity '%s' of blueprint '%s'", portEntity.Identifier, portEntity.Blueprint)
+	}
+
+	return nil
+}
+
+func (c *Controller) GetEntitiesSet() (map[string]interface{}, error) {
+	k8sEntitiesSet := map[string]interface{}{}
+	objects, err := c.lister.List(labels.Everything())
+	if err != nil {
+		return nil, fmt.Errorf("error listing K8s objects of resource '%s': %v", c.resource.Kind, err)
+	}
+	for _, obj := range objects {
+		entities, err := c.getObjectEntities(obj)
+		if err != nil {
+			return nil, fmt.Errorf("error getting entities of object: %v", err)
+		}
+		for _, entity := range entities {
+			k8sEntitiesSet[c.portClient.GetEntityIdentifierKey(&entity)] = nil
+		}
+	}
+
+	return k8sEntitiesSet, nil
 }

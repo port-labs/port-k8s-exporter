@@ -26,11 +26,16 @@ type Resource struct {
 }
 
 type Config struct {
-	Resources []Resource
+	Resources      []Resource
+	ResyncInterval uint
+	StateKey       string
 }
 
-func New(filepath string) (*Config, error) {
-	c := &Config{}
+func New(filepath string, resyncInterval uint, stateKey string) (*Config, error) {
+	c := &Config{
+		ResyncInterval: resyncInterval,
+		StateKey:       stateKey,
+	}
 	config, err := os.ReadFile(filepath)
 	if err != nil {
 		return nil, err
