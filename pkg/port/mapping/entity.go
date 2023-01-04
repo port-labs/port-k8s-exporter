@@ -32,7 +32,7 @@ func NewEntity(obj interface{}, mapping port.EntityMapping) (*port.Entity, error
 	if err != nil {
 		return &port.Entity{}, err
 	}
-	entity.Relations, err = jq.ParseMapString(mapping.Relations, obj)
+	entity.Relations, err = jq.ParseMapInterface(mapping.Relations, obj)
 	if err != nil {
 		return &port.Entity{}, err
 	}

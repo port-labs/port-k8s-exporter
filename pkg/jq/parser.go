@@ -73,18 +73,3 @@ func ParseMapInterface(jqQueries map[string]string, obj interface{}) (map[string
 
 	return mapInterface, nil
 }
-
-func ParseMapString(jqQueries map[string]string, obj interface{}) (map[string]string, error) {
-	mapString := make(map[string]string, len(jqQueries))
-
-	for key, jqQuery := range jqQueries {
-		queryRes, err := ParseString(jqQuery, obj)
-		if err != nil {
-			return nil, err
-		}
-
-		mapString[key] = queryRes
-	}
-
-	return mapString, nil
-}
