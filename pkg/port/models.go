@@ -24,7 +24,7 @@ type (
 		Blueprint  string                 `json:"blueprint"`
 		Team       string                 `json:"team,omitempty"`
 		Properties map[string]interface{} `json:"properties"`
-		Relations  map[string]string      `json:"relations"`
+		Relations  map[string]interface{} `json:"relations"`
 	}
 
 	BlueprintProperty struct {
