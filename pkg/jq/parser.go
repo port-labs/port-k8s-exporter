@@ -59,11 +59,20 @@ func ParseString(jqQuery string, obj interface{}) (string, error) {
 	return strings.Trim(str, "\""), nil
 }
 
+func ParseInterface(jqQuery string, obj interface{}) (interface{}, error) {
+	queryRes, err := runJQQuery(jqQuery, obj)
+	if err != nil {
+		return "", err
+	}
+
+	return queryRes, nil
+}
+
 func ParseMapInterface(jqQueries map[string]string, obj interface{}) (map[string]interface{}, error) {
 	mapInterface := make(map[string]interface{}, len(jqQueries))
 
 	for key, jqQuery := range jqQueries {
-		queryRes, err := runJQQuery(jqQuery, obj)
+		queryRes, err := ParseInterface(jqQuery, obj)
 		if err != nil {
 			return nil, err
 		}

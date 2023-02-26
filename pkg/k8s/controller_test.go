@@ -182,6 +182,7 @@ func TestUpdateDeployment(t *testing.T) {
 		{
 			Identifier: ".metadata.name",
 			Blueprint:  "\"k8s-export-test-bp\"",
+			Team:       "[\"Test\"]",
 			Properties: map[string]string{
 				"text": "\"pod\"",
 				"num":  "1",
