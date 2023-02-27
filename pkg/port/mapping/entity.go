@@ -23,7 +23,7 @@ func NewEntity(obj interface{}, mapping port.EntityMapping) (*port.Entity, error
 		return &port.Entity{}, err
 	}
 	if mapping.Team != "" {
-		entity.Team, err = jq.ParseString(mapping.Team, obj)
+		entity.Team, err = jq.ParseInterface(mapping.Team, obj)
 		if err != nil {
 			return &port.Entity{}, err
 		}

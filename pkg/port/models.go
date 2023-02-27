@@ -22,7 +22,7 @@ type (
 		Identifier string                 `json:"identifier,omitempty"`
 		Title      string                 `json:"title"`
 		Blueprint  string                 `json:"blueprint"`
-		Team       string                 `json:"team,omitempty"`
+		Team       interface{}            `json:"team,omitempty"`
 		Properties map[string]interface{} `json:"properties"`
 		Relations  map[string]interface{} `json:"relations"`
 	}
