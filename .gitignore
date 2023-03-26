@@ -19,3 +19,5 @@
 config.yaml
 
 deployments/k8s
+
+.vscode

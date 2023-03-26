@@ -3,13 +3,15 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
+
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/handlers"
 	"github.com/port-labs/port-k8s-exporter/pkg/k8s"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
+	"github.com/port-labs/port-k8s-exporter/pkg/port/management"
 	"github.com/port-labs/port-k8s-exporter/pkg/signal"
 	"k8s.io/klog/v2"
-	"os"
 )
 
 var (
@@ -28,6 +30,21 @@ func main() {
 
 	stopCh := signal.SetupSignalHandler()
 
+	portClient, err := cli.New(portBaseURL,
+		cli.WithHeader("User-Agent", fmt.Sprintf("port-k8s-exporter/0.1 (statekey/%s)", stateKey)),
+		cli.WithClientID(portClientId), cli.WithClientSecret(portClientSecret), cli.WithDeleteDependents(deleteDependents),
+	)
+
+	if err != nil {
+		klog.Fatalf("Error building Port client: %s", err.Error())
+	}
+
+	integration, err := management.GetOrCreateIntegration(stateKey, portClient)
+
+	klog.Info("Integration found with id: %s", integration.Id)
+	if err != nil {
+		klog.Fatalf("Error getting integration: %s", err.Error())
+	}
 	exporterConfig, err := config.New(configFilePath, resyncInterval, stateKey)
 	if err != nil {
 		klog.Fatalf("Error building Port K8s Exporter config: %s", err.Error())
@@ -36,14 +53,6 @@ func main() {
 	k8sClient, err := k8s.NewClient()
 	if err != nil {
 		klog.Fatalf("Error building K8s client: %s", err.Error())
-	}
-
-	portClient, err := cli.New(portBaseURL,
-		cli.WithHeader("User-Agent", fmt.Sprintf("port-k8s-exporter/0.1 (statekey/%s)", exporterConfig.StateKey)),
-		cli.WithClientID(portClientId), cli.WithClientSecret(portClientSecret), cli.WithDeleteDependents(deleteDependents),
-	)
-	if err != nil {
-		klog.Fatalf("Error building Port client: %s", err.Error())
 	}
 
 	klog.Info("Starting controllers handler")

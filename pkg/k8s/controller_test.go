@@ -1,18 +1,18 @@
 package k8s
 
 import (
-	"github.com/port-labs/port-k8s-exporter/pkg/config"
+	"os"
+	"reflect"
+	"strings"
+	"testing"
+	"time"
+
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	k8sfake "k8s.io/client-go/dynamic/fake"
-	"os"
-	"reflect"
-	"strings"
-	"testing"
-	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -30,7 +30,7 @@ type fixture struct {
 	controller *Controller
 }
 
-func newFixture(t *testing.T, portClientId string, portClientSecret string, resource config.Resource, objects []runtime.Object) *fixture {
+func newFixture(t *testing.T, portClientId string, portClientSecret string, resource port.Resource, objects []runtime.Object) *fixture {
 	kubeclient := k8sfake.NewSimpleDynamicClient(runtime.NewScheme())
 
 	if portClientId == "" {
@@ -51,14 +51,14 @@ func newFixture(t *testing.T, portClientId string, portClientSecret string, reso
 	}
 }
 
-func newResource(selectorQuery string, mappings []port.EntityMapping) config.Resource {
-	return config.Resource{
+func newResource(selectorQuery string, mappings []port.EntityMapping) port.Resource {
+	return port.Resource{
 		Kind: "apps/v1/deployments",
-		Selector: config.Selector{
+		Selector: port.Selector{
 			Query: selectorQuery,
 		},
-		Port: config.Port{
-			Entity: config.Entity{
+		Port: port.Port{
+			Entity: port.Entity{
 				Mappings: mappings,
 			},
 		},
@@ -103,7 +103,7 @@ func newUnstructured(obj interface{}) *unstructured.Unstructured {
 	return &unstructured.Unstructured{Object: res}
 }
 
-func newController(resource config.Resource, objects []runtime.Object, portClient *cli.PortClient, kubeclient *k8sfake.FakeDynamicClient) *Controller {
+func newController(resource port.Resource, objects []runtime.Object, portClient *cli.PortClient, kubeclient *k8sfake.FakeDynamicClient) *Controller {
 	k8sI := dynamicinformer.NewDynamicSharedInformerFactory(kubeclient, noResyncPeriodFunc())
 	s := strings.SplitN(resource.Kind, "/", 3)
 	gvr := schema.GroupVersionResource{Group: s[0], Version: s[1], Resource: s[2]}

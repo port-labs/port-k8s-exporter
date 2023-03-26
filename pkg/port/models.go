@@ -107,6 +107,16 @@ type (
 		Operator string      `json:"operator"`
 		Value    interface{} `json:"value"`
 	}
+
+	Integration struct {
+		InstallationId      string            `json:"installationId"`
+		InstallationAppType string            `json:"installationAppType"`
+		Id                  string            `json:"_id,omitempty"`
+		OrgId               string            `json:"_orgId,omitempty"`
+		Identifier          string            `json:"identifier,omitempty"`
+		ClientId            string            `json:"clientId,omitempty"`
+		Config              IntegrationConfig `json:"config,omitempty"`
+	}
 )
 
 type SearchBody struct {
@@ -115,11 +125,12 @@ type SearchBody struct {
 }
 
 type ResponseBody struct {
-	OK        bool      `json:"ok"`
-	Entity    Entity    `json:"entity"`
-	Blueprint Blueprint `json:"blueprint"`
-	Action    Action    `json:"action"`
-	Entities  []Entity  `json:"entities"`
+	OK          bool        `json:"ok"`
+	Entity      Entity      `json:"entity"`
+	Blueprint   Blueprint   `json:"blueprint"`
+	Action      Action      `json:"action"`
+	Entities    []Entity    `json:"entities"`
+	Integration Integration `json:"integration"`
 }
 
 type EntityMapping struct {
@@ -129,4 +140,22 @@ type EntityMapping struct {
 	Team       string
 	Properties map[string]string
 	Relations  map[string]string
+}
+
+type Port struct {
+	Entity Entity
+}
+
+type Selector struct {
+	Query string
+}
+
+type Resource struct {
+	Kind     string
+	Selector Selector
+	Port     Port
+}
+
+type IntegrationConfig struct {
+	Resources []Resource
 }
