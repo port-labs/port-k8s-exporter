@@ -7,9 +7,6 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-type Entity struct {
-	Mappings []port.EntityMapping
-}
 type Config struct {
 	Resources      []port.Resource
 	ResyncInterval uint

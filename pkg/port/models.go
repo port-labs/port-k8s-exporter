@@ -142,8 +142,12 @@ type EntityMapping struct {
 	Relations  map[string]string
 }
 
+type EntityMap struct {
+	Mappings []EntityMapping
+}
+
 type Port struct {
-	Entity Entity
+	Entity EntityMap
 }
 
 type Selector struct {

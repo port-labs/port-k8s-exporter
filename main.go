@@ -41,11 +41,11 @@ func main() {
 
 	integration, err := management.GetOrCreateIntegration(stateKey, portClient)
 
-	klog.Info("Integration found with id: %s", integration.Id)
 	if err != nil {
 		klog.Fatalf("Error getting integration: %s", err.Error())
 	}
-	exporterConfig, err := config.New(configFilePath, resyncInterval, stateKey)
+
+	exporterConfig, err := config.New(configFilePath, resyncInterval, stateKey, integration)
 	if err != nil {
 		klog.Fatalf("Error building Port K8s Exporter config: %s", err.Error())
 	}
