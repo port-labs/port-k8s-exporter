@@ -12,10 +12,11 @@ import (
 type (
 	Option     func(*PortClient)
 	PortClient struct {
-		Client           *resty.Client
-		ClientID         string
-		ClientSecret     string
-		DeleteDependents bool
+		Client                       *resty.Client
+		ClientID                     string
+		ClientSecret                 string
+		DeleteDependents             bool
+		CreateMissingRelatedEntities bool
 	}
 )
 
@@ -86,5 +87,11 @@ func WithClientSecret(clientSecret string) Option {
 func WithDeleteDependents(deleteDependents bool) Option {
 	return func(pc *PortClient) {
 		pc.DeleteDependents = deleteDependents
+	}
+}
+
+func WithCreateMissingRelatedEntities(createMissingRelatedEntities bool) Option {
+	return func(pc *PortClient) {
+		pc.CreateMissingRelatedEntities = createMissingRelatedEntities
 	}
 }
