@@ -13,13 +13,14 @@ import (
 )
 
 var (
-	configFilePath   string
-	resyncInterval   uint
-	stateKey         string
-	deleteDependents bool
-	portBaseURL      string
-	portClientId     string
-	portClientSecret string
+	configFilePath               string
+	resyncInterval               uint
+	stateKey                     string
+	deleteDependents             bool
+	createMissingRelatedEntities bool
+	portBaseURL                  string
+	portClientId                 string
+	portClientSecret             string
 )
 
 func main() {
@@ -40,7 +41,8 @@ func main() {
 
 	portClient, err := cli.New(portBaseURL,
 		cli.WithHeader("User-Agent", fmt.Sprintf("port-k8s-exporter/0.1 (statekey/%s)", exporterConfig.StateKey)),
-		cli.WithClientID(portClientId), cli.WithClientSecret(portClientSecret), cli.WithDeleteDependents(deleteDependents),
+		cli.WithClientID(portClientId), cli.WithClientSecret(portClientSecret),
+		cli.WithDeleteDependents(deleteDependents), cli.WithCreateMissingRelatedEntities(createMissingRelatedEntities),
 	)
 	if err != nil {
 		klog.Fatalf("Error building Port client: %s", err.Error())
@@ -56,6 +58,7 @@ func init() {
 	flag.StringVar(&configFilePath, "config", "", "Path to Port K8s Exporter config file. Required.")
 	flag.StringVar(&stateKey, "state-key", "", "Port K8s Exporter state key id. Required.")
 	flag.BoolVar(&deleteDependents, "delete-dependents", false, "Flag to enable deletion of dependent Port Entities. Optional.")
+	flag.BoolVar(&createMissingRelatedEntities, "create-missing-related-entities", false, "Flag to enable creation of missing related Port entities. Optional.")
 	flag.UintVar(&resyncInterval, "resync-interval", 0, "The re-sync interval in minutes. Optional.")
 	flag.StringVar(&portBaseURL, "port-base-url", "https://api.getport.io", "Port base URL. Optional.")
 	portClientId = os.Getenv("PORT_CLIENT_ID")

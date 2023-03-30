@@ -51,7 +51,7 @@ func (c *PortClient) ReadEntity(ctx context.Context, id string, blueprint string
 	return &pb.Entity, nil
 }
 
-func (c *PortClient) CreateEntity(ctx context.Context, e *port.Entity, runID string) (*port.Entity, error) {
+func (c *PortClient) CreateEntity(ctx context.Context, e *port.Entity, runID string, createMissingRelatedEntities bool) (*port.Entity, error) {
 	pb := &port.ResponseBody{}
 	resp, err := c.Client.R().
 		SetBody(e).
@@ -59,6 +59,7 @@ func (c *PortClient) CreateEntity(ctx context.Context, e *port.Entity, runID str
 		SetQueryParam("upsert", "true").
 		SetQueryParam("merge", "true").
 		SetQueryParam("run_id", runID).
+		SetQueryParam("create_missing_related_entities", strconv.FormatBool(createMissingRelatedEntities)).
 		SetResult(&pb).
 		Post("v1/blueprints/{blueprint}/entities")
 	if err != nil {
@@ -116,7 +117,7 @@ func (c *PortClient) DeleteStaleEntities(ctx context.Context, stateKey string, e
 				klog.Errorf("error deleting Port entity '%s' of blueprint '%s': %v", portEntity.Identifier, portEntity.Blueprint, err)
 				continue
 			}
-			klog.Infof("Successfully deleted entity '%s' of blueprint '%s'", portEntity.Identifier, portEntity.Blueprint)
+			klog.V(0).Infof("Successfully deleted entity '%s' of blueprint '%s'", portEntity.Identifier, portEntity.Blueprint)
 		}
 	}
 

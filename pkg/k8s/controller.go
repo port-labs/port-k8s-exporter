@@ -234,17 +234,17 @@ func (c *Controller) getObjectEntities(obj interface{}) ([]port.Entity, error) {
 func (c *Controller) entityHandler(portEntity port.Entity, action EventActionType) error {
 	switch action {
 	case CreateAction, UpdateAction:
-		_, err := c.portClient.CreateEntity(context.Background(), &portEntity, "")
+		_, err := c.portClient.CreateEntity(context.Background(), &portEntity, "", c.portClient.CreateMissingRelatedEntities)
 		if err != nil {
 			return fmt.Errorf("error upserting Port entity '%s' of blueprint '%s': %v", portEntity.Identifier, portEntity.Blueprint, err)
 		}
-		klog.Infof("Successfully upserted entity '%s' of blueprint '%s'", portEntity.Identifier, portEntity.Blueprint)
+		klog.V(0).Infof("Successfully upserted entity '%s' of blueprint '%s'", portEntity.Identifier, portEntity.Blueprint)
 	case DeleteAction:
 		err := c.portClient.DeleteEntity(context.Background(), portEntity.Identifier, portEntity.Blueprint, c.portClient.DeleteDependents)
 		if err != nil {
 			return fmt.Errorf("error deleting Port entity '%s' of blueprint '%s': %v", portEntity.Identifier, portEntity.Blueprint, err)
 		}
-		klog.Infof("Successfully deleted entity '%s' of blueprint '%s'", portEntity.Identifier, portEntity.Blueprint)
+		klog.V(0).Infof("Successfully deleted entity '%s' of blueprint '%s'", portEntity.Identifier, portEntity.Blueprint)
 	}
 
 	return nil
