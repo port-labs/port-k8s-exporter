@@ -28,12 +28,17 @@ func NewControllersHandler(exporterConfig *config.Config, k8sClient *k8s.Client,
 		var gvr schema.GroupVersionResource
 		gvr, err := k8s.GetGVRFromResource(k8sClient.DiscoveryMapper, resource.Kind)
 		if err != nil {
-			klog.Fatalf("Error getting GVR for resource '%s': %s", resource.Kind, err.Error())
+			klog.Errorf("Error getting GVR, skip handling for resource '%s': %s.", resource.Kind, err.Error())
+			continue
 		}
 
 		informer := informersFactory.ForResource(gvr)
 		controller := k8s.NewController(resource, portClient, informer)
 		controllers = append(controllers, controller)
+	}
+
+	if len(controllers) == 0 {
+		klog.Fatalf("Failed to initiate a controller for all resources, exiting...")
 	}
 
 	controllersHandler := &ControllersHandler{
