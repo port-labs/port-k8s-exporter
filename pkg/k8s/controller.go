@@ -94,21 +94,23 @@ func (c *Controller) Shutdown() {
 	klog.Infof("Closed controller for resource '%s'", c.resource.Kind)
 }
 
-func (c *Controller) Run(workers int, stopCh <-chan struct{}) error {
-	defer utilruntime.HandleCrash()
-
+func (c *Controller) WaitForCacheSync(stopCh <-chan struct{}) error {
 	klog.Infof("Waiting for informer cache to sync for resource '%s'", c.resource.Kind)
 	if ok := cache.WaitForCacheSync(stopCh, c.informer.HasSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
+
+	return nil
+}
+
+func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
+	defer utilruntime.HandleCrash()
 
 	klog.Infof("Starting workers for resource '%s'", c.resource.Kind)
 	for i := 0; i < workers; i++ {
 		go wait.Until(c.runWorker, time.Second, stopCh)
 	}
 	klog.Infof("Started workers for resource '%s'", c.resource.Kind)
-
-	return nil
 }
 
 func (c *Controller) runWorker() {

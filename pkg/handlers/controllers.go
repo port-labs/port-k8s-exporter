@@ -54,14 +54,18 @@ func NewControllersHandler(exporterConfig *config.Config, k8sClient *k8s.Client,
 func (c *ControllersHandler) Handle(stopCh <-chan struct{}) {
 	klog.Info("Starting informers")
 	c.informersFactory.Start(stopCh)
-	klog.Info("Starting controllers")
+	klog.Info("Waiting for informers cache sync")
 	for _, controller := range c.controllers {
-		if err := controller.Run(1, stopCh); err != nil {
-			klog.Fatalf("Error running controller: %s", err.Error())
+		if err := controller.WaitForCacheSync(stopCh); err != nil {
+			klog.Fatalf("Error while waiting for informer cache sync: %s", err.Error())
 		}
 	}
 	klog.Info("Deleting stale entities")
-	go c.RunDeleteStaleEntities()
+	c.RunDeleteStaleEntities()
+	klog.Info("Starting controllers")
+	for _, controller := range c.controllers {
+		controller.Run(1, stopCh)
+	}
 
 	<-stopCh
 	klog.Info("Shutting down controllers")
