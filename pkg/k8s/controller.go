@@ -177,7 +177,7 @@ func (c *Controller) syncHandler(item EventItem) error {
 }
 
 func (c *Controller) objectHandler(obj interface{}, item EventItem) error {
-	portEntities, err := c.getObjectEntities(obj)
+	portEntities, err := c.getObjectEntities(obj, c.resource.Port.Entity.Mappings)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("error getting entities for object key '%s': %v", item.Key, err))
 		return nil
@@ -198,7 +198,7 @@ func (c *Controller) objectHandler(obj interface{}, item EventItem) error {
 	return nil
 }
 
-func (c *Controller) getObjectEntities(obj interface{}) ([]port.Entity, error) {
+func (c *Controller) getObjectEntities(obj interface{}, mappings []port.EntityMapping) ([]port.Entity, error) {
 	unstructuredObj, ok := obj.(*unstructured.Unstructured)
 	if !ok {
 		return nil, fmt.Errorf("error casting to unstructured")
@@ -220,8 +220,8 @@ func (c *Controller) getObjectEntities(obj interface{}) ([]port.Entity, error) {
 		return nil, nil
 	}
 
-	entities := make([]port.Entity, 0, len(c.resource.Port.Entity.Mappings))
-	for _, entityMapping := range c.resource.Port.Entity.Mappings {
+	entities := make([]port.Entity, 0, len(mappings))
+	for _, entityMapping := range mappings {
 		var portEntity *port.Entity
 		portEntity, err = mapping.NewEntity(structuredObj, entityMapping)
 		if err != nil {
@@ -258,8 +258,15 @@ func (c *Controller) GetEntitiesSet() (map[string]interface{}, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error listing K8s objects of resource '%s': %v", c.resource.Kind, err)
 	}
+	mappings := make([]port.EntityMapping, 0, len(c.resource.Port.Entity.Mappings))
+	for _, m := range c.resource.Port.Entity.Mappings {
+		mappings = append(mappings, port.EntityMapping{
+			Identifier: m.Identifier,
+			Blueprint:  m.Blueprint,
+		})
+	}
 	for _, obj := range objects {
-		entities, err := c.getObjectEntities(obj)
+		entities, err := c.getObjectEntities(obj, mappings)
 		if err != nil {
 			return nil, fmt.Errorf("error getting entities of object: %v", err)
 		}
