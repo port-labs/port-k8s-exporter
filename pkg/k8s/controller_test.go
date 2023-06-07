@@ -108,7 +108,8 @@ func newController(resource config.Resource, objects []runtime.Object, portClien
 	s := strings.SplitN(resource.Kind, "/", 3)
 	gvr := schema.GroupVersionResource{Group: s[0], Version: s[1], Resource: s[2]}
 	informer := k8sI.ForResource(gvr)
-	c := NewController(resource, portClient, informer)
+	kindConfig := config.KindConfig{Selector: resource.Selector, Port: resource.Port}
+	c := NewController(config.AggregatedResource{Kind: resource.Kind, KindConfigs: []config.KindConfig{kindConfig}}, portClient, informer)
 
 	for _, d := range objects {
 		informer.Informer().GetIndexer().Add(d)
