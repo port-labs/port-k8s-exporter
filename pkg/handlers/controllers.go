@@ -22,18 +22,29 @@ type ControllersHandler struct {
 func NewControllersHandler(exporterConfig *config.Config, k8sClient *k8s.Client, portClient *cli.PortClient) *ControllersHandler {
 	resync := time.Minute * time.Duration(exporterConfig.ResyncInterval)
 	informersFactory := dynamicinformer.NewDynamicSharedInformerFactory(k8sClient.DynamicClient, resync)
+
+	aggResources := make(map[string][]config.KindConfig)
+	for _, resource := range exporterConfig.Resources {
+		kindConfig := config.KindConfig{Selector: resource.Selector, Port: resource.Port}
+		if _, ok := aggResources[resource.Kind]; ok {
+			aggResources[resource.Kind] = append(aggResources[resource.Kind], kindConfig)
+		} else {
+			aggResources[resource.Kind] = []config.KindConfig{kindConfig}
+		}
+	}
+
 	controllers := make([]*k8s.Controller, 0, len(exporterConfig.Resources))
 
-	for _, resource := range exporterConfig.Resources {
+	for kind, kindConfigs := range aggResources {
 		var gvr schema.GroupVersionResource
-		gvr, err := k8s.GetGVRFromResource(k8sClient.DiscoveryMapper, resource.Kind)
+		gvr, err := k8s.GetGVRFromResource(k8sClient.DiscoveryMapper, kind)
 		if err != nil {
-			klog.Errorf("Error getting GVR, skip handling for resource '%s': %s.", resource.Kind, err.Error())
+			klog.Errorf("Error getting GVR, skip handling for resource '%s': %s.", kind, err.Error())
 			continue
 		}
 
 		informer := informersFactory.ForResource(gvr)
-		controller := k8s.NewController(resource, portClient, informer)
+		controller := k8s.NewController(config.AggregatedResource{Kind: kind, KindConfigs: kindConfigs}, portClient, informer)
 		controllers = append(controllers, controller)
 	}
 

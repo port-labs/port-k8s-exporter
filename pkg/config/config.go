@@ -31,6 +31,16 @@ type Config struct {
 	StateKey       string
 }
 
+type KindConfig struct {
+	Selector Selector
+	Port     Port
+}
+
+type AggregatedResource struct {
+	Kind        string
+	KindConfigs []KindConfig
+}
+
 func New(filepath string, resyncInterval uint, stateKey string) (*Config, error) {
 	c := &Config{
 		ResyncInterval: resyncInterval,

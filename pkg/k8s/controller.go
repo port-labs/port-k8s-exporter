@@ -36,14 +36,14 @@ type EventItem struct {
 }
 
 type Controller struct {
-	resource   config.Resource
+	resource   config.AggregatedResource
 	portClient *cli.PortClient
 	informer   cache.SharedIndexInformer
 	lister     cache.GenericLister
 	workqueue  workqueue.RateLimitingInterface
 }
 
-func NewController(resource config.Resource, portClient *cli.PortClient, informer informers.GenericInformer) *Controller {
+func NewController(resource config.AggregatedResource, portClient *cli.PortClient, informer informers.GenericInformer) *Controller {
 	controller := &Controller{
 		resource:   resource,
 		portClient: portClient,
@@ -177,28 +177,35 @@ func (c *Controller) syncHandler(item EventItem) error {
 }
 
 func (c *Controller) objectHandler(obj interface{}, item EventItem) error {
-	portEntities, err := c.getObjectEntities(obj)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("error getting entities for object key '%s': %v", item.Key, err))
-		return nil
-	}
-
-	_, err = c.portClient.Authenticate(context.Background(), c.portClient.ClientID, c.portClient.ClientSecret)
+	_, err := c.portClient.Authenticate(context.Background(), c.portClient.ClientID, c.portClient.ClientSecret)
 	if err != nil {
 		return fmt.Errorf("error authenticating with Port: %v", err)
 	}
 
-	for _, portEntity := range portEntities {
-		err = c.entityHandler(portEntity, item.ActionType)
+	errors := make([]error, 0)
+	for _, kindConfig := range c.resource.KindConfigs {
+		portEntities, err := c.getObjectEntities(obj, kindConfig.Selector, kindConfig.Port.Entity.Mappings)
 		if err != nil {
-			return fmt.Errorf("error handling entity for object key '%s': %v", item.Key, err)
+			utilruntime.HandleError(fmt.Errorf("error getting entities for object key '%s': %v", item.Key, err))
+			continue
 		}
+
+		for _, portEntity := range portEntities {
+			err = c.entityHandler(portEntity, item.ActionType)
+			if err != nil {
+				errors = append(errors, err)
+			}
+		}
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("error handling entity for object key '%s': %v", item.Key, errors)
 	}
 
 	return nil
 }
 
-func (c *Controller) getObjectEntities(obj interface{}) ([]port.Entity, error) {
+func (c *Controller) getObjectEntities(obj interface{}, selector config.Selector, mappings []port.EntityMapping) ([]port.Entity, error) {
 	unstructuredObj, ok := obj.(*unstructured.Unstructured)
 	if !ok {
 		return nil, fmt.Errorf("error casting to unstructured")
@@ -210,18 +217,18 @@ func (c *Controller) getObjectEntities(obj interface{}) ([]port.Entity, error) {
 	}
 
 	var selectorResult = true
-	if c.resource.Selector.Query != "" {
-		selectorResult, err = jq.ParseBool(c.resource.Selector.Query, structuredObj)
+	if selector.Query != "" {
+		selectorResult, err = jq.ParseBool(selector.Query, structuredObj)
 		if err != nil {
-			return nil, fmt.Errorf("invalid selector query '%s': %v", c.resource.Selector.Query, err)
+			return nil, fmt.Errorf("invalid selector query '%s': %v", selector.Query, err)
 		}
 	}
 	if !selectorResult {
 		return nil, nil
 	}
 
-	entities := make([]port.Entity, 0, len(c.resource.Port.Entity.Mappings))
-	for _, entityMapping := range c.resource.Port.Entity.Mappings {
+	entities := make([]port.Entity, 0, len(mappings))
+	for _, entityMapping := range mappings {
 		var portEntity *port.Entity
 		portEntity, err = mapping.NewEntity(structuredObj, entityMapping)
 		if err != nil {
@@ -258,13 +265,23 @@ func (c *Controller) GetEntitiesSet() (map[string]interface{}, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error listing K8s objects of resource '%s': %v", c.resource.Kind, err)
 	}
+
 	for _, obj := range objects {
-		entities, err := c.getObjectEntities(obj)
-		if err != nil {
-			return nil, fmt.Errorf("error getting entities of object: %v", err)
-		}
-		for _, entity := range entities {
-			k8sEntitiesSet[c.portClient.GetEntityIdentifierKey(&entity)] = nil
+		for _, kindConfig := range c.resource.KindConfigs {
+			mappings := make([]port.EntityMapping, 0, len(kindConfig.Port.Entity.Mappings))
+			for _, m := range kindConfig.Port.Entity.Mappings {
+				mappings = append(mappings, port.EntityMapping{
+					Identifier: m.Identifier,
+					Blueprint:  m.Blueprint,
+				})
+			}
+			entities, err := c.getObjectEntities(obj, kindConfig.Selector, mappings)
+			if err != nil {
+				return nil, fmt.Errorf("error getting entities of object: %v", err)
+			}
+			for _, entity := range entities {
+				k8sEntitiesSet[c.portClient.GetEntityIdentifierKey(&entity)] = nil
+			}
 		}
 	}
 
