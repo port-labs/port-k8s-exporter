@@ -9,6 +9,7 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/handlers"
 	"github.com/port-labs/port-k8s-exporter/pkg/k8s"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
+	"github.com/port-labs/port-k8s-exporter/pkg/port/integration"
 	"github.com/port-labs/port-k8s-exporter/pkg/signal"
 	"k8s.io/klog/v2"
 )
@@ -57,9 +58,9 @@ func main() {
 		klog.Fatalf("Error building Port client: %s", err.Error())
 	}
 
-	err = k8s.NewIntegration(portClient, k8sConfig, stateKey)
+	err = integration.NewIntegration(portClient, k8sConfig, stateKey)
 	if err != nil {
-		klog.Fatalf("Error building K8s integration: %s", err.Error())
+		klog.Fatalf("Error creating K8s integration: %s", err.Error())
 	}
 
 	klog.Info("Starting controllers handler")
