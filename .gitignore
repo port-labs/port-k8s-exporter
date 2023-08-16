@@ -16,6 +16,10 @@
 
 .idea
 
+.vscode
+
+__debug_bin
+
 config.yaml
 
 deployments/k8s
