@@ -3,10 +3,10 @@ package cli
 import (
 	"context"
 	"encoding/json"
-	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"strings"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/port-labs/port-k8s-exporter/pkg/port"
 )
 
 type (
