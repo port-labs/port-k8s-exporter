@@ -2,18 +2,18 @@ package k8s
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/klog/v2"
 )
 
-func NewIntegration(portClient *cli.PortClient, k8sConfig clientcmd.ClientConfig, stateKey string) {
+func NewIntegration(portClient *cli.PortClient, k8sConfig clientcmd.ClientConfig, stateKey string) error {
 
 	k8sRawConfig, err := k8sConfig.RawConfig()
 	if err != nil {
-		klog.Fatalf("Error getting K8s raw config: %s", err.Error())
+		return err
 	}
 
 	clusterName := k8sRawConfig.Contexts[k8sRawConfig.CurrentContext].Cluster
@@ -25,11 +25,12 @@ func NewIntegration(portClient *cli.PortClient, k8sConfig clientcmd.ClientConfig
 	}
 	_, err = portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
 	if err != nil {
-		klog.Errorf("error authenticating with Port: %v", err)
+		return fmt.Errorf("error authenticating with Port: %v", err)
 	}
 
 	_, err = portClient.CreateIntegration(integration)
 	if err != nil {
-		klog.Fatalf("Error creating Port integration: %s", err.Error())
+		return fmt.Errorf("error creating Port integration: %v", err)
 	}
+	return nil
 }

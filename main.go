@@ -36,9 +36,6 @@ func main() {
 	}
 
 	k8sConfig := k8s.NewKubeConfig()
-	if err != nil {
-		klog.Fatalf("Error building K8s config: %s", err.Error())
-	}
 
 	clientConfig, err := k8sConfig.ClientConfig()
 	if err != nil {
@@ -60,7 +57,10 @@ func main() {
 		klog.Fatalf("Error building Port client: %s", err.Error())
 	}
 
-	k8s.NewIntegration(portClient, k8sConfig, stateKey)
+	err = k8s.NewIntegration(portClient, k8sConfig, stateKey)
+	if err != nil {
+		klog.Fatalf("Error building K8s integration: %s", err.Error())
+	}
 
 	klog.Info("Starting controllers handler")
 	controllersHandler := handlers.NewControllersHandler(exporterConfig, k8sClient, portClient)
