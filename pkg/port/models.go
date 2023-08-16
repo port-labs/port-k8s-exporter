@@ -27,6 +27,13 @@ type (
 		Relations  map[string]interface{} `json:"relations"`
 	}
 
+	Integration struct {
+		InstallationId      string `json:"installationId"`
+		Title               string `json:"title,omitempty"`
+		Version             string `json:"version,omitempty"`
+		InstallationAppType string `json:"installationAppType,omitempty"`
+	}
+
 	BlueprintProperty struct {
 		Type        string            `json:"type,omitempty"`
 		Title       string            `json:"title,omitempty"`
@@ -115,11 +122,12 @@ type SearchBody struct {
 }
 
 type ResponseBody struct {
-	OK        bool      `json:"ok"`
-	Entity    Entity    `json:"entity"`
-	Blueprint Blueprint `json:"blueprint"`
-	Action    Action    `json:"action"`
-	Entities  []Entity  `json:"entities"`
+	OK          bool        `json:"ok"`
+	Entity      Entity      `json:"entity"`
+	Blueprint   Blueprint   `json:"blueprint"`
+	Action      Action      `json:"action"`
+	Entities    []Entity    `json:"entities"`
+	Integration Integration `json:"integration"`
 }
 
 type EntityMapping struct {
