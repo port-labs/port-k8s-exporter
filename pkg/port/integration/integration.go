@@ -11,19 +11,12 @@ import (
 
 func NewIntegration(portClient *cli.PortClient, k8sConfig clientcmd.ClientConfig, stateKey string) error {
 
-	k8sRawConfig, err := k8sConfig.RawConfig()
-	if err != nil {
-		return err
-	}
-
-	clusterName := k8sRawConfig.Contexts[k8sRawConfig.CurrentContext].Cluster
-
 	integration := &port.Integration{
-		Title:               clusterName,
+		Title:               stateKey,
 		InstallationAppType: "kubernetes",
 		InstallationId:      stateKey,
 	}
-	_, err = portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
+	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
 	if err != nil {
 		return fmt.Errorf("error authenticating with Port: %v", err)
 	}
