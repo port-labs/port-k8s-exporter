@@ -6,24 +6,16 @@ import (
 
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
-	"k8s.io/client-go/tools/clientcmd"
 )
 
-func NewIntegration(portClient *cli.PortClient, k8sConfig clientcmd.ClientConfig, stateKey string) error {
-
-	k8sRawConfig, err := k8sConfig.RawConfig()
-	if err != nil {
-		return err
-	}
-
-	clusterName := k8sRawConfig.Contexts[k8sRawConfig.CurrentContext].Cluster
+func NewIntegration(portClient *cli.PortClient, stateKey string) error {
 
 	integration := &port.Integration{
-		Title:               clusterName,
+		Title:               stateKey,
 		InstallationAppType: "kubernetes",
 		InstallationId:      stateKey,
 	}
-	_, err = portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
+	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
 	if err != nil {
 		return fmt.Errorf("error authenticating with Port: %v", err)
 	}

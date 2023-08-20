@@ -58,7 +58,7 @@ func main() {
 		klog.Fatalf("Error building Port client: %s", err.Error())
 	}
 
-	err = integration.NewIntegration(portClient, k8sConfig, stateKey)
+	err = integration.NewIntegration(portClient, stateKey)
 	if err != nil {
 		klog.Fatalf("Error creating K8s integration: %s", err.Error())
 	}
