@@ -6,10 +6,9 @@ import (
 
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
-	"k8s.io/client-go/tools/clientcmd"
 )
 
-func NewIntegration(portClient *cli.PortClient, k8sConfig clientcmd.ClientConfig, stateKey string) error {
+func NewIntegration(portClient *cli.PortClient, stateKey string) error {
 
 	integration := &port.Integration{
 		Title:               stateKey,
