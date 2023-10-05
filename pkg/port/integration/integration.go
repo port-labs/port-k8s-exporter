@@ -12,7 +12,7 @@ func NewIntegration(portClient *cli.PortClient, stateKey string) error {
 
 	integration := &port.Integration{
 		Title:               stateKey,
-		InstallationAppType: "kubernetes",
+		InstallationAppType: "K8S EXPORTER",
 		InstallationId:      stateKey,
 	}
 	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
