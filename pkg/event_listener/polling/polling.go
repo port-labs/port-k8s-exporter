@@ -1,7 +1,6 @@
 package polling
 
 import (
-	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/integration"
 	"k8s.io/klog/v2"
@@ -29,7 +28,10 @@ func NewPollingHandler(pollingRate int, stateKey string, portClient *cli.PortCli
 
 func (h *PollingHandler) Run(resync func()) {
 	klog.Infof("Starting polling handler")
-	currentState := &port.AppConfig{}
+	currentState, err := integration.GetIntegrationConfig(h.portClient, h.stateKey)
+	if err != nil {
+		klog.Errorf("Error fetching the first AppConfig state: %s", err.Error())
+	}
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
