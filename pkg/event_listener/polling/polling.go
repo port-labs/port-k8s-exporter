@@ -31,14 +31,14 @@ func (h *PollingHandler) Run(resync func()) {
 	klog.Infof("Starting polling handler")
 	currentState := &port.AppConfig{}
 
-	sigchan := make(chan os.Signal, 1)
-	signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM)
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	klog.Infof("Polling handler started")
 	run := true
 	for run {
 		select {
-		case sig := <-sigchan:
+		case sig := <-sigChan:
 			klog.Infof("Received signal %v: terminating\n", sig)
 			run = false
 		case <-h.ticker.C:
