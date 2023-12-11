@@ -29,7 +29,7 @@ func NewPollingHandler(pollingRate int, stateKey string, portClient *cli.PortCli
 
 func (h *PollingHandler) Run(resync func()) {
 	klog.Infof("Starting polling handler")
-	currentState := &port.Config{}
+	currentState := &port.AppConfig{}
 
 	sigchan := make(chan os.Signal, 1)
 	signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM)
