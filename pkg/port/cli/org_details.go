@@ -19,7 +19,7 @@ func (c *PortClient) GetOrgId() (string, error) {
 		return "", err
 	}
 	if !pb.OK {
-		return "", fmt.Errorf("failed to create integration, got: %s", resp.Body())
+		return "", fmt.Errorf("failed to get orgId, got: %s", resp.Body())
 	}
 	return pb.OrgDetails.OrgId, nil
 }

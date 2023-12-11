@@ -5,10 +5,27 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 )
 
+func parseIntegration(i *port.Integration) *port.Integration {
+	x := &port.Integration{
+		Title:               i.Title,
+		InstallationAppType: i.InstallationAppType,
+		InstallationId:      i.InstallationId,
+		Config:              i.Config,
+	}
+
+	if i.EventListener.Type == "KAFKA" {
+		x.EventListener = port.EventListenerSettings{
+			Type: i.EventListener.Type,
+		}
+	}
+
+	return x
+}
+
 func (c *PortClient) CreateIntegration(i *port.Integration) (*port.Integration, error) {
 	pb := &port.ResponseBody{}
 	resp, err := c.Client.R().
-		SetBody(i).
+		SetBody(parseIntegration(i)).
 		SetResult(&pb).
 		SetQueryParam("upsert", "true").
 		Post("v1/integration")

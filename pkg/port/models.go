@@ -144,20 +144,20 @@ type ResponseBody struct {
 }
 
 type EntityMapping struct {
-	Identifier string
-	Title      string
-	Blueprint  string
-	Team       string
-	Properties map[string]string
-	Relations  map[string]string
+	Identifier string            `json:"identifier"`
+	Title      string            `json:"title"`
+	Blueprint  string            `json:"blueprint"`
+	Team       string            `json:"team"`
+	Properties map[string]string `json:"properties,omitempty"`
+	Relations  map[string]string `json:"relations,omitempty"`
 }
 
 type EntityMappings struct {
-	Mappings []EntityMapping
+	Mappings []EntityMapping `json:"mappings"`
 }
 
 type Port struct {
-	Entity EntityMappings
+	Entity EntityMappings `json:"entity"`
 }
 
 type Selector struct {
@@ -165,13 +165,13 @@ type Selector struct {
 }
 
 type Resource struct {
-	Kind     string
-	Selector Selector
-	Port     Port
+	Kind     string   `json:"kind"`
+	Selector Selector `json:"selector,omitempty"`
+	Port     Port     `json:"port"`
 }
 
 type EventListenerSettings struct {
-	Type string `json:"type"`
+	Type string `json:"type,omitempty"`
 }
 
 type KindConfig struct {

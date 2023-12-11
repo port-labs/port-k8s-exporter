@@ -14,7 +14,7 @@ func (c *PortClient) GetKafkaCredentials() (*port.OrgKafkaCredentials, error) {
 		return nil, err
 	}
 	if !pb.OK {
-		return nil, fmt.Errorf("failed to create integration, got: %s", resp.Body())
+		return nil, fmt.Errorf("failed to get kafka crednetials, got: %s", resp.Body())
 	}
 	return &pb.KafkaCredentials, nil
 }
