@@ -3,20 +3,23 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
+	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"os"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
+	"github.com/port-labs/port-k8s-exporter/pkg/event_listener"
 	"github.com/port-labs/port-k8s-exporter/pkg/handlers"
 	"github.com/port-labs/port-k8s-exporter/pkg/k8s"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/integration"
-	"github.com/port-labs/port-k8s-exporter/pkg/signal"
 	"k8s.io/klog/v2"
 )
 
 var (
 	configFilePath               string
 	resyncInterval               uint
+	eventListenerType            string
 	stateKey                     string
 	deleteDependents             bool
 	createMissingRelatedEntities bool
@@ -25,16 +28,21 @@ var (
 	portClientSecret             string
 )
 
+func InitiateHandler(exporterConfig *port.Config, k8sClient *k8s.Client, portClient *cli.PortClient) (*handlers.ControllersHandler, error) {
+	apiConfig, err := integration.GetIntegrationConfig(portClient, stateKey)
+	if err != nil {
+		klog.Fatalf("Error getting K8s integration config: %s", err.Error())
+	}
+
+	newHandler := handlers.NewControllersHandler(exporterConfig, apiConfig, k8sClient, portClient)
+	newHandler.Handle()
+
+	return newHandler, nil
+}
+
 func main() {
 	klog.InitFlags(nil)
 	flag.Parse()
-
-	stopCh := signal.SetupSignalHandler()
-
-	exporterConfig, err := config.New(configFilePath, resyncInterval, stateKey)
-	if err != nil {
-		klog.Fatalf("Error building Port K8s Exporter config: %s", err.Error())
-	}
 
 	k8sConfig := k8s.NewKubeConfig()
 
@@ -49,7 +57,6 @@ func main() {
 	}
 
 	portClient, err := cli.New(portBaseURL,
-		cli.WithHeader("User-Agent", fmt.Sprintf("port-k8s-exporter/0.1 (statekey/%s)", exporterConfig.StateKey)),
 		cli.WithClientID(portClientId), cli.WithClientSecret(portClientSecret),
 		cli.WithDeleteDependents(deleteDependents), cli.WithCreateMissingRelatedEntities(createMissingRelatedEntities),
 	)
@@ -58,14 +65,30 @@ func main() {
 		klog.Fatalf("Error building Port client: %s", err.Error())
 	}
 
-	err = integration.NewIntegration(portClient, stateKey)
+	exporterConfig, err := config.New(configFilePath, resyncInterval, stateKey, eventListenerType)
 	if err != nil {
-		klog.Fatalf("Error creating K8s integration: %s", err.Error())
+		klog.Fatalf("Error building Port K8s Exporter config: %s", err.Error())
 	}
 
+	_, err = integration.GetIntegrationConfig(portClient, stateKey)
+	if err != nil {
+		err = integration.NewIntegration(portClient, stateKey, exporterConfig)
+		if err != nil {
+			klog.Fatalf("Error creating K8s integration: %s", err.Error())
+		}
+	}
+	cli.WithHeader("User-Agent", fmt.Sprintf("port-k8s-exporter/0.1 (statekey/%s)", exporterConfig.StateKey))(portClient)
+
 	klog.Info("Starting controllers handler")
-	controllersHandler := handlers.NewControllersHandler(exporterConfig, k8sClient, portClient)
-	controllersHandler.Handle(stopCh)
+	handler, _ := InitiateHandler(exporterConfig, k8sClient, portClient)
+	eventListener := event_listener.NewEventListener(stateKey, eventListenerType, handler, portClient)
+	err = eventListener.Start(func(handler *handlers.ControllersHandler) (*handlers.ControllersHandler, error) {
+		handler.Stop()
+		return InitiateHandler(exporterConfig, k8sClient, portClient)
+	})
+	if err != nil {
+		klog.Fatalf("Error starting event listener: %s", err.Error())
+	}
 	klog.Info("Started controllers handler")
 }
 
@@ -78,4 +101,6 @@ func init() {
 	flag.StringVar(&portBaseURL, "port-base-url", "https://api.getport.io", "Port base URL. Optional.")
 	portClientId = os.Getenv("PORT_CLIENT_ID")
 	portClientSecret = os.Getenv("PORT_CLIENT_SECRET")
+
+	eventListenerType = goutils.GetEnvOrDefault("EVENT_LISTENER__TYPE", "POLLING")
 }
