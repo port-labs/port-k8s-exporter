@@ -1,7 +1,6 @@
 package k8s
 
 import (
-	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -30,7 +29,7 @@ type fixture struct {
 	controller *Controller
 }
 
-func newFixture(t *testing.T, portClientId string, portClientSecret string, resource config.Resource, objects []runtime.Object) *fixture {
+func newFixture(t *testing.T, portClientId string, portClientSecret string, resource port.Resource, objects []runtime.Object) *fixture {
 	kubeclient := k8sfake.NewSimpleDynamicClient(runtime.NewScheme())
 
 	if portClientId == "" {
@@ -51,14 +50,14 @@ func newFixture(t *testing.T, portClientId string, portClientSecret string, reso
 	}
 }
 
-func newResource(selectorQuery string, mappings []port.EntityMapping) config.Resource {
-	return config.Resource{
+func newResource(selectorQuery string, mappings []port.EntityMapping) port.Resource {
+	return port.Resource{
 		Kind: "apps/v1/deployments",
-		Selector: config.Selector{
+		Selector: port.Selector{
 			Query: selectorQuery,
 		},
-		Port: config.Port{
-			Entity: config.Entity{
+		Port: port.Port{
+			Entity: port.EntityMappings{
 				Mappings: mappings,
 			},
 		},
@@ -103,13 +102,13 @@ func newUnstructured(obj interface{}) *unstructured.Unstructured {
 	return &unstructured.Unstructured{Object: res}
 }
 
-func newController(resource config.Resource, objects []runtime.Object, portClient *cli.PortClient, kubeclient *k8sfake.FakeDynamicClient) *Controller {
+func newController(resource port.Resource, objects []runtime.Object, portClient *cli.PortClient, kubeclient *k8sfake.FakeDynamicClient) *Controller {
 	k8sI := dynamicinformer.NewDynamicSharedInformerFactory(kubeclient, noResyncPeriodFunc())
 	s := strings.SplitN(resource.Kind, "/", 3)
 	gvr := schema.GroupVersionResource{Group: s[0], Version: s[1], Resource: s[2]}
 	informer := k8sI.ForResource(gvr)
-	kindConfig := config.KindConfig{Selector: resource.Selector, Port: resource.Port}
-	c := NewController(config.AggregatedResource{Kind: resource.Kind, KindConfigs: []config.KindConfig{kindConfig}}, portClient, informer)
+	kindConfig := port.KindConfig{Selector: resource.Selector, Port: resource.Port}
+	c := NewController(port.AggregatedResource{Kind: resource.Kind, KindConfigs: []port.KindConfig{kindConfig}}, portClient, informer)
 
 	for _, d := range objects {
 		informer.Informer().GetIndexer().Add(d)
