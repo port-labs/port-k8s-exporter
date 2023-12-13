@@ -3,6 +3,7 @@ package event_listener
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/event_listener/consumer"
 	"github.com/port-labs/port-k8s-exporter/pkg/event_listener/polling"
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
@@ -52,7 +53,7 @@ func NewEventListener(stateKey string, eventListenerType string, controllerHandl
 
 func startKafkaEventListener(l *EventListener, resync func()) error {
 	klog.Infof("Starting Kafka event listener")
-	klog.Infof("Geting Consumer Information")
+	klog.Infof("Getting Consumer Information")
 	credentials, err := kafka_credentials.GetKafkaCredentials(l.portClient)
 	if err != nil {
 		return err
@@ -61,33 +62,32 @@ func startKafkaEventListener(l *EventListener, resync func()) error {
 	if err != nil {
 		return err
 	}
-	config := &consumer.KafkaConfiguration{
-		Brokers:                 goutils.GetEnvOrDefault("EVENT_LISTENER__BROKERS", "b-1-public.publicclusterprod.t9rw6w.c1.kafka.eu-west-1.amazonaws.com:9196,b-2-public.publicclusterprod.t9rw6w.c1.kafka.eu-west-1.amazonaws.com:9196,b-3-public.publicclusterprod.t9rw6w.c1.kafka.eu-west-1.amazonaws.com:9196"),
-		SecurityProtocol:        goutils.GetEnvOrDefault("EVENT_LISTENER__SECURITY_PROTOCOL", "SASL_SSL"),
-		AuthenticationMechanism: goutils.GetEnvOrDefault("EVENT_LISTENER__AUTHENTICATION_MECHANISM", "SCRAM-SHA-512"),
-		KafkaSecurityEnabled:    goutils.GetBooleanEnvOrDefault("EVENT_LISTENER__KAFKA_SECURITY_ENABLED", true),
+
+	c := &consumer.KafkaConfiguration{
+		Brokers:                 config.NewString("event-listener-brokers", "localhost:9092", "Kafka brokers"),
+		SecurityProtocol:        config.NewString("event-listener-security-protocol", "plaintext", "Kafka security protocol"),
+		AuthenticationMechanism: config.NewString("event-listener-authentication-mechanism", "none", "Kafka authentication mechanism"),
 		Username:                credentials.Username,
 		Password:                credentials.Password,
 		GroupID:                 orgId + ".k8s." + l.stateKey,
 	}
 
 	topic := orgId + ".change.log"
-	instance, err := consumer.NewConsumer(config)
+	instance, err := consumer.NewConsumer(c)
 
 	if err != nil {
 		return err
 	}
 
-	klog.Infof("Starting consumer for topic %s and groupId %s", topic, config.GroupID)
+	klog.Infof("Starting consumer for topic %s and groupId %s", topic, c.GroupID)
 	instance.Consume(topic, func(value []byte) {
 		incomingMessage := &IncomingMessage{}
 		parsingError := json.Unmarshal(value, &incomingMessage)
-		if shouldResync(l.stateKey, incomingMessage) {
-			klog.Infof("Changes detected. Resyncing...")
-			resync()
-		}
 		if parsingError != nil {
 			utilruntime.HandleError(fmt.Errorf("error handling message: %s", parsingError.Error()))
+		} else if shouldResync(l.stateKey, incomingMessage) {
+			klog.Infof("Changes detected. Resyncing...")
+			resync()
 		}
 	})
 
@@ -96,7 +96,7 @@ func startKafkaEventListener(l *EventListener, resync func()) error {
 
 func startPollingEventListener(l *EventListener, resync func()) {
 	klog.Infof("Starting polling event listener")
-	pollingRate := goutils.GetIntEnvOrDefault("EVENT_LISTENER__POLLING_RATE", 60)
+	pollingRate := goutils.GetUintEnvOrDefault("EVENT_LISTENER__POLLING_RATE", 60)
 	klog.Infof("Polling rate set to %d seconds", pollingRate)
 	pollingHandler := polling.NewPollingHandler(pollingRate, l.stateKey, l.portClient)
 	pollingHandler.Run(resync)

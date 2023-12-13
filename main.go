@@ -4,15 +4,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/port-labs/port-k8s-exporter/pkg/defaults"
-	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
-	"github.com/port-labs/port-k8s-exporter/pkg/port"
-	"os"
-
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
+	"github.com/port-labs/port-k8s-exporter/pkg/defaults"
 	"github.com/port-labs/port-k8s-exporter/pkg/event_listener"
 	"github.com/port-labs/port-k8s-exporter/pkg/handlers"
 	"github.com/port-labs/port-k8s-exporter/pkg/k8s"
+	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/integration"
 	"k8s.io/klog/v2"
@@ -30,7 +27,7 @@ var (
 	portClientSecret             string
 )
 
-func InitiateHandler(exporterConfig *port.Config, k8sClient *k8s.Client, portClient *cli.PortClient) (*handlers.ControllersHandler, error) {
+func initiateHandler(exporterConfig *port.Config, k8sClient *k8s.Client, portClient *cli.PortClient) (*handlers.ControllersHandler, error) {
 	apiConfig, err := integration.GetIntegrationConfig(portClient, stateKey)
 	if err != nil {
 		klog.Fatalf("Error getting K8s integration config: %s", err.Error())
@@ -68,7 +65,7 @@ func main() {
 		klog.Fatalf("Error building Port client: %s", err.Error())
 	}
 
-	exporterConfig, err := config.New(configFilePath, resyncInterval, stateKey, eventListenerType)
+	exporterConfig, err := config.GetConfigFile(configFilePath, resyncInterval, stateKey, eventListenerType)
 	var fileNotFoundError *config.FileNotFoundError
 	if errors.As(err, &fileNotFoundError) {
 		err := defaults.InitializeDefaults(portClient, exporterConfig)
@@ -91,27 +88,30 @@ func main() {
 	}
 
 	klog.Info("Starting controllers handler")
-	handler, _ := InitiateHandler(exporterConfig, k8sClient, portClient)
+	handler, _ := initiateHandler(exporterConfig, k8sClient, portClient)
 	eventListener := event_listener.NewEventListener(stateKey, eventListenerType, handler, portClient)
 	err = eventListener.Start(func(handler *handlers.ControllersHandler) (*handlers.ControllersHandler, error) {
 		handler.Stop()
-		return InitiateHandler(exporterConfig, k8sClient, portClient)
+		return initiateHandler(exporterConfig, k8sClient, portClient)
 	})
 	if err != nil {
 		klog.Fatalf("Error starting event listener: %s", err.Error())
 	}
-	klog.Info("Started controllers handler")
 }
 
 func init() {
-	flag.StringVar(&configFilePath, "config", "", "Path to Port K8s Exporter config file. Required.")
-	flag.StringVar(&stateKey, "state-key", "", "Port K8s Exporter state key id. Required.")
-	flag.BoolVar(&deleteDependents, "delete-dependents", false, "Flag to enable deletion of dependent Port Entities. Optional.")
-	flag.BoolVar(&createMissingRelatedEntities, "create-missing-related-entities", false, "Flag to enable creation of missing related Port entities. Optional.")
-	flag.UintVar(&resyncInterval, "resync-interval", 0, "The re-sync interval in minutes. Optional.")
-	flag.StringVar(&portBaseURL, "port-base-url", "https://api.getport.io", "Port base URL. Optional.")
-	portClientId = os.Getenv("PORT_CLIENT_ID")
-	portClientSecret = os.Getenv("PORT_CLIENT_SECRET")
+	configFilePath = config.NewString("config", "", "Path to Port K8s Exporter config file. Required.")
+	stateKey = config.NewString("state-key", "", "Port K8s Exporter state key id. Required.")
 
-	eventListenerType = goutils.GetEnvOrDefault("EVENT_LISTENER__TYPE", "POLLING")
+	// change to the app config
+	//config.NewBoolean("delete-dependents", false, "Flag to enable deletion of dependent Port Entities. Optional.")
+	//config.NewBoolean("create-missing-related-entities", false, "Flag to enable creation of missing related Port entities. Optional.")
+
+	resyncInterval = config.NewUInt("resync-interval", 0, "The re-sync interval in minutes. Optional.")
+	portBaseURL = config.NewString("port-base-url", "https://api.getport.io", "Port base URL. Optional.")
+
+	portClientId = config.NewString("port-client-id", "", "Port client id. Required.")
+	portClientSecret = config.NewString("port-client-secret", "", "Port client secret. Required.")
+
+	config.NewString("event-listener-type", "POLLING", "Event listener type. Optional.")
 }
