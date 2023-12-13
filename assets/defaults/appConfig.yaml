@@ -1,0 +1,119 @@
+createMissingRelatedEntities: true
+resources:
+  - kind: v1/namespaces
+    port:
+      entity:
+        mappings:
+        - blueprint: '"namespace"'
+          identifier: .metadata.name + "-" + env.CLUSTER_NAME
+          properties:
+            creationTimestamp: .metadata.creationTimestamp
+            labels: .metadata.labels
+          relations:
+            Cluster: env.CLUSTER_NAME
+          title: .metadata.name
+    selector:
+      query: .metadata.name | startswith("kube") | not
+  - kind: v1/namespaces
+    port:
+      entity:
+        mappings:
+        - blueprint: '"cluster"'
+          identifier: env.CLUSTER_NAME
+          title: env.CLUSTER_NAME
+    selector:
+      query: .metadata.name | contains("kube-system")
+  - kind: apps/v1/deployments
+    port:
+      entity:
+        mappings:
+        - blueprint: '"workload"'
+          icon: '"Deployment"'
+          identifier: .metadata.name + "-Deployment-" + .metadata.namespace + "-" + env.CLUSTER_NAME
+          properties:
+            images: '(.spec.template.spec.containers | map({name, image, resources})) | map("\(.name): \(.image)")'
+            availableReplicas: .status.availableReplicas
+            containers: (.spec.template.spec.containers | map({name, image, resources}))
+            creationTimestamp: .metadata.creationTimestamp
+            hasLatest: .spec.template.spec.containers[].image | contains(":latest")
+            hasLimits: .spec.template.spec.containers | all(has("resources") and (.resources.limits.memory
+              and .resources.limits.cpu))
+            hasPrivileged: .spec.template.spec.containers | [.[].securityContext.privileged]
+              | any
+            isHealthy: if .spec.replicas == .status.availableReplicas then "Healthy"
+              else "Unhealthy" end
+            kind: '"Deployment"'
+            labels: .metadata.labels
+            replicas: .spec.replicas
+            strategy: .spec.strategy.type
+            strategyConfig: .spec.strategy // {}
+          relations:
+            Namespace: .metadata.namespace + "-" + env.CLUSTER_NAME
+          title: .metadata.name
+    selector:
+      query: .metadata.namespace | startswith("kube") | not
+  - kind: apps/v1/daemonsets
+    port:
+      entity:
+        mappings:
+        - blueprint: '"workload"'
+          identifier: .metadata.name + "-DaemonSet-" + .metadata.namespace + "-" + env.CLUSTER_NAME
+          properties:
+            availableReplicas: .status.availableReplicas
+            containers: (.spec.template.spec.containers | map({name, image, resources}))
+            creationTimestamp: .metadata.creationTimestamp
+            hasLatest: .spec.template.spec.containers[].image | contains(":latest")
+            hasLimits: .spec.template.spec.containers | all(has("resources") and (.resources.limits.memory
+              and .resources.limits.cpu))
+            hasPrivileged: .spec.template.spec.containers | [.[].securityContext.privileged]
+              | any
+            isHealthy: if .spec.replicas == .status.availableReplicas then "Healthy"
+              else "Unhealthy" end
+            kind: '"DaemonSet"'
+            labels: .metadata.labels
+            replicas: .spec.replicas
+            strategyConfig: .spec.strategy // {}
+          relations:
+            Namespace: .metadata.namespace + "-" + env.CLUSTER_NAME
+          title: .metadata.name
+    selector:
+      query: .metadata.namespace | startswith("kube") | not
+  - kind: apps/v1/statefulsets
+    port:
+      entity:
+        mappings:
+        - blueprint: '"workload"'
+          identifier: .metadata.name + "-StatefulSet-" + .metadata.namespace + "-" + env.CLUSTER_NAME
+          properties:
+            availableReplicas: .status.availableReplicas
+            containers: (.spec.template.spec.containers | map({name, image, resources}))
+            creationTimestamp: .metadata.creationTimestamp
+            hasLatest: .spec.template.spec.containers[].image | contains(":latest")
+            hasLimits: .spec.template.spec.containers | all(has("resources") and (.resources.limits.memory
+              and .resources.limits.cpu))
+            hasPrivileged: .spec.template.spec.containers | [.[].securityContext.privileged]
+              | any
+            isHealthy: if .spec.replicas == .status.availableReplicas then "Healthy"
+              else "Unhealthy" end
+            kind: '"StatefulSet"'
+            labels: .metadata.labels
+            replicas: .spec.replicas
+            strategyConfig: .spec.strategy // {}
+          relations:
+            Namespace: .metadata.namespace + "-" + env.CLUSTER_NAME
+          title: .metadata.name
+    selector:
+      query: .metadata.namespace | startswith("kube") | not
+  - kind: apps/v1/deployments
+    port:
+      entity:
+        mappings:
+        - blueprint: '"service"'
+          icon: '"Deployment"'
+          identifier: .metadata.labels.portService
+          properties: {}
+          relations:
+            prod_runtime: .metadata.name + "-Deployment-" + .metadata.namespace + "-" + env.CLUSTER_NAME
+          title: .metadata.name
+    selector:
+      query: .metadata.namespace | startswith("kube") | not

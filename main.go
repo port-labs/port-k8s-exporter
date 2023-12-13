@@ -67,7 +67,13 @@ func main() {
 	}
 
 	exporterConfig, err := config.New(configFilePath, resyncInterval, stateKey, eventListenerType)
-	if err != nil {
+	var fileNotFoundError *config.FileNotFoundError
+	if errors.As(err, &fileNotFoundError) {
+		err := defaults.InitializeDefaults(portClient, exporterConfig)
+		if err != nil {
+			klog.Warningf("Error initializing defaults: %s", err.Error())
+		}
+	} else if err != nil {
 		klog.Fatalf("Error building Port K8s Exporter config: %s", err.Error())
 	}
 

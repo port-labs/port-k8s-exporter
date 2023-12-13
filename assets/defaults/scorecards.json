@@ -1,0 +1,139 @@
+[
+  {
+    "blueprint": "workload",
+    "data": [
+      {
+        "identifier": "configuration",
+        "title": "Configuration Checks",
+        "rules": [
+          {
+            "identifier": "notPrivileged",
+            "title": "No privilged containers",
+            "level": "Bronze",
+            "query": {
+              "combinator": "and",
+              "conditions": [
+                {
+                  "property": "hasPrivileged",
+                  "operator": "!=",
+                  "value": true
+                }
+              ]
+            }
+          },
+          {
+            "identifier": "hasLimits",
+            "title": "All containers have CPU and Memory limits",
+            "level": "Bronze",
+            "query": {
+              "combinator": "and",
+              "conditions": [
+                {
+                  "property": "hasLimits",
+                  "operator": "=",
+                  "value": true
+                }
+              ]
+            }
+          },
+          {
+            "identifier": "notDefaultNamespace",
+            "title": "Not in 'default' namespace",
+            "level": "Bronze",
+            "query": {
+              "combinator": "and",
+              "conditions": [
+                {
+                  "property": "namespace",
+                  "operator": "!=",
+                  "value": "default"
+                }
+              ]
+            }
+          },
+          {
+            "identifier": "rolloutStrategy",
+            "title": "Using Rolling update strategy",
+            "level": "Silver",
+            "query": {
+              "combinator": "and",
+              "conditions": [
+                {
+                  "property": "strategy",
+                  "operator": "=",
+                  "value": "RollingUpdate"
+                }
+              ]
+            }
+          },
+          {
+            "identifier": "imageTag",
+            "title": "Doesn't have a container with image tag 'latest'",
+            "level": "Gold",
+            "query": {
+              "combinator": "and",
+              "conditions": [
+                {
+                  "property": "hasLatest",
+                  "operator": "!=",
+                  "value": "false"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "identifier": "highAvailability",
+        "title": "High Availability",
+        "rules": [
+          {
+            "identifier": "highAvalabilityB",
+            "title": "Highly Available",
+            "level": "Bronze",
+            "query": {
+              "combinator": "and",
+              "conditions": [
+                {
+                  "property": "replicas",
+                  "operator": ">=",
+                  "value": 1
+                }
+              ]
+            }
+          },
+          {
+            "identifier": "highAvalabilityS",
+            "title": "Highly Available",
+            "level": "Silver",
+            "query": {
+              "combinator": "and",
+              "conditions": [
+                {
+                  "property": "replicas",
+                  "operator": ">=",
+                  "value": 2
+                }
+              ]
+            }
+          },
+          {
+            "identifier": "highAvalabilityG",
+            "title": "Highly Available",
+            "level": "Gold",
+            "query": {
+              "combinator": "and",
+              "conditions": [
+                {
+                  "property": "replicas",
+                  "operator": ">=",
+                  "value": 3
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -7,6 +7,14 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+type FileNotFoundError struct {
+	s string
+}
+
+func (e *FileNotFoundError) Error() string {
+	return e.s
+}
+
 func New(filepath string, resyncInterval uint, stateKey string, eventListenerType string) (*port.Config, error) {
 	c := &port.Config{
 		ResyncInterval:    resyncInterval,
@@ -15,7 +23,7 @@ func New(filepath string, resyncInterval uint, stateKey string, eventListenerTyp
 	}
 	config, err := os.ReadFile(filepath)
 	if err != nil {
-		return nil, err
+		return c, &FileNotFoundError{err.Error()}
 	}
 
 	err = yaml.Unmarshal(config, c)

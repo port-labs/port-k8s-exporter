@@ -103,6 +103,13 @@ type (
 		InvocationMethod *InvocationMethod `json:"invocationMethod,omitempty"`
 	}
 
+	Scorecard struct {
+		Identifier string        `json:"identifier,omitempty"`
+		Title      string        `json:"title,omitempty"`
+		Filter     interface{}   `json:"filter,omitempty"`
+		Rules      []interface{} `json:"rules,omitempty"`
+	}
+
 	Relation struct {
 		Identifier string `json:"identifier,omitempty"`
 		Title      string `json:"title,omitempty"`
@@ -141,6 +148,7 @@ type ResponseBody struct {
 	Integration      Integration         `json:"integration"`
 	KafkaCredentials OrgKafkaCredentials `json:"credentials"`
 	OrgDetails       OrgDetails          `json:"organization"`
+	Scorecard        Scorecard           `json:"scorecard"`
 }
 
 type EntityMapping struct {
