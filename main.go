@@ -30,7 +30,6 @@ func initiateHandler(exporterConfig *port.Config, k8sClient *k8s.Client, portCli
 
 func main() {
 	klog.InitFlags(nil)
-	flag.Parse()
 
 	k8sConfig := k8s.NewKubeConfig()
 
@@ -82,5 +81,6 @@ func main() {
 }
 
 func init() {
-
+	config.Init()
+	flag.Parse()
 }
