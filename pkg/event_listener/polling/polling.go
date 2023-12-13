@@ -11,15 +11,15 @@ import (
 	"time"
 )
 
-type PollingHandler struct {
+type HandlerSettings struct {
 	ticker      *time.Ticker
 	stateKey    string
 	portClient  *cli.PortClient
-	pollingRate uint64
+	pollingRate uint
 }
 
-func NewPollingHandler(pollingRate uint64, stateKey string, portClient *cli.PortClient) *PollingHandler {
-	rv := &PollingHandler{
+func NewPollingHandler(pollingRate uint, stateKey string, portClient *cli.PortClient) *HandlerSettings {
+	rv := &HandlerSettings{
 		ticker:      time.NewTicker(time.Second * time.Duration(pollingRate)),
 		stateKey:    stateKey,
 		portClient:  portClient,
@@ -28,7 +28,7 @@ func NewPollingHandler(pollingRate uint64, stateKey string, portClient *cli.Port
 	return rv
 }
 
-func (h *PollingHandler) Run(resync func()) {
+func (h *HandlerSettings) Run(resync func()) {
 	klog.Infof("Starting polling handler")
 	currentState, err := integration.GetIntegrationConfig(h.portClient, h.stateKey)
 	if err != nil {

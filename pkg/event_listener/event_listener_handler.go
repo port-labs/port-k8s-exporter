@@ -6,7 +6,6 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/event_listener/consumer"
 	"github.com/port-labs/port-k8s-exporter/pkg/event_listener/polling"
-	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
 	"github.com/port-labs/port-k8s-exporter/pkg/handlers"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
@@ -24,18 +23,19 @@ type IncomingMessage struct {
 	} `json:"diff"`
 }
 
-var kafkaConfig = &consumer.KafkaConfiguration{
-	Brokers:                 config.NewString("event-listener-brokers", "localhost:9092", "Kafka brokers"),
-	SecurityProtocol:        config.NewString("event-listener-security-protocol", "plaintext", "Kafka security protocol"),
-	AuthenticationMechanism: config.NewString("event-listener-authentication-mechanism", "none", "Kafka authentication mechanism"),
-}
-
 type EventListener struct {
 	settings          port.EventListenerSettings
 	stateKey          string
 	controllerHandler *handlers.ControllersHandler
 	portClient        *cli.PortClient
 }
+
+var kafkaConfig = &consumer.KafkaConfiguration{
+	Brokers:                 config.NewString("event-listener-brokers", "localhost:9092", "Kafka brokers"),
+	SecurityProtocol:        config.NewString("event-listener-security-protocol", "plaintext", "Kafka security protocol"),
+	AuthenticationMechanism: config.NewString("event-listener-authentication-mechanism", "none", "Kafka authentication mechanism"),
+}
+var pollingListenerRate = config.NewUInt("event-listener-polling-rate", 60, "Polling rate for the polling event listener")
 
 func shouldResync(stateKey string, message *IncomingMessage) bool {
 	return message.Diff != nil &&
@@ -102,9 +102,8 @@ func startKafkaEventListener(l *EventListener, resync func()) error {
 
 func startPollingEventListener(l *EventListener, resync func()) {
 	klog.Infof("Starting polling event listener")
-	pollingRate := goutils.GetUintEnvOrDefault("EVENT_LISTENER__POLLING_RATE", 60)
-	klog.Infof("Polling rate set to %d seconds", pollingRate)
-	pollingHandler := polling.NewPollingHandler(pollingRate, l.stateKey, l.portClient)
+	klog.Infof("Polling rate set to %d seconds", pollingListenerRate)
+	pollingHandler := polling.NewPollingHandler(pollingListenerRate, l.stateKey, l.portClient)
 	pollingHandler.Run(resync)
 }
 
