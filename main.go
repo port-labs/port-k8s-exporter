@@ -73,12 +73,14 @@ func main() {
 
 	_, err = integration.GetIntegrationConfig(portClient, stateKey)
 	if err != nil {
-		err = integration.NewIntegration(portClient, stateKey, exporterConfig)
+		if exporterConfig == nil {
+			klog.Fatalf("The integration does not exist and no config file was provided")
+		}
+		err = integration.NewIntegration(portClient, exporterConfig, exporterConfig.Resources)
 		if err != nil {
 			klog.Fatalf("Error creating K8s integration: %s", err.Error())
 		}
 	}
-	cli.WithHeader("User-Agent", fmt.Sprintf("port-k8s-exporter/0.1 (statekey/%s)", exporterConfig.StateKey))(portClient)
 
 	klog.Info("Starting controllers handler")
 	handler, _ := InitiateHandler(exporterConfig, k8sClient, portClient)

@@ -7,17 +7,16 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 )
 
-func NewIntegration(portClient *cli.PortClient, stateKey string, exporterConfig *port.Config) error {
-
+func NewIntegration(portClient *cli.PortClient, exporterConfig *port.Config, resources []port.Resource) error {
 	integration := &port.Integration{
-		Title:               stateKey,
-		InstallationAppType: "kubernetes",
-		InstallationId:      stateKey,
+		Title:               exporterConfig.StateKey,
+		InstallationAppType: "K8S EXPORTER",
+		InstallationId:      exporterConfig.StateKey,
 		EventListener: port.EventListenerSettings{
 			Type: exporterConfig.EventListenerType,
 		},
 		Config: &port.AppConfig{
-			Resources: exporterConfig.Resources,
+			Resources: resources,
 		},
 	}
 	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
