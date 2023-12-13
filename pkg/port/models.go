@@ -193,7 +193,9 @@ type AggregatedResource struct {
 }
 
 type AppConfig struct {
-	Resources []Resource `json:"resources"`
+	DeleteDependents             bool       `json:"deleteDependents,omitempty"`
+	CreateMissingRelatedEntities bool       `json:"createMissingRelatedEntities,omitempty"`
+	Resources                    []Resource `json:"resources"`
 }
 
 type Config struct {

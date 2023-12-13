@@ -6,7 +6,6 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/event_listener/consumer"
 	"github.com/port-labs/port-k8s-exporter/pkg/event_listener/polling"
-	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
 	"github.com/port-labs/port-k8s-exporter/pkg/handlers"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
@@ -63,10 +62,10 @@ func startKafkaEventListener(l *EventListener, resync func()) error {
 		return err
 	}
 
-	c := &consumer.KafkaConfiguration{
-		Brokers:                 config.NewString("event-listener-brokers", "localhost:9092", "Kafka brokers"),
-		SecurityProtocol:        config.NewString("event-listener-security-protocol", "plaintext", "Kafka security protocol"),
-		AuthenticationMechanism: config.NewString("event-listener-authentication-mechanism", "none", "Kafka authentication mechanism"),
+	c := &config.KafkaConfiguration{
+		Brokers:                 config.KafkaConfig.Brokers,
+		SecurityProtocol:        config.KafkaConfig.SecurityProtocol,
+		AuthenticationMechanism: config.KafkaConfig.AuthenticationMechanism,
 		Username:                credentials.Username,
 		Password:                credentials.Password,
 		GroupID:                 orgId + ".k8s." + l.stateKey,
@@ -96,9 +95,8 @@ func startKafkaEventListener(l *EventListener, resync func()) error {
 
 func startPollingEventListener(l *EventListener, resync func()) {
 	klog.Infof("Starting polling event listener")
-	pollingRate := goutils.GetUintEnvOrDefault("EVENT_LISTENER__POLLING_RATE", 60)
-	klog.Infof("Polling rate set to %d seconds", pollingRate)
-	pollingHandler := polling.NewPollingHandler(pollingRate, l.stateKey, l.portClient)
+	klog.Infof("Polling rate set to %d seconds", config.PollingListenerRate)
+	pollingHandler := polling.NewPollingHandler(config.PollingListenerRate, l.stateKey, l.portClient)
 	pollingHandler.Run(resync)
 }
 

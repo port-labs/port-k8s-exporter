@@ -1,72 +1,18 @@
 package config
 
-import (
-	"flag"
-	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
-	"github.com/port-labs/port-k8s-exporter/pkg/port"
-	"gopkg.in/yaml.v2"
-	"k8s.io/klog/v2"
-	"os"
-	"slices"
-	"strings"
-)
-
-var keys []string
-
-func prepareEnvKey(key string) string {
-	newKey := strings.ToUpper(strings.ReplaceAll(key, "-", "_"))
-
-	if slices.Contains(keys, newKey) {
-		klog.Fatalf("Application Error : Found duplicate config key: %s", newKey)
-	}
-
-	keys = append(keys, newKey)
-	return newKey
+var KafkaConfig = &KafkaConfiguration{
+	Brokers:                 NewString("event-listener-brokers", "localhost:9092", "Kafka brokers"),
+	SecurityProtocol:        NewString("event-listener-security-protocol", "plaintext", "Kafka security protocol"),
+	AuthenticationMechanism: NewString("event-listener-authentication-mechanism", "none", "Kafka authentication mechanism"),
 }
+var PollingListenerRate = NewUInt("event-listener-polling-rate", 60, "Polling rate for the polling event listener")
 
-func NewString(key string, defaultValue string, description string) string {
-	var value string
-	flag.StringVar(&value, key, "", description)
-	if value == "" {
-		value = goutils.GetStringEnvOrDefault(prepareEnvKey(key), defaultValue)
-	}
-
-	return value
-}
-
-func NewUInt(key string, defaultValue uint, description string) uint {
-	var value uint64
-	flag.Uint64Var(&value, key, 0, description)
-	if value == 0 {
-		value = goutils.GetUintEnvOrDefault(prepareEnvKey(key), uint64(defaultValue))
-	}
-
-	return uint(value)
-}
-
-type FileNotFoundError struct {
-	s string
-}
-
-func (e *FileNotFoundError) Error() string {
-	return e.s
-}
-
-func GetConfigFile(filepath string, resyncInterval uint, stateKey string, eventListenerType string) (*port.Config, error) {
-	c := &port.Config{
-		ResyncInterval:    resyncInterval,
-		StateKey:          stateKey,
-		EventListenerType: eventListenerType,
-	}
-	config, err := os.ReadFile(filepath)
-	if err != nil {
-		return c, &FileNotFoundError{err.Error()}
-	}
-
-	err = yaml.Unmarshal(config, c)
-	if err != nil {
-		return nil, err
-	}
-
-	return c, nil
+var ApplicationConfig = &ApplicationConfiguration{
+	ConfigFilePath:    NewString("config", "", "Path to Port K8s Exporter config file. Required."),
+	StateKey:          NewString("state-key", "", "Port K8s Exporter state key id. Required."),
+	ResyncInterval:    NewUInt("resync-interval", 0, "The re-sync interval in minutes. Optional."),
+	PortBaseURL:       NewString("port-base-url", "https://api.getport.io", "Port base URL. Optional."),
+	PortClientId:      NewString("port-client-id", "", "Port client id. Required."),
+	PortClientSecret:  NewString("port-client-secret", "", "Port client secret. Required."),
+	EventListenerType: NewString("event-listener-type", "POLLING", "Event listener type. Optional."),
 }
