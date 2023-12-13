@@ -2,6 +2,7 @@ package consumer
 
 import (
 	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"k8s.io/klog/v2"
 	"os"
 	"os/signal"
@@ -12,19 +13,9 @@ type Consumer struct {
 	client *kafka.Consumer
 }
 
-type KafkaConfiguration struct {
-	Brokers                 string
-	SecurityProtocol        string
-	GroupID                 string
-	AuthenticationMechanism string
-	Username                string
-	Password                string
-	KafkaSecurityEnabled    bool
-}
-
 type JsonHandler func(value []byte)
 
-func NewConsumer(config *KafkaConfiguration) (*Consumer, error) {
+func NewConsumer(config *config.KafkaConfiguration) (*Consumer, error) {
 	c, err := kafka.NewConsumer(&kafka.ConfigMap{
 		"bootstrap.servers": config.Brokers,
 		"group.id":          config.GroupID,

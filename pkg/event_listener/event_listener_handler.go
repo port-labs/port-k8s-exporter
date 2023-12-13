@@ -30,13 +30,6 @@ type EventListener struct {
 	portClient        *cli.PortClient
 }
 
-var kafkaConfig = &consumer.KafkaConfiguration{
-	Brokers:                 config.NewString("event-listener-brokers", "localhost:9092", "Kafka brokers"),
-	SecurityProtocol:        config.NewString("event-listener-security-protocol", "plaintext", "Kafka security protocol"),
-	AuthenticationMechanism: config.NewString("event-listener-authentication-mechanism", "none", "Kafka authentication mechanism"),
-}
-var pollingListenerRate = config.NewUInt("event-listener-polling-rate", 60, "Polling rate for the polling event listener")
-
 func shouldResync(stateKey string, message *IncomingMessage) bool {
 	return message.Diff != nil &&
 		message.Diff.After != nil &&
@@ -69,10 +62,10 @@ func startKafkaEventListener(l *EventListener, resync func()) error {
 		return err
 	}
 
-	c := &consumer.KafkaConfiguration{
-		Brokers:                 kafkaConfig.Brokers,
-		SecurityProtocol:        kafkaConfig.SecurityProtocol,
-		AuthenticationMechanism: kafkaConfig.AuthenticationMechanism,
+	c := &config.KafkaConfiguration{
+		Brokers:                 config.KafkaConfig.Brokers,
+		SecurityProtocol:        config.KafkaConfig.SecurityProtocol,
+		AuthenticationMechanism: config.KafkaConfig.AuthenticationMechanism,
 		Username:                credentials.Username,
 		Password:                credentials.Password,
 		GroupID:                 orgId + ".k8s." + l.stateKey,
@@ -102,8 +95,8 @@ func startKafkaEventListener(l *EventListener, resync func()) error {
 
 func startPollingEventListener(l *EventListener, resync func()) {
 	klog.Infof("Starting polling event listener")
-	klog.Infof("Polling rate set to %d seconds", pollingListenerRate)
-	pollingHandler := polling.NewPollingHandler(pollingListenerRate, l.stateKey, l.portClient)
+	klog.Infof("Polling rate set to %d seconds", config.PollingListenerRate)
+	pollingHandler := polling.NewPollingHandler(config.PollingListenerRate, l.stateKey, l.portClient)
 	pollingHandler.Run(resync)
 }
 
