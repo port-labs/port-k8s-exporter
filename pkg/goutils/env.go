@@ -14,14 +14,6 @@ func GetStringEnvOrDefault(key string, defaultValue string) string {
 	return value
 }
 
-func GetBooleanEnvOrDefault(key string, defaultValue bool) bool {
-	value := os.Getenv(key)
-	if value == "" {
-		return defaultValue
-	}
-	return value == "true"
-}
-
 func GetUintEnvOrDefault(key string, defaultValue uint64) uint64 {
 	value := os.Getenv(key)
 	if value == "" {
