@@ -31,6 +31,9 @@ func initiateHandler(exporterConfig *port.Config, k8sClient *k8s.Client, portCli
 		klog.Fatalf("Error getting K8s integration config: %s", err.Error())
 	}
 
+	cli.WithDeleteDependents(deleteDependents)(portClient)
+	cli.WithCreateMissingRelatedEntities(createMissingRelatedEntities)(portClient)
+
 	newHandler := handlers.NewControllersHandler(exporterConfig, apiConfig, k8sClient, portClient)
 	newHandler.Handle()
 
@@ -55,7 +58,6 @@ func main() {
 
 	portClient, err := cli.New(portBaseURL,
 		cli.WithClientID(portClientId), cli.WithClientSecret(portClientSecret),
-		cli.WithDeleteDependents(deleteDependents), cli.WithCreateMissingRelatedEntities(createMissingRelatedEntities),
 		cli.WithHeader("User-Agent", fmt.Sprintf("port-k8s-exporter/0.1 (statekey/%s)", stateKey)),
 	)
 
@@ -95,15 +97,11 @@ func init() {
 	configFilePath = config.NewString("config", "", "Path to Port K8s Exporter config file. Required.")
 	stateKey = config.NewString("state-key", "", "Port K8s Exporter state key id. Required.")
 
-	// change to the app config
-	//config.NewBoolean("delete-dependents", false, "Flag to enable deletion of dependent Port Entities. Optional.")
-	//config.NewBoolean("create-missing-related-entities", false, "Flag to enable creation of missing related Port entities. Optional.")
-
 	resyncInterval = config.NewUInt("resync-interval", 0, "The re-sync interval in minutes. Optional.")
 	portBaseURL = config.NewString("port-base-url", "https://api.getport.io", "Port base URL. Optional.")
 
 	portClientId = config.NewString("port-client-id", "", "Port client id. Required.")
 	portClientSecret = config.NewString("port-client-secret", "", "Port client secret. Required.")
 
-	config.NewString("event-listener-type", "POLLING", "Event listener type. Optional.")
+	eventListenerType = config.NewString("event-listener-type", "POLLING", "Event listener type. Optional.")
 }
