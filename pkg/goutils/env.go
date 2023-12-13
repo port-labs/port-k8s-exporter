@@ -6,7 +6,7 @@ import (
 	"strconv"
 )
 
-func GetEnvOrDefault(key string, defaultValue string) string {
+func GetStringEnvOrDefault(key string, defaultValue string) string {
 	value := os.Getenv(key)
 	if value == "" {
 		return defaultValue
@@ -22,14 +22,14 @@ func GetBooleanEnvOrDefault(key string, defaultValue bool) bool {
 	return value == "true"
 }
 
-func GetIntEnvOrDefault(key string, defaultValue int) int {
+func GetUintEnvOrDefault(key string, defaultValue uint64) uint64 {
 	value := os.Getenv(key)
 	if value == "" {
 		return defaultValue
 	}
-	result, err := strconv.Atoi(value)
+	result, err := strconv.ParseUint(value, 10, 32)
 	if err != nil {
-		fmt.Printf("Using default value "+strconv.Itoa(defaultValue)+" for "+key+". error parsing env variable %s: %s", key, err.Error())
+		fmt.Printf("Using default value "+strconv.FormatUint(uint64(defaultValue), 10)+" for "+key+". error parsing env variable %s: %s", key, err.Error())
 		return defaultValue
 	}
 	return result

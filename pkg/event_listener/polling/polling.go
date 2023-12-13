@@ -15,10 +15,10 @@ type PollingHandler struct {
 	ticker      *time.Ticker
 	stateKey    string
 	portClient  *cli.PortClient
-	pollingRate int
+	pollingRate uint64
 }
 
-func NewPollingHandler(pollingRate int, stateKey string, portClient *cli.PortClient) *PollingHandler {
+func NewPollingHandler(pollingRate uint64, stateKey string, portClient *cli.PortClient) *PollingHandler {
 	rv := &PollingHandler{
 		ticker:      time.NewTicker(time.Second * time.Duration(pollingRate)),
 		stateKey:    stateKey,
