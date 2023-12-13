@@ -28,7 +28,7 @@ var (
 	portClientSecret             string
 )
 
-func InitiateHandler(exporterConfig *port.Config, k8sClient *k8s.Client, portClient *cli.PortClient) (*handlers.ControllersHandler, error) {
+func initiateHandler(exporterConfig *port.Config, k8sClient *k8s.Client, portClient *cli.PortClient) (*handlers.ControllersHandler, error) {
 	apiConfig, err := integration.GetIntegrationConfig(portClient, stateKey)
 	if err != nil {
 		klog.Fatalf("Error getting K8s integration config: %s", err.Error())
@@ -83,11 +83,11 @@ func main() {
 	}
 
 	klog.Info("Starting controllers handler")
-	handler, _ := InitiateHandler(exporterConfig, k8sClient, portClient)
+	handler, _ := initiateHandler(exporterConfig, k8sClient, portClient)
 	eventListener := event_listener.NewEventListener(stateKey, eventListenerType, handler, portClient)
 	err = eventListener.Start(func(handler *handlers.ControllersHandler) (*handlers.ControllersHandler, error) {
 		handler.Stop()
-		return InitiateHandler(exporterConfig, k8sClient, portClient)
+		return initiateHandler(exporterConfig, k8sClient, portClient)
 	})
 	if err != nil {
 		klog.Fatalf("Error starting event listener: %s", err.Error())

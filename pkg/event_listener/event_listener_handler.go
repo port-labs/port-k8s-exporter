@@ -52,7 +52,7 @@ func NewEventListener(stateKey string, eventListenerType string, controllerHandl
 
 func startKafkaEventListener(l *EventListener, resync func()) error {
 	klog.Infof("Starting Kafka event listener")
-	klog.Infof("Geting Consumer Information")
+	klog.Infof("Getting Consumer Information")
 	credentials, err := kafka_credentials.GetKafkaCredentials(l.portClient)
 	if err != nil {
 		return err
@@ -82,12 +82,11 @@ func startKafkaEventListener(l *EventListener, resync func()) error {
 	instance.Consume(topic, func(value []byte) {
 		incomingMessage := &IncomingMessage{}
 		parsingError := json.Unmarshal(value, &incomingMessage)
-		if shouldResync(l.stateKey, incomingMessage) {
-			klog.Infof("Changes detected. Resyncing...")
-			resync()
-		}
 		if parsingError != nil {
 			utilruntime.HandleError(fmt.Errorf("error handling message: %s", parsingError.Error()))
+		} else if shouldResync(l.stateKey, incomingMessage) {
+			klog.Infof("Changes detected. Resyncing...")
+			resync()
 		}
 	})
 

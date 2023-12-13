@@ -44,14 +44,17 @@ func NewConsumer(config *KafkaConfiguration) (*Consumer, error) {
 
 func (c *Consumer) Consume(topic string, handler JsonHandler) {
 	topics := []string{topic}
-	_ = c.client.SubscribeTopics(topics, nil)
-	sigchan := make(chan os.Signal, 1)
-	signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM)
+	err := c.client.SubscribeTopics(topics, nil)
+	if err != nil {
+		klog.Fatalf("Error subscribing to topic: %s", err.Error())
+	}
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	run := true
 	for run {
 		select {
-		case sig := <-sigchan:
+		case sig := <-sigChan:
 			klog.Infof("Caught signal %v: terminating\n", sig)
 			run = false
 		default:
