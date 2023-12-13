@@ -24,6 +24,12 @@ type IncomingMessage struct {
 	} `json:"diff"`
 }
 
+var kafkaConfig = &consumer.KafkaConfiguration{
+	Brokers:                 config.NewString("event-listener-brokers", "localhost:9092", "Kafka brokers"),
+	SecurityProtocol:        config.NewString("event-listener-security-protocol", "plaintext", "Kafka security protocol"),
+	AuthenticationMechanism: config.NewString("event-listener-authentication-mechanism", "none", "Kafka authentication mechanism"),
+}
+
 type EventListener struct {
 	settings          port.EventListenerSettings
 	stateKey          string
@@ -64,9 +70,9 @@ func startKafkaEventListener(l *EventListener, resync func()) error {
 	}
 
 	c := &consumer.KafkaConfiguration{
-		Brokers:                 config.NewString("event-listener-brokers", "localhost:9092", "Kafka brokers"),
-		SecurityProtocol:        config.NewString("event-listener-security-protocol", "plaintext", "Kafka security protocol"),
-		AuthenticationMechanism: config.NewString("event-listener-authentication-mechanism", "none", "Kafka authentication mechanism"),
+		Brokers:                 kafkaConfig.Brokers,
+		SecurityProtocol:        kafkaConfig.SecurityProtocol,
+		AuthenticationMechanism: kafkaConfig.AuthenticationMechanism,
 		Username:                credentials.Username,
 		Password:                credentials.Password,
 		GroupID:                 orgId + ".k8s." + l.stateKey,
