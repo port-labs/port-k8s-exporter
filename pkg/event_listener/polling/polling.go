@@ -12,16 +12,18 @@ import (
 )
 
 type PollingHandler struct {
-	ticker     *time.Ticker
-	stateKey   string
-	portClient *cli.PortClient
+	ticker      *time.Ticker
+	stateKey    string
+	portClient  *cli.PortClient
+	pollingRate int
 }
 
 func NewPollingHandler(pollingRate int, stateKey string, portClient *cli.PortClient) *PollingHandler {
 	rv := &PollingHandler{
-		ticker:     time.NewTicker(time.Second * time.Duration(pollingRate)),
-		stateKey:   stateKey,
-		portClient: portClient,
+		ticker:      time.NewTicker(time.Second * time.Duration(pollingRate)),
+		stateKey:    stateKey,
+		portClient:  portClient,
+		pollingRate: pollingRate,
 	}
 	return rv
 }
@@ -44,7 +46,7 @@ func (h *PollingHandler) Run(resync func()) {
 			klog.Infof("Received signal %v: terminating\n", sig)
 			run = false
 		case <-h.ticker.C:
-			klog.Infof("Polling event listener iteration after %d seconds. Checking for changes...", h.ticker.C)
+			klog.Infof("Polling event listener iteration after %d seconds. Checking for changes...", h.pollingRate)
 			configuration, err := integration.GetIntegrationConfig(h.portClient, h.stateKey)
 			if err != nil {
 				klog.Errorf("error resyncing: %s", err.Error())

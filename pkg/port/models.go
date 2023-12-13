@@ -40,7 +40,7 @@ type (
 		Type        string            `json:"type,omitempty"`
 		Title       string            `json:"title,omitempty"`
 		Identifier  string            `json:"identifier,omitempty"`
-		Default     string            `json:"default,omitempty"`
+		Default     any               `json:"default,omitempty"`
 		Icon        string            `json:"icon,omitempty"`
 		Format      string            `json:"format,omitempty"`
 		Description string            `json:"description,omitempty"`
@@ -87,9 +87,9 @@ type (
 		Description          string                              `json:"description"`
 		Schema               BlueprintSchema                     `json:"schema"`
 		FormulaProperties    map[string]BlueprintFormulaProperty `json:"formulaProperties"`
-		MirrorProperties     map[string]BlueprintMirrorProperty  `json:"mirrorProperties"`
+		MirrorProperties     map[string]BlueprintMirrorProperty  `json:"mirrorProperties,omitempty"`
 		ChangelogDestination *ChangelogDestination               `json:"changelogDestination,omitempty"`
-		Relations            map[string]Relation                 `json:"relations"`
+		Relations            map[string]Relation                 `json:"relations,omitempty"`
 	}
 
 	Action struct {
@@ -155,7 +155,7 @@ type EntityMapping struct {
 	Identifier string            `json:"identifier"`
 	Title      string            `json:"title"`
 	Blueprint  string            `json:"blueprint"`
-	Team       string            `json:"team"`
+	Team       string            `json:"team,omitempty"`
 	Properties map[string]string `json:"properties,omitempty"`
 	Relations  map[string]string `json:"relations,omitempty"`
 }
