@@ -44,6 +44,14 @@ func NewUInt(key string, defaultValue uint, description string) uint {
 	return uint(value)
 }
 
+type FileNotFoundError struct {
+	s string
+}
+
+func (e *FileNotFoundError) Error() string {
+	return e.s
+}
+
 func GetConfigFile(filepath string, resyncInterval uint, stateKey string, eventListenerType string) (*port.Config, error) {
 	c := &port.Config{
 		ResyncInterval:    resyncInterval,
@@ -52,7 +60,7 @@ func GetConfigFile(filepath string, resyncInterval uint, stateKey string, eventL
 	}
 	config, err := os.ReadFile(filepath)
 	if err != nil {
-		return nil, err
+		return c, &FileNotFoundError{err.Error()}
 	}
 
 	err = yaml.Unmarshal(config, c)
