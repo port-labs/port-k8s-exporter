@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
@@ -32,7 +31,6 @@ func initiateHandler(exporterConfig *port.Config, k8sClient *k8s.Client, portCli
 
 func main() {
 	klog.InitFlags(nil)
-	flag.Parse()
 
 	k8sConfig := k8s.NewKubeConfig()
 
@@ -87,4 +85,9 @@ func main() {
 	if err != nil {
 		klog.Fatalf("Error starting event listener: %s", err.Error())
 	}
+}
+
+func init() {
+	config.Init()
+	flag.Parse()
 }

@@ -24,24 +24,14 @@ func prepareEnvKey(key string) string {
 	return newKey
 }
 
-func NewString(key string, defaultValue string, description string) string {
-	var value string
-	flag.StringVar(&value, key, "", description)
-	if value == "" {
-		value = goutils.GetStringEnvOrDefault(prepareEnvKey(key), defaultValue)
-	}
-
-	return value
+func NewString(v *string, key string, defaultValue string, description string) {
+	value := goutils.GetStringEnvOrDefault(prepareEnvKey(key), defaultValue)
+	flag.StringVar(v, key, value, description)
 }
 
-func NewUInt(key string, defaultValue uint, description string) uint {
-	var value uint64
-	flag.Uint64Var(&value, key, 0, description)
-	if value == 0 {
-		value = goutils.GetUintEnvOrDefault(prepareEnvKey(key), uint64(defaultValue))
-	}
-
-	return uint(value)
+func NewUInt(v *uint, key string, defaultValue uint, description string) {
+	value := uint(goutils.GetUintEnvOrDefault(prepareEnvKey(key), uint64(defaultValue)))
+	flag.UintVar(v, key, value, description)
 }
 
 type FileNotFoundError struct {
