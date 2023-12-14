@@ -181,13 +181,10 @@ func CreateResources(portClient *cli.PortClient, defaults *Defaults, config *por
 	if err := validateBlueprintErrors(createdBlueprints, blueprintErrors); err != nil {
 		return err
 	}
-	if defaults.AppConfig != nil {
-		if err := integration.NewIntegration(portClient, config, defaults.AppConfig.Resources); err != nil {
-			log.Printf("Failed to create resources: %v.", err.Error())
-			return &AbortDefaultCreationError{BlueprintsToRollback: createdBlueprints, Errors: []error{err}}
-		}
-	} else {
-		log.Println("No appConfig found. Skipping...")
+
+	if err := integration.NewIntegration(portClient, config, defaults.AppConfig.Resources); err != nil {
+		log.Printf("Failed to create resources: %v.", err.Error())
+		return &AbortDefaultCreationError{BlueprintsToRollback: createdBlueprints, Errors: []error{err}}
 	}
 
 	return nil
