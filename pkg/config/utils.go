@@ -6,8 +6,8 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"gopkg.in/yaml.v2"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/strings/slices"
 	"os"
-	"slices"
 	"strings"
 )
 
