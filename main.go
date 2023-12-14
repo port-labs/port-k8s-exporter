@@ -52,10 +52,7 @@ func main() {
 		klog.Fatalf("Error building Port client: %s", err.Error())
 	}
 
-	exporterConfig, err := config.GetConfigFile(config.ApplicationConfig.ConfigFilePath, config.ApplicationConfig.ResyncInterval, config.ApplicationConfig.StateKey, config.ApplicationConfig.EventListenerType)
-	if err != nil {
-		klog.Fatalf("Error building Port K8s Exporter config: %s", err.Error())
-	}
+	exporterConfig, _ := config.GetConfigFile(config.ApplicationConfig.ConfigFilePath, config.ApplicationConfig.ResyncInterval, config.ApplicationConfig.StateKey, config.ApplicationConfig.EventListenerType)
 
 	_, err = integration.GetIntegrationConfig(portClient, config.ApplicationConfig.StateKey)
 	if err != nil {
