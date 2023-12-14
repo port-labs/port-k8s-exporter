@@ -23,7 +23,7 @@ func NewConsumer(config *config.KafkaConfiguration) (*Consumer, error) {
 		"sasl.mechanism":    config.AuthenticationMechanism,
 		"sasl.username":     config.Username,
 		"sasl.password":     config.Password,
-		"auto.offset.reset": "earliest",
+		"auto.offset.reset": "latest",
 	})
 
 	if err != nil {
