@@ -70,9 +70,7 @@ func main() {
 	eventListener := event_listener.NewEventListener(config.ApplicationConfig.StateKey, config.ApplicationConfig.EventListenerType, handler, portClient)
 	err = eventListener.Start(func(handler *handlers.ControllersHandler) (*handlers.ControllersHandler, error) {
 		handler.Stop()
-		newHandler, handlerError := initiateHandler(exporterConfig, k8sClient, portClient)
-
-		return newHandler, handlerError
+		return initiateHandler(exporterConfig, k8sClient, portClient)
 	})
 	if err != nil {
 		klog.Fatalf("Error starting event listener: %s", err.Error())
