@@ -23,6 +23,7 @@ func initiateHandler(exporterConfig *port.Config, k8sClient *k8s.Client, portCli
 	cli.WithCreateMissingRelatedEntities(apiConfig.CreateMissingRelatedEntities)(portClient)
 
 	newHandler := handlers.NewControllersHandler(exporterConfig, apiConfig, k8sClient, portClient)
+	newHandler.Handle()
 
 	return newHandler, nil
 }
@@ -70,9 +71,7 @@ func main() {
 	err = eventListener.Start(func(handler *handlers.ControllersHandler) (*handlers.ControllersHandler, error) {
 		handler.Stop()
 		newHandler, handlerError := initiateHandler(exporterConfig, k8sClient, portClient)
-		go func() {
-			newHandler.Handle()
-		}()
+
 		return newHandler, handlerError
 	})
 	if err != nil {
