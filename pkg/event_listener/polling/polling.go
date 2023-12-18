@@ -11,16 +11,42 @@ import (
 	"time"
 )
 
+type ITicker interface {
+	GetC() <-chan time.Time
+}
+
+type Ticker struct {
+	ticker *time.Ticker
+}
+
+func NewTicker(d time.Duration) *Ticker {
+	return &Ticker{
+		ticker: time.NewTicker(d),
+	}
+}
+
+func (t *Ticker) Stop() {
+	t.ticker.Stop()
+}
+
+func (t *Ticker) GetC() <-chan time.Time {
+	return t.ticker.C
+}
+
 type HandlerSettings struct {
-	ticker      *time.Ticker
+	ticker      ITicker
 	stateKey    string
 	portClient  *cli.PortClient
 	pollingRate uint
 }
 
-func NewPollingHandler(pollingRate uint, stateKey string, portClient *cli.PortClient) *HandlerSettings {
+func NewPollingHandler(pollingRate uint, stateKey string, portClient *cli.PortClient, tickerOverride ITicker) *HandlerSettings {
+	ticker := tickerOverride
+	if ticker == nil {
+		ticker = NewTicker(time.Second * time.Duration(pollingRate))
+	}
 	rv := &HandlerSettings{
-		ticker:      time.NewTicker(time.Second * time.Duration(pollingRate)),
+		ticker:      ticker,
 		stateKey:    stateKey,
 		portClient:  portClient,
 		pollingRate: pollingRate,
@@ -30,7 +56,7 @@ func NewPollingHandler(pollingRate uint, stateKey string, portClient *cli.PortCl
 
 func (h *HandlerSettings) Run(resync func()) {
 	klog.Infof("Starting polling handler")
-	currentState, err := integration.GetIntegrationConfig(h.portClient, h.stateKey)
+	currentState, err := integration.GetIntegration(h.portClient, h.stateKey)
 	if err != nil {
 		klog.Errorf("Error fetching the first AppConfig state: %s", err.Error())
 	}
@@ -45,9 +71,9 @@ func (h *HandlerSettings) Run(resync func()) {
 		case sig := <-sigChan:
 			klog.Infof("Received signal %v: terminating\n", sig)
 			run = false
-		case <-h.ticker.C:
+		case <-h.ticker.GetC():
 			klog.Infof("Polling event listener iteration after %d seconds. Checking for changes...", h.pollingRate)
-			configuration, err := integration.GetIntegrationConfig(h.portClient, h.stateKey)
+			configuration, err := integration.GetIntegration(h.portClient, h.stateKey)
 			if err != nil {
 				klog.Errorf("error resyncing: %s", err.Error())
 			}

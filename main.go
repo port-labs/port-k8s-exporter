@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/event_listener"
+	"github.com/port-labs/port-k8s-exporter/pkg/event_listener/consumer"
+	"github.com/port-labs/port-k8s-exporter/pkg/event_listener/polling"
 	"github.com/port-labs/port-k8s-exporter/pkg/handlers"
 	"github.com/port-labs/port-k8s-exporter/pkg/k8s"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
@@ -26,6 +28,19 @@ func initiateHandler(exporterConfig *port.Config, k8sClient *k8s.Client, portCli
 	newHandler.Handle()
 
 	return newHandler, nil
+}
+
+func CreateEventListener(portClient *cli.PortClient) (event_listener.IEventListener, error) {
+	klog.Infof("Received event listener type: %s", config.ApplicationConfig.EventListenerType)
+	switch config.ApplicationConfig.EventListenerType {
+	case "KAFKA":
+		return consumer.NewEventListener(portClient)
+	case "POLLING":
+		return polling.NewEventListener(portClient), nil
+	default:
+		return nil, fmt.Errorf("unknown event listener type: %s", config.ApplicationConfig.EventListenerType)
+	}
+
 }
 
 func main() {
@@ -65,13 +80,18 @@ func main() {
 		}
 	}
 
+	eventListener, err := CreateEventListener(portClient)
+	if err != nil {
+		klog.Fatalf("Error creating event listener: %s", err.Error())
+	}
+
 	klog.Info("Starting controllers handler")
 	handler, _ := initiateHandler(exporterConfig, k8sClient, portClient)
-	eventListener := event_listener.NewEventListener(config.ApplicationConfig.StateKey, config.ApplicationConfig.EventListenerType, handler, portClient)
-	err = eventListener.Start(func(handler *handlers.ControllersHandler) (*handlers.ControllersHandler, error) {
+	err = event_listener.StartEventHandler(eventListener, handler, func(handler *handlers.ControllersHandler) (*handlers.ControllersHandler, error) {
 		handler.Stop()
 		return initiateHandler(exporterConfig, k8sClient, portClient)
 	})
+
 	if err != nil {
 		klog.Fatalf("Error starting event listener: %s", err.Error())
 	}
