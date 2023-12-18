@@ -23,10 +23,10 @@ type Consumer struct {
 
 type JsonHandler func(value []byte)
 
-func NewConsumer(config *config.KafkaConfiguration, overrideConsumer IConsume) (*Consumer, error) {
-	c := overrideConsumer
+func NewConsumer(config *config.KafkaConfiguration, overrideKafkaConsumer IConsume) (*Consumer, error) {
+	c := overrideKafkaConsumer
 	var err error
-	if overrideConsumer == nil {
+	if overrideKafkaConsumer == nil {
 		c, err = kafka.NewConsumer(&kafka.ConfigMap{
 			"bootstrap.servers": config.Brokers,
 			"client.id":         "port-k8s-exporter",

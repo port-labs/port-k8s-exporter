@@ -72,7 +72,7 @@ func startKafkaEventListener(l *EventListener, resync func()) error {
 	}
 
 	topic := orgId + ".change.log"
-	instance, err := consumer.NewConsumer(c)
+	instance, err := consumer.NewConsumer(c, nil)
 
 	if err != nil {
 		return err
