@@ -4,9 +4,9 @@ import (
 	"flag"
 	"fmt"
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
-	"github.com/port-labs/port-k8s-exporter/pkg/event_listener"
-	"github.com/port-labs/port-k8s-exporter/pkg/event_listener/consumer"
-	"github.com/port-labs/port-k8s-exporter/pkg/event_listener/polling"
+	"github.com/port-labs/port-k8s-exporter/pkg/event_handler"
+	"github.com/port-labs/port-k8s-exporter/pkg/event_handler/consumer"
+	"github.com/port-labs/port-k8s-exporter/pkg/event_handler/polling"
 	"github.com/port-labs/port-k8s-exporter/pkg/handlers"
 	"github.com/port-labs/port-k8s-exporter/pkg/k8s"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
@@ -16,7 +16,7 @@ import (
 )
 
 func initiateHandler(exporterConfig *port.Config, k8sClient *k8s.Client, portClient *cli.PortClient) (*handlers.ControllersHandler, error) {
-	apiConfig, err := integration.GetIntegrationConfig(portClient, config.ApplicationConfig.StateKey)
+	apiConfig, err := integration.GetIntegrationConfig(portClient, exporterConfig.StateKey)
 	if err != nil {
 		klog.Fatalf("Error getting K8s integration config: %s", err.Error())
 	}
@@ -30,16 +30,20 @@ func initiateHandler(exporterConfig *port.Config, k8sClient *k8s.Client, portCli
 	return newHandler, nil
 }
 
-func CreateEventListener(portClient *cli.PortClient) (event_listener.IEventListener, error) {
-	klog.Infof("Received event listener type: %s", config.ApplicationConfig.EventListenerType)
-	switch config.ApplicationConfig.EventListenerType {
+func createEventListener(stateKey string, eventListenerType string, portClient *cli.PortClient) (event_handler.IListener, error) {
+	klog.Infof("Received event listener type: %s", eventListenerType)
+	switch eventListenerType {
 	case "KAFKA":
-		return consumer.NewEventListener(portClient)
+		return consumer.NewEventListener(stateKey, portClient)
 	case "POLLING":
-		return polling.NewEventListener(portClient), nil
+		return polling.NewEventListener(stateKey, portClient), nil
 	default:
-		return nil, fmt.Errorf("unknown event listener type: %s", config.ApplicationConfig.EventListenerType)
+		return nil, fmt.Errorf("unknown event listener type: %s", eventListenerType)
 	}
+
+}
+
+func initIntegrationConfig() {
 
 }
 
@@ -48,6 +52,7 @@ func main() {
 
 	k8sConfig := k8s.NewKubeConfig()
 
+	exporterConfig, _ := config.GetConfigFile(config.ApplicationConfig.ConfigFilePath, config.ApplicationConfig.ResyncInterval, config.ApplicationConfig.StateKey, config.ApplicationConfig.EventListenerType)
 	clientConfig, err := k8sConfig.ClientConfig()
 	if err != nil {
 		klog.Fatalf("Error getting K8s client config: %s", err.Error())
@@ -60,35 +65,31 @@ func main() {
 
 	portClient, err := cli.New(config.ApplicationConfig.PortBaseURL,
 		cli.WithClientID(config.ApplicationConfig.PortClientId), cli.WithClientSecret(config.ApplicationConfig.PortClientSecret),
-		cli.WithHeader("User-Agent", fmt.Sprintf("port-k8s-exporter/0.1 (statekey/%s)", config.ApplicationConfig.StateKey)),
+		cli.WithHeader("User-Agent", fmt.Sprintf("port-k8s-exporter/0.1 (statekey/%s)", exporterConfig.StateKey)),
 	)
 
 	if err != nil {
 		klog.Fatalf("Error building Port client: %s", err.Error())
 	}
 
-	exporterConfig, _ := config.GetConfigFile(config.ApplicationConfig.ConfigFilePath, config.ApplicationConfig.ResyncInterval, config.ApplicationConfig.StateKey, config.ApplicationConfig.EventListenerType)
-
-	_, err = integration.GetIntegrationConfig(portClient, config.ApplicationConfig.StateKey)
+	_, err = integration.GetIntegrationConfig(portClient, exporterConfig.StateKey)
 	if err != nil {
 		if exporterConfig == nil {
 			klog.Fatalf("The integration does not exist and no config file was provided")
 		}
-		err = integration.NewIntegration(portClient, exporterConfig, exporterConfig.Resources)
+		err = integration.NewIntegration(portClient, exporterConfig.StateKey, exporterConfig.EventListenerType, exporterConfig.Resources)
 		if err != nil {
 			klog.Fatalf("Error creating K8s integration: %s", err.Error())
 		}
 	}
 
-	eventListener, err := CreateEventListener(portClient)
+	eventListener, err := createEventListener(exporterConfig.StateKey, exporterConfig.EventListenerType, portClient)
 	if err != nil {
 		klog.Fatalf("Error creating event listener: %s", err.Error())
 	}
 
 	klog.Info("Starting controllers handler")
-	handler, _ := initiateHandler(exporterConfig, k8sClient, portClient)
-	err = event_listener.StartEventHandler(eventListener, handler, func(handler *handlers.ControllersHandler) (*handlers.ControllersHandler, error) {
-		handler.Stop()
+	err = event_handler.StartEventHandler(eventListener, func() (event_handler.IStoppableRsync, error) {
 		return initiateHandler(exporterConfig, k8sClient, portClient)
 	})
 

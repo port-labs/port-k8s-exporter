@@ -39,9 +39,7 @@ func NewFixture(t *testing.T, c chan time.Time) *Fixture {
 	}
 
 	_ = integration.DeleteIntegration(portClient, stateKey)
-	err = integration.NewIntegration(portClient, &port.Config{
-		StateKey: stateKey,
-	}, []port.Resource{})
+	err = integration.NewIntegration(portClient, stateKey, "", []port.Resource{})
 	if err != nil {
 		t.Errorf("Error creating Port integration: %s", err.Error())
 	}

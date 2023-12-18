@@ -26,7 +26,7 @@ type IncomingMessage struct {
 	} `json:"diff"`
 }
 
-func NewEventListener(portClient *cli.PortClient) (*EventListener, error) {
+func NewEventListener(stateKey string, portClient *cli.PortClient) (*EventListener, error) {
 	klog.Infof("Getting Consumer Information")
 	credentials, err := kafka_credentials.GetKafkaCredentials(portClient)
 	if err != nil {
@@ -43,7 +43,7 @@ func NewEventListener(portClient *cli.PortClient) (*EventListener, error) {
 		AuthenticationMechanism: config.KafkaConfig.AuthenticationMechanism,
 		Username:                credentials.Username,
 		Password:                credentials.Password,
-		GroupID:                 orgId + ".k8s." + config.ApplicationConfig.StateKey,
+		GroupID:                 orgId + ".k8s." + stateKey,
 	}
 
 	topic := orgId + ".change.log"
@@ -53,7 +53,7 @@ func NewEventListener(portClient *cli.PortClient) (*EventListener, error) {
 	}
 
 	return &EventListener{
-		stateKey:   config.ApplicationConfig.StateKey,
+		stateKey:   stateKey,
 		portClient: portClient,
 		topic:      topic,
 		consumer:   instance,

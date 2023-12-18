@@ -7,13 +7,13 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 )
 
-func NewIntegration(portClient *cli.PortClient, exporterConfig *port.Config, resources []port.Resource) error {
+func NewIntegration(portClient *cli.PortClient, stateKey string, eventListenerType string, resources []port.Resource) error {
 	integration := &port.Integration{
-		Title:               exporterConfig.StateKey,
+		Title:               stateKey,
 		InstallationAppType: "K8S EXPORTER",
-		InstallationId:      exporterConfig.StateKey,
+		InstallationId:      stateKey,
 		EventListener: port.EventListenerSettings{
-			Type: exporterConfig.EventListenerType,
+			Type: eventListenerType,
 		},
 		Config: &port.AppConfig{
 			Resources: resources,

@@ -11,9 +11,9 @@ type EventListener struct {
 	portClient *cli.PortClient
 }
 
-func NewEventListener(portClient *cli.PortClient) *EventListener {
+func NewEventListener(stateKey string, portClient *cli.PortClient) *EventListener {
 	return &EventListener{
-		stateKey:   config.ApplicationConfig.StateKey,
+		stateKey:   stateKey,
 		portClient: portClient,
 	}
 }
