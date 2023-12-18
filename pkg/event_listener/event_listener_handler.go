@@ -88,7 +88,7 @@ func startKafkaEventListener(l *EventListener, resync func()) error {
 			klog.Infof("Changes detected. Resyncing...")
 			resync()
 		}
-	})
+	}, nil)
 
 	return nil
 }
