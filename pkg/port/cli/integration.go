@@ -78,7 +78,7 @@ func (c *PortClient) DeleteIntegration(stateKey string) error {
 	return nil
 }
 
-func (c *PortClient) PatchConfig(stateKey string, integration *port.Integration) error {
+func (c *PortClient) PatchIntegration(stateKey string, integration *port.Integration) error {
 	pb := &port.ResponseBody{}
 	resp, err := c.Client.R().
 		SetBody(integration).

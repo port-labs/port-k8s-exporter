@@ -64,7 +64,7 @@ func PatchIntegration(portClient *cli.PortClient, stateKey string, integration *
 		return fmt.Errorf("error authenticating with Port: %v", err)
 	}
 
-	err = portClient.PatchConfig(stateKey, integration)
+	err = portClient.PatchIntegration(stateKey, integration)
 	if err != nil {
 		return fmt.Errorf("error updating Port integration: %v", err)
 	}
