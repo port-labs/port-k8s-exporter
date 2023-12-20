@@ -28,17 +28,20 @@ type (
 	}
 
 	Integration struct {
-		InstallationId      string `json:"installationId"`
-		Title               string `json:"title,omitempty"`
-		Version             string `json:"version,omitempty"`
-		InstallationAppType string `json:"installationAppType,omitempty"`
+		InstallationId      string                `json:"installationId,omitempty"`
+		Title               string                `json:"title,omitempty"`
+		Version             string                `json:"version,omitempty"`
+		InstallationAppType string                `json:"installationAppType,omitempty"`
+		EventListener       EventListenerSettings `json:"changelogDestination,omitempty"`
+		Config              *AppConfig            `json:"config,omitempty"`
+		UpdatedAt           *time.Time            `json:"updatedAt,omitempty"`
 	}
 
 	BlueprintProperty struct {
 		Type        string            `json:"type,omitempty"`
 		Title       string            `json:"title,omitempty"`
 		Identifier  string            `json:"identifier,omitempty"`
-		Default     string            `json:"default,omitempty"`
+		Default     any               `json:"default,omitempty"`
 		Icon        string            `json:"icon,omitempty"`
 		Format      string            `json:"format,omitempty"`
 		Description string            `json:"description,omitempty"`
@@ -85,9 +88,9 @@ type (
 		Description          string                              `json:"description"`
 		Schema               BlueprintSchema                     `json:"schema"`
 		FormulaProperties    map[string]BlueprintFormulaProperty `json:"formulaProperties"`
-		MirrorProperties     map[string]BlueprintMirrorProperty  `json:"mirrorProperties"`
+		MirrorProperties     map[string]BlueprintMirrorProperty  `json:"mirrorProperties,omitempty"`
 		ChangelogDestination *ChangelogDestination               `json:"changelogDestination,omitempty"`
-		Relations            map[string]Relation                 `json:"relations"`
+		Relations            map[string]Relation                 `json:"relations,omitempty"`
 	}
 
 	Action struct {
@@ -114,6 +117,15 @@ type (
 		Operator string      `json:"operator"`
 		Value    interface{} `json:"value"`
 	}
+
+	OrgKafkaCredentials struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+
+	OrgDetails struct {
+		OrgId string `json:"id"`
+	}
 )
 
 type SearchBody struct {
@@ -122,19 +134,67 @@ type SearchBody struct {
 }
 
 type ResponseBody struct {
-	OK          bool        `json:"ok"`
-	Entity      Entity      `json:"entity"`
-	Blueprint   Blueprint   `json:"blueprint"`
-	Action      Action      `json:"action"`
-	Entities    []Entity    `json:"entities"`
-	Integration Integration `json:"integration"`
+	OK               bool                `json:"ok"`
+	Entity           Entity              `json:"entity"`
+	Blueprint        Blueprint           `json:"blueprint"`
+	Action           Action              `json:"action"`
+	Entities         []Entity            `json:"entities"`
+	Integration      Integration         `json:"integration"`
+	KafkaCredentials OrgKafkaCredentials `json:"credentials"`
+	OrgDetails       OrgDetails          `json:"organization"`
 }
 
 type EntityMapping struct {
-	Identifier string
-	Title      string
-	Blueprint  string
-	Team       string
-	Properties map[string]string
-	Relations  map[string]string
+	Identifier string            `json:"identifier"`
+	Title      string            `json:"title"`
+	Blueprint  string            `json:"blueprint"`
+	Team       string            `json:"team,omitempty"`
+	Properties map[string]string `json:"properties,omitempty"`
+	Relations  map[string]string `json:"relations,omitempty"`
+}
+
+type EntityMappings struct {
+	Mappings []EntityMapping `json:"mappings"`
+}
+
+type Port struct {
+	Entity EntityMappings `json:"entity"`
+}
+
+type Selector struct {
+	Query string
+}
+
+type Resource struct {
+	Kind     string   `json:"kind"`
+	Selector Selector `json:"selector,omitempty"`
+	Port     Port     `json:"port"`
+}
+
+type EventListenerSettings struct {
+	Type string `json:"type,omitempty"`
+}
+
+type KindConfig struct {
+	Selector Selector
+	Port     Port
+}
+
+type AggregatedResource struct {
+	Kind        string
+	KindConfigs []KindConfig
+}
+
+type AppConfig struct {
+	DeleteDependents             bool       `json:"deleteDependents,omitempty"`
+	CreateMissingRelatedEntities bool       `json:"createMissingRelatedEntities,omitempty"`
+	Resources                    []Resource `json:"resources"`
+}
+
+type Config struct {
+	ResyncInterval    uint
+	StateKey          string
+	EventListenerType string
+	// Deprecated: use AppConfig instead. Used for updating the Port integration config on startup.
+	Resources []Resource
 }

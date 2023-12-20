@@ -3,6 +3,8 @@ package jq
 import (
 	"fmt"
 	"github.com/itchyny/gojq"
+	"k8s.io/klog/v2"
+	"os"
 	"strings"
 	"sync"
 )
@@ -12,11 +14,22 @@ var mutex = &sync.Mutex{}
 func runJQQuery(jqQuery string, obj interface{}) (interface{}, error) {
 	query, err := gojq.Parse(jqQuery)
 	if err != nil {
+		klog.Warningf("failed to parse jq query: %s", jqQuery)
+		return nil, err
+	}
+	code, err := gojq.Compile(
+		query,
+		gojq.WithEnvironLoader(func() []string {
+			return os.Environ()
+		}),
+	)
+	if err != nil {
+		klog.Warningf("failed to compile jq query: %s", jqQuery)
 		return nil, err
 	}
 
 	mutex.Lock()
-	queryRes, ok := query.Run(obj).Next()
+	queryRes, ok := code.Run(obj).Next()
 	mutex.Unlock()
 
 	if !ok {

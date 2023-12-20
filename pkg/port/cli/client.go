@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/go-resty/resty/v2"
@@ -57,6 +58,10 @@ func (c *PortClient) Authenticate(ctx context.Context, clientID, clientSecret st
 	if err != nil {
 		return "", err
 	}
+	if resp.StatusCode() != 200 {
+		return "", fmt.Errorf("failed to authenticate, got: %s", resp.Body())
+	}
+
 	var tokenResp port.AccessTokenResponse
 	err = json.Unmarshal(resp.Body(), &tokenResp)
 	if err != nil {

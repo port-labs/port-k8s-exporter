@@ -1,60 +1,25 @@
 package config
 
-import (
-	"github.com/port-labs/port-k8s-exporter/pkg/port"
-	"os"
+var KafkaConfig = &KafkaConfiguration{}
+var PollingListenerRate uint
 
-	"gopkg.in/yaml.v2"
-)
+var ApplicationConfig = &ApplicationConfiguration{}
 
-type Entity struct {
-	Mappings []port.EntityMapping
-}
+func Init() {
+	// Kafka listener Configuration
+	NewString(&KafkaConfig.Brokers, "event-listener-brokers", "localhost:9092", "Kafka event listener brokers")
+	NewString(&KafkaConfig.SecurityProtocol, "event-listener-security-protocol", "plaintext", "Kafka event listener security protocol")
+	NewString(&KafkaConfig.AuthenticationMechanism, "event-listener-authentication-mechanism", "none", "Kafka event listener authentication mechanism")
 
-type Port struct {
-	Entity Entity
-}
+	// Polling listener Configuration
+	NewUInt(&PollingListenerRate, "event-listener-polling-rate", 60, "Polling event listener polling rate")
 
-type Selector struct {
-	Query string
-}
-
-type Resource struct {
-	Kind     string
-	Selector Selector
-	Port     Port
-}
-
-type Config struct {
-	Resources      []Resource
-	ResyncInterval uint
-	StateKey       string
-}
-
-type KindConfig struct {
-	Selector Selector
-	Port     Port
-}
-
-type AggregatedResource struct {
-	Kind        string
-	KindConfigs []KindConfig
-}
-
-func New(filepath string, resyncInterval uint, stateKey string) (*Config, error) {
-	c := &Config{
-		ResyncInterval: resyncInterval,
-		StateKey:       stateKey,
-	}
-	config, err := os.ReadFile(filepath)
-	if err != nil {
-		return nil, err
-	}
-
-	err = yaml.Unmarshal(config, c)
-	if err != nil {
-		return nil, err
-	}
-
-	return c, nil
+	// Application Configuration
+	NewString(&ApplicationConfig.ConfigFilePath, "config", "config.yaml", "Path to Port K8s Exporter config file. Required.")
+	NewString(&ApplicationConfig.StateKey, "state-key", "my-k8s-exporter", "Port K8s Exporter state key id. Required.")
+	NewUInt(&ApplicationConfig.ResyncInterval, "resync-interval", 0, "The re-sync interval in minutes. Optional.")
+	NewString(&ApplicationConfig.PortBaseURL, "port-base-url", "https://api.getport.io", "Port base URL. Optional.")
+	NewString(&ApplicationConfig.PortClientId, "port-client-id", "", "Port client id. Required.")
+	NewString(&ApplicationConfig.PortClientSecret, "port-client-secret", "", "Port client secret. Required.")
+	NewString(&ApplicationConfig.EventListenerType, "event-listener-type", "POLLING", "Event listener type, can be either POLLING or KAFKA. Optional.")
 }

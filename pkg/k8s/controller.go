@@ -3,7 +3,6 @@ package k8s
 import (
 	"context"
 	"fmt"
-	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/jq"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
@@ -36,14 +35,14 @@ type EventItem struct {
 }
 
 type Controller struct {
-	resource   config.AggregatedResource
+	resource   port.AggregatedResource
 	portClient *cli.PortClient
 	informer   cache.SharedIndexInformer
 	lister     cache.GenericLister
 	workqueue  workqueue.RateLimitingInterface
 }
 
-func NewController(resource config.AggregatedResource, portClient *cli.PortClient, informer informers.GenericInformer) *Controller {
+func NewController(resource port.AggregatedResource, portClient *cli.PortClient, informer informers.GenericInformer) *Controller {
 	controller := &Controller{
 		resource:   resource,
 		portClient: portClient,
@@ -205,7 +204,7 @@ func (c *Controller) objectHandler(obj interface{}, item EventItem) error {
 	return nil
 }
 
-func (c *Controller) getObjectEntities(obj interface{}, selector config.Selector, mappings []port.EntityMapping) ([]port.Entity, error) {
+func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, mappings []port.EntityMapping) ([]port.Entity, error) {
 	unstructuredObj, ok := obj.(*unstructured.Unstructured)
 	if !ok {
 		return nil, fmt.Errorf("error casting to unstructured")

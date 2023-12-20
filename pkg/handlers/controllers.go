@@ -2,10 +2,11 @@ package handlers
 
 import (
 	"context"
-	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
 	"github.com/port-labs/port-k8s-exporter/pkg/k8s"
+	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
+	"github.com/port-labs/port-k8s-exporter/pkg/signal"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/klog/v2"
@@ -15,25 +16,26 @@ import (
 type ControllersHandler struct {
 	controllers      []*k8s.Controller
 	informersFactory dynamicinformer.DynamicSharedInformerFactory
-	exporterConfig   *config.Config
+	stateKey         string
 	portClient       *cli.PortClient
+	stopCh           chan struct{}
 }
 
-func NewControllersHandler(exporterConfig *config.Config, k8sClient *k8s.Client, portClient *cli.PortClient) *ControllersHandler {
+func NewControllersHandler(exporterConfig *port.Config, portConfig *port.AppConfig, k8sClient *k8s.Client, portClient *cli.PortClient) *ControllersHandler {
 	resync := time.Minute * time.Duration(exporterConfig.ResyncInterval)
 	informersFactory := dynamicinformer.NewDynamicSharedInformerFactory(k8sClient.DynamicClient, resync)
 
-	aggResources := make(map[string][]config.KindConfig)
-	for _, resource := range exporterConfig.Resources {
-		kindConfig := config.KindConfig{Selector: resource.Selector, Port: resource.Port}
+	aggResources := make(map[string][]port.KindConfig)
+	for _, resource := range portConfig.Resources {
+		kindConfig := port.KindConfig{Selector: resource.Selector, Port: resource.Port}
 		if _, ok := aggResources[resource.Kind]; ok {
 			aggResources[resource.Kind] = append(aggResources[resource.Kind], kindConfig)
 		} else {
-			aggResources[resource.Kind] = []config.KindConfig{kindConfig}
+			aggResources[resource.Kind] = []port.KindConfig{kindConfig}
 		}
 	}
 
-	controllers := make([]*k8s.Controller, 0, len(exporterConfig.Resources))
+	controllers := make([]*k8s.Controller, 0, len(portConfig.Resources))
 
 	for kind, kindConfigs := range aggResources {
 		var gvr schema.GroupVersionResource
@@ -44,7 +46,7 @@ func NewControllersHandler(exporterConfig *config.Config, k8sClient *k8s.Client,
 		}
 
 		informer := informersFactory.ForResource(gvr)
-		controller := k8s.NewController(config.AggregatedResource{Kind: kind, KindConfigs: kindConfigs}, portClient, informer)
+		controller := k8s.NewController(port.AggregatedResource{Kind: kind, KindConfigs: kindConfigs}, portClient, informer)
 		controllers = append(controllers, controller)
 	}
 
@@ -55,19 +57,20 @@ func NewControllersHandler(exporterConfig *config.Config, k8sClient *k8s.Client,
 	controllersHandler := &ControllersHandler{
 		controllers:      controllers,
 		informersFactory: informersFactory,
-		exporterConfig:   exporterConfig,
+		stateKey:         exporterConfig.StateKey,
 		portClient:       portClient,
+		stopCh:           signal.SetupSignalHandler(),
 	}
 
 	return controllersHandler
 }
 
-func (c *ControllersHandler) Handle(stopCh <-chan struct{}) {
+func (c *ControllersHandler) Handle() {
 	klog.Info("Starting informers")
-	c.informersFactory.Start(stopCh)
+	c.informersFactory.Start(c.stopCh)
 	klog.Info("Waiting for informers cache sync")
 	for _, controller := range c.controllers {
-		if err := controller.WaitForCacheSync(stopCh); err != nil {
+		if err := controller.WaitForCacheSync(c.stopCh); err != nil {
 			klog.Fatalf("Error while waiting for informer cache sync: %s", err.Error())
 		}
 	}
@@ -75,15 +78,17 @@ func (c *ControllersHandler) Handle(stopCh <-chan struct{}) {
 	c.RunDeleteStaleEntities()
 	klog.Info("Starting controllers")
 	for _, controller := range c.controllers {
-		controller.Run(1, stopCh)
+		controller.Run(1, c.stopCh)
 	}
 
-	<-stopCh
-	klog.Info("Shutting down controllers")
-	for _, controller := range c.controllers {
-		controller.Shutdown()
-	}
-	klog.Info("Exporter exiting")
+	go func() {
+		<-c.stopCh
+		klog.Info("Shutting down controllers")
+		for _, controller := range c.controllers {
+			controller.Shutdown()
+		}
+		klog.Info("Exporter exiting")
+	}()
 }
 
 func (c *ControllersHandler) RunDeleteStaleEntities() {
@@ -101,9 +106,14 @@ func (c *ControllersHandler) RunDeleteStaleEntities() {
 		klog.Errorf("error authenticating with Port: %v", err)
 	}
 
-	err = c.portClient.DeleteStaleEntities(context.Background(), c.exporterConfig.StateKey, goutils.MergeMaps(currentEntitiesSet...))
+	err = c.portClient.DeleteStaleEntities(context.Background(), c.stateKey, goutils.MergeMaps(currentEntitiesSet...))
 	if err != nil {
 		klog.Errorf("error deleting stale entities: %s", err.Error())
 	}
 	klog.Info("Done deleting stale entities")
+}
+
+func (c *ControllersHandler) Stop() {
+	klog.Info("Stopping controllers")
+	close(c.stopCh)
 }
