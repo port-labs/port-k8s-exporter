@@ -43,10 +43,6 @@ func createEventListener(stateKey string, eventListenerType string, portClient *
 
 }
 
-func initIntegrationConfig() {
-
-}
-
 func main() {
 	klog.InitFlags(nil)
 
