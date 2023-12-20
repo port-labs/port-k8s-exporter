@@ -41,7 +41,6 @@ func createEventListener(stateKey string, eventListenerType string, portClient *
 	default:
 		return nil, fmt.Errorf("unknown event listener type: %s", eventListenerType)
 	}
-
 }
 
 func getApplicationConfig() *port.Config {
