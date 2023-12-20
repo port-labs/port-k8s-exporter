@@ -16,7 +16,7 @@ import (
 type ControllersHandler struct {
 	controllers      []*k8s.Controller
 	informersFactory dynamicinformer.DynamicSharedInformerFactory
-	exporterConfig   *port.Config
+	stateKey         string
 	portClient       *cli.PortClient
 	stopCh           chan struct{}
 }
@@ -57,7 +57,7 @@ func NewControllersHandler(exporterConfig *port.Config, portConfig *port.AppConf
 	controllersHandler := &ControllersHandler{
 		controllers:      controllers,
 		informersFactory: informersFactory,
-		exporterConfig:   exporterConfig,
+		stateKey:         exporterConfig.StateKey,
 		portClient:       portClient,
 		stopCh:           signal.SetupSignalHandler(),
 	}
@@ -106,7 +106,7 @@ func (c *ControllersHandler) RunDeleteStaleEntities() {
 		klog.Errorf("error authenticating with Port: %v", err)
 	}
 
-	err = c.portClient.DeleteStaleEntities(context.Background(), c.exporterConfig.StateKey, goutils.MergeMaps(currentEntitiesSet...))
+	err = c.portClient.DeleteStaleEntities(context.Background(), c.stateKey, goutils.MergeMaps(currentEntitiesSet...))
 	if err != nil {
 		klog.Errorf("error deleting stale entities: %s", err.Error())
 	}

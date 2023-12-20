@@ -38,6 +38,20 @@ func (c *PortClient) CreateIntegration(i *port.Integration) (*port.Integration, 
 	return &pb.Integration, nil
 }
 
+func (c *PortClient) GetIntegration(stateKey string) (*port.Integration, error) {
+	pb := &port.ResponseBody{}
+	resp, err := c.Client.R().
+		SetResult(&pb).
+		Get(fmt.Sprintf("v1/integration/%s", stateKey))
+	if err != nil {
+		return nil, err
+	}
+	if !pb.OK {
+		return nil, fmt.Errorf("failed to get integration, got: %s", resp.Body())
+	}
+	return &pb.Integration, nil
+}
+
 func (c *PortClient) GetIntegrationConfig(stateKey string) (*port.AppConfig, error) {
 	pb := &port.ResponseBody{}
 	resp, err := c.Client.R().
@@ -50,4 +64,36 @@ func (c *PortClient) GetIntegrationConfig(stateKey string) (*port.AppConfig, err
 		return nil, fmt.Errorf("failed to get integration config, got: %s", resp.Body())
 	}
 	return pb.Integration.Config, nil
+}
+
+func (c *PortClient) DeleteIntegration(stateKey string) error {
+	resp, err := c.Client.R().
+		Delete(fmt.Sprintf("v1/integration/%s", stateKey))
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode() != 200 {
+		return fmt.Errorf("failed to delete integration, got: %s", resp.Body())
+	}
+	return nil
+}
+
+func (c *PortClient) UpdateConfig(stateKey string, config *port.AppConfig) error {
+	type Config struct {
+		Config *port.AppConfig `json:"config"`
+	}
+	pb := &port.ResponseBody{}
+	resp, err := c.Client.R().
+		SetBody(&Config{
+			Config: config,
+		}).
+		SetResult(&pb).
+		Patch(fmt.Sprintf("v1/integration/%s/config", stateKey))
+	if err != nil {
+		return err
+	}
+	if !pb.OK {
+		return fmt.Errorf("failed to update config, got: %s", resp.Body())
+	}
+	return nil
 }
