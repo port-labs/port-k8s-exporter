@@ -23,7 +23,7 @@ type ScorecardDefault struct {
 type Defaults struct {
 	Blueprints []port.Blueprint
 	Scorecards []ScorecardDefault
-	AppConfig  *port.AppConfig
+	AppConfig  *port.IntegrationConfig
 }
 
 func getDefaults() (*Defaults, error) {
@@ -49,7 +49,7 @@ func getDefaults() (*Defaults, error) {
 		}
 	}
 
-	var appConfig *port.AppConfig
+	var appConfig *port.IntegrationConfig
 	file, err = os.ReadFile("./assets/defaults/appConfig.yaml")
 	if err != nil {
 		klog.Infof("No default appConfig found. Skipping...")
@@ -182,7 +182,7 @@ func CreateResources(portClient *cli.PortClient, defaults *Defaults, config *por
 		return err
 	}
 
-	if err := integration.NewIntegration(portClient, config, defaults.AppConfig.Resources); err != nil {
+	if err := integration.NewIntegration(portClient, config.StateKey, config.EventListenerType, defaults.AppConfig); err != nil {
 		log.Printf("Failed to create resources: %v.", err.Error())
 		return &AbortDefaultCreationError{BlueprintsToRollback: createdBlueprints, Errors: []error{err}}
 	}

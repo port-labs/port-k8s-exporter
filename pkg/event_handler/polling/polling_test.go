@@ -39,7 +39,9 @@ func NewFixture(t *testing.T, c chan time.Time) *Fixture {
 	}
 
 	_ = integration.DeleteIntegration(portClient, stateKey)
-	err = integration.NewIntegration(portClient, stateKey, "", []port.Resource{})
+	err = integration.NewIntegration(portClient, stateKey, "", &port.IntegrationConfig{
+		Resources: []port.Resource{},
+	})
 	if err != nil {
 		t.Errorf("Error creating Port integration: %s", err.Error())
 	}
@@ -69,8 +71,10 @@ func TestPolling_DifferentConfiguration(t *testing.T) {
 	time.Sleep(time.Millisecond * 500)
 	assert.False(t, called)
 
-	_ = integration.UpdateIntegrationConfig(fixture.portClient, fixture.stateKey, &port.AppConfig{
-		Resources: []port.Resource{},
+	_ = integration.PatchIntegration(fixture.portClient, fixture.stateKey, &port.Integration{
+		Config: &port.IntegrationConfig{
+			Resources: []port.Resource{},
+		},
 	})
 
 	c <- time.Now()

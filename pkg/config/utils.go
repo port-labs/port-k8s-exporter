@@ -42,12 +42,8 @@ func (e *FileNotFoundError) Error() string {
 	return e.s
 }
 
-func GetConfigFile(filepath string, resyncInterval uint, stateKey string, eventListenerType string) (*port.Config, error) {
-	c := &port.Config{
-		ResyncInterval:    resyncInterval,
-		StateKey:          stateKey,
-		EventListenerType: eventListenerType,
-	}
+func GetConfigFile(filepath string) (*port.Config, error) {
+	c := &port.Config{}
 	config, err := os.ReadFile(filepath)
 	if err != nil {
 		return c, &FileNotFoundError{err.Error()}

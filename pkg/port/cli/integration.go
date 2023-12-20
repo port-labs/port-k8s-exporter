@@ -52,7 +52,7 @@ func (c *PortClient) GetIntegration(stateKey string) (*port.Integration, error) 
 	return &pb.Integration, nil
 }
 
-func (c *PortClient) GetIntegrationConfig(stateKey string) (*port.AppConfig, error) {
+func (c *PortClient) GetIntegrationConfig(stateKey string) (*port.IntegrationConfig, error) {
 	pb := &port.ResponseBody{}
 	resp, err := c.Client.R().
 		SetResult(&pb).
@@ -78,17 +78,12 @@ func (c *PortClient) DeleteIntegration(stateKey string) error {
 	return nil
 }
 
-func (c *PortClient) UpdateConfig(stateKey string, config *port.AppConfig) error {
-	type Config struct {
-		Config *port.AppConfig `json:"config"`
-	}
+func (c *PortClient) PatchConfig(stateKey string, integration *port.Integration) error {
 	pb := &port.ResponseBody{}
 	resp, err := c.Client.R().
-		SetBody(&Config{
-			Config: config,
-		}).
+		SetBody(integration).
 		SetResult(&pb).
-		Patch(fmt.Sprintf("v1/integration/%s/config", stateKey))
+		Patch(fmt.Sprintf("v1/integration/%s", stateKey))
 	if err != nil {
 		return err
 	}

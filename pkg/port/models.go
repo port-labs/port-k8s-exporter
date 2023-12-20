@@ -33,7 +33,7 @@ type (
 		Version             string                `json:"version,omitempty"`
 		InstallationAppType string                `json:"installationAppType,omitempty"`
 		EventListener       EventListenerSettings `json:"changelogDestination,omitempty"`
-		Config              *AppConfig            `json:"config,omitempty"`
+		Config              *IntegrationConfig    `json:"config,omitempty"`
 		UpdatedAt           *time.Time            `json:"updatedAt,omitempty"`
 	}
 
@@ -193,16 +193,16 @@ type AggregatedResource struct {
 	KindConfigs []KindConfig
 }
 
-type AppConfig struct {
+type IntegrationConfig struct {
 	DeleteDependents             bool       `json:"deleteDependents,omitempty"`
 	CreateMissingRelatedEntities bool       `json:"createMissingRelatedEntities,omitempty"`
-	Resources                    []Resource `json:"resources"`
+	Resources                    []Resource `json:"resources,omitempty"`
 }
 
 type Config struct {
 	ResyncInterval    uint
 	StateKey          string
 	EventListenerType string
-	// Deprecated: use AppConfig instead. Used for updating the Port integration config on startup.
+	// Deprecated: use IntegrationConfig instead. Used for updating the Port integration config on startup.
 	Resources []Resource
 }
