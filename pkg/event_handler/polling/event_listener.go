@@ -23,5 +23,7 @@ func NewEventListener(stateKey string, portClient *cli.PortClient) *EventListene
 func (l *EventListener) Run(resync func()) error {
 	klog.Infof("Starting polling event listener")
 	klog.Infof("Polling rate set to %d seconds", config.PollingListenerRate)
-	return l.handler.Run(resync)
+	l.handler.Run(resync)
+
+	return nil
 }
