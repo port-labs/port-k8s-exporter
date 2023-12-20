@@ -37,6 +37,7 @@ func (m *MockConsumer) SubscribeTopics(topics []string, rebalanceCb kafka.Rebala
 }
 
 func (m *MockConsumer) Poll(timeoutMs int) (event kafka.Event) {
+	// The consumer will poll this in while true loop so we need to close it inorder not to spam the logs
 	defer func() {
 		m.close()
 	}()
