@@ -31,6 +31,7 @@ func NewIntegration(portClient *cli.PortClient, stateKey string, eventListenerTy
 	return nil
 }
 
+// ToDo: remove this function
 func GetIntegrationConfig(portClient *cli.PortClient, stateKey string) (*port.IntegrationConfig, error) {
 	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
 	if err != nil {

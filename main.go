@@ -96,7 +96,7 @@ func main() {
 	}
 
 	klog.Info("Starting controllers handler")
-	err = event_handler.StartEventHandler(eventListener, func() (event_handler.IStoppableRsync, error) {
+	err = event_handler.Start(eventListener, func() (event_handler.IStoppableRsync, error) {
 		return initiateHandler(applicationConfig, k8sClient, portClient)
 	})
 

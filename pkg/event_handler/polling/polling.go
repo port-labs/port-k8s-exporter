@@ -33,19 +33,19 @@ func (t *Ticker) GetC() <-chan time.Time {
 	return t.ticker.C
 }
 
-type HandlerSettings struct {
+type Handler struct {
 	ticker      ITicker
 	stateKey    string
 	portClient  *cli.PortClient
 	pollingRate uint
 }
 
-func NewPollingHandler(pollingRate uint, stateKey string, portClient *cli.PortClient, tickerOverride ITicker) *HandlerSettings {
+func NewPollingHandler(pollingRate uint, stateKey string, portClient *cli.PortClient, tickerOverride ITicker) *Handler {
 	ticker := tickerOverride
 	if ticker == nil {
 		ticker = NewTicker(time.Second * time.Duration(pollingRate))
 	}
-	rv := &HandlerSettings{
+	rv := &Handler{
 		ticker:      ticker,
 		stateKey:    stateKey,
 		portClient:  portClient,
@@ -54,7 +54,7 @@ func NewPollingHandler(pollingRate uint, stateKey string, portClient *cli.PortCl
 	return rv
 }
 
-func (h *HandlerSettings) Run(resync func()) {
+func (h *Handler) Run(resync func()) {
 	klog.Infof("Starting polling handler")
 	currentState, err := integration.GetIntegration(h.portClient, h.stateKey)
 	if err != nil {

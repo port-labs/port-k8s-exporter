@@ -14,8 +14,8 @@ type IStoppableRsync interface {
 	Stop()
 }
 
-func StartEventHandler(eventListener IListener, controllerHandlerFactory func() (IStoppableRsync, error)) error {
-	controllerHandler, err := controllerHandlerFactory()
+func Start(eventListener IListener, initControllerHandler func() (IStoppableRsync, error)) error {
+	controllerHandler, err := initControllerHandler()
 	if err != nil {
 		return err
 	}
@@ -23,7 +23,7 @@ func StartEventHandler(eventListener IListener, controllerHandlerFactory func() 
 	return eventListener.Run(func() {
 		klog.Infof("Resync request received. Recreating controllers for the new port configuration")
 		controllerHandler.Stop()
-		newController, resyncErr := controllerHandlerFactory()
+		newController, resyncErr := initControllerHandler()
 		controllerHandler = newController
 
 		if resyncErr != nil {
