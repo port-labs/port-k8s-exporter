@@ -9,11 +9,10 @@ import (
 )
 
 type Fixture struct {
-	t            *testing.T
-	mockConsumer *MockConsumer
-	consumer     *Consumer
-	producer     *kafka.Producer
-	topic        string
+	t                 *testing.T
+	mockKafkaConsumer *MockConsumer
+	consumer          *Consumer
+	topic             string
 }
 
 type MockConsumer struct {
@@ -60,24 +59,16 @@ func NewFixture(t *testing.T) *Fixture {
 		t.Fatalf("Error creating consumer: %v", err)
 	}
 
-	producer, err := kafka.NewProducer(&kafka.ConfigMap{
-		"bootstrap.servers": "localhost:9092",
-	})
-	if err != nil {
-		t.Fatalf("Error creating producer: %v", err)
-	}
-
 	return &Fixture{
-		t:            t,
-		mockConsumer: mock,
-		consumer:     consumer,
-		producer:     producer,
-		topic:        "test-topic",
+		t:                 t,
+		mockKafkaConsumer: mock,
+		consumer:          consumer,
+		topic:             "test-topic",
 	}
 }
 
 func (f *Fixture) Produce(t *testing.T, value []byte) {
-	f.mockConsumer.pollData = &kafka.Message{
+	f.mockKafkaConsumer.pollData = &kafka.Message{
 		TopicPartition: kafka.TopicPartition{Topic: &f.topic, Partition: 0},
 		Value:          value,
 	}
