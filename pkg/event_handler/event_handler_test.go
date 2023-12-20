@@ -27,6 +27,9 @@ func (e *EventListenerMock) Run(resync func()) error {
 }
 
 func TestStartKafkaEventListener(t *testing.T) {
+	// Test should get a new controller handler on each call to the passed function and stop the previous one
+	// The flow for this test will be: create controller handler -> resync and stop the controller handler & create a
+	// new controller handler X 2 which will result the last controller handler to not be stopped
 	eventListenerMock := &EventListenerMock{}
 	firstResponse := &ControllerHandlerMock{}
 	secondResponse := &ControllerHandlerMock{}
@@ -37,7 +40,7 @@ func TestStartKafkaEventListener(t *testing.T) {
 		thirdResponse,
 	}
 
-	err := StartEventHandler(eventListenerMock, func() (IStoppableRsync, error) {
+	err := Start(eventListenerMock, func() (IStoppableRsync, error) {
 		r := responses[0]
 		responses = responses[1:]
 

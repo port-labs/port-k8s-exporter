@@ -9,20 +9,19 @@ import (
 type EventListener struct {
 	stateKey   string
 	portClient *cli.PortClient
+	handler    *Handler
 }
 
 func NewEventListener(stateKey string, portClient *cli.PortClient) *EventListener {
 	return &EventListener{
 		stateKey:   stateKey,
 		portClient: portClient,
+		handler:    NewPollingHandler(config.PollingListenerRate, stateKey, portClient, nil),
 	}
 }
 
 func (l *EventListener) Run(resync func()) error {
 	klog.Infof("Starting polling event listener")
 	klog.Infof("Polling rate set to %d seconds", config.PollingListenerRate)
-	pollingHandler := NewPollingHandler(config.PollingListenerRate, l.stateKey, l.portClient, nil)
-	pollingHandler.Run(resync)
-
-	return nil
+	return l.handler.Run(resync)
 }
