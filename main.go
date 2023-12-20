@@ -17,15 +17,19 @@ import (
 )
 
 func initiateHandler(exporterConfig *port.Config, k8sClient *k8s.Client, portClient *cli.PortClient) (*handlers.ControllersHandler, error) {
-	apiConfig, err := integration.GetIntegrationConfig(portClient, exporterConfig.StateKey)
+	i, err := integration.GetIntegration(portClient, exporterConfig.StateKey)
 	if err != nil {
-		klog.Fatalf("Error getting K8s integration config: %s", err.Error())
+		return nil, fmt.Errorf("error getting Port integration: %v", err)
+	}
+	if i.Config == nil {
+		return nil, errors.New("integration config is nil")
+
 	}
 
-	cli.WithDeleteDependents(apiConfig.DeleteDependents)(portClient)
-	cli.WithCreateMissingRelatedEntities(apiConfig.CreateMissingRelatedEntities)(portClient)
+	cli.WithDeleteDependents(i.Config.DeleteDependents)(portClient)
+	cli.WithCreateMissingRelatedEntities(i.Config.CreateMissingRelatedEntities)(portClient)
 
-	newHandler := handlers.NewControllersHandler(exporterConfig, apiConfig, k8sClient, portClient)
+	newHandler := handlers.NewControllersHandler(exporterConfig, i.Config, k8sClient, portClient)
 	newHandler.Handle()
 
 	return newHandler, nil

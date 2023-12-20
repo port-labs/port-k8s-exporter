@@ -31,21 +31,6 @@ func NewIntegration(portClient *cli.PortClient, stateKey string, eventListenerTy
 	return nil
 }
 
-// ToDo: remove this function
-func GetIntegrationConfig(portClient *cli.PortClient, stateKey string) (*port.IntegrationConfig, error) {
-	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
-	if err != nil {
-		return nil, fmt.Errorf("error authenticating with Port: %v", err)
-	}
-
-	apiConfig, err := portClient.GetIntegrationConfig(stateKey)
-	if err != nil {
-		return nil, fmt.Errorf("error getting Port integration config: %v", err)
-	}
-
-	return apiConfig, nil
-}
-
 func GetIntegration(portClient *cli.PortClient, stateKey string) (*port.Integration, error) {
 	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
 	if err != nil {

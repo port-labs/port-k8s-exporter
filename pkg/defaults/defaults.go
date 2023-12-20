@@ -117,7 +117,7 @@ func validateBlueprintErrors(createdBlueprints []string, blueprintErrors []error
 }
 
 func CreateResources(portClient *cli.PortClient, defaults *Defaults, config *port.Config) *AbortDefaultCreationError {
-	if _, err := integration.GetIntegrationConfig(portClient, config.StateKey); err == nil {
+	if _, err := integration.GetIntegration(portClient, config.StateKey); err == nil {
 		log.Println("Integration already exists. Skipping...")
 		return nil
 	}
