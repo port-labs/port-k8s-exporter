@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
+	"github.com/port-labs/port-k8s-exporter/pkg/defaults"
 	"github.com/port-labs/port-k8s-exporter/pkg/event_handler"
 	"github.com/port-labs/port-k8s-exporter/pkg/event_handler/consumer"
 	"github.com/port-labs/port-k8s-exporter/pkg/event_handler/polling"
@@ -90,7 +91,7 @@ func main() {
 		klog.Fatalf("Error building Port client: %s", err.Error())
 	}
 
-	if err := integration.InitIntegration(portClient, applicationConfig); err != nil {
+	if err := defaults.InitIntegration(portClient, applicationConfig); err != nil {
 		klog.Fatalf("Error initializing Port integration: %s", err.Error())
 	}
 

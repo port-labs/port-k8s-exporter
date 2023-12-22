@@ -14,7 +14,7 @@ func parseIntegration(i *port.Integration) *port.Integration {
 	}
 
 	if i.EventListener.Type == "KAFKA" {
-		x.EventListener = port.EventListenerSettings{
+		x.EventListener = &port.EventListenerSettings{
 			Type: i.EventListener.Type,
 		}
 	}

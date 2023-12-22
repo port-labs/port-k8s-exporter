@@ -28,13 +28,13 @@ type (
 	}
 
 	Integration struct {
-		InstallationId      string                `json:"installationId,omitempty"`
-		Title               string                `json:"title,omitempty"`
-		Version             string                `json:"version,omitempty"`
-		InstallationAppType string                `json:"installationAppType,omitempty"`
-		EventListener       EventListenerSettings `json:"changelogDestination,omitempty"`
-		Config              *IntegrationConfig    `json:"config,omitempty"`
-		UpdatedAt           *time.Time            `json:"updatedAt,omitempty"`
+		InstallationId      string                 `json:"installationId,omitempty"`
+		Title               string                 `json:"title,omitempty"`
+		Version             string                 `json:"version,omitempty"`
+		InstallationAppType string                 `json:"installationAppType,omitempty"`
+		EventListener       *EventListenerSettings `json:"changelogDestination,omitempty"`
+		Config              *IntegrationConfig     `json:"config,omitempty"`
+		UpdatedAt           *time.Time             `json:"updatedAt,omitempty"`
 	}
 
 	BlueprintProperty struct {

@@ -110,10 +110,8 @@ resources:
         mappings:
         - blueprint: '"service"'
           icon: '"Deployment"'
-          identifier: .metadata.labels.portService
+          identifier: .metadata.name + "-Deployment-" + .metadata.namespace + "-" + env.CLUSTER_NAME
           properties: {}
-          relations:
-            prod_runtime: .metadata.name + "-Deployment-" + .metadata.namespace + "-" + env.CLUSTER_NAME
           title: .metadata.name
     selector:
       query: .metadata.namespace | startswith("kube") | not
