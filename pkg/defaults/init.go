@@ -37,6 +37,7 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config)
 			return integration.NewIntegration(portClient, applicationConfig.StateKey, applicationConfig.EventListenerType, defaultIntegrationConfig)
 		}
 	} else {
+		// Handle a deprecated case where resources are provided in config file and integration already exists in port with no resources
 		integrationPatch := &port.Integration{
 			EventListener: getEventListenerConfig(applicationConfig.EventListenerType),
 		}
