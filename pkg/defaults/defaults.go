@@ -116,7 +116,7 @@ func validateBlueprintErrors(createdBlueprints []string, blueprintErrors []error
 	return nil
 }
 
-func CreateResources(portClient *cli.PortClient, defaults *Defaults, config *port.Config) *AbortDefaultCreationError {
+func createResources(portClient *cli.PortClient, defaults *Defaults, config *port.Config) *AbortDefaultCreationError {
 	if _, err := integration.GetIntegration(portClient, config.StateKey); err == nil {
 		log.Println("Integration already exists. Skipping...")
 		return nil
@@ -190,13 +190,13 @@ func CreateResources(portClient *cli.PortClient, defaults *Defaults, config *por
 	return nil
 }
 
-func InitializeDefaults(portClient *cli.PortClient, config *port.Config) error {
+func initializeDefaults(portClient *cli.PortClient, config *port.Config) error {
 	defaults, err := getDefaults()
 	if err != nil {
 		return err
 	}
 
-	if err := CreateResources(portClient, defaults, config); err != nil {
+	if err := createResources(portClient, defaults, config); err != nil {
 		if err != nil {
 			log.Printf("Failed to create resources. Rolling back blueprints: %v", err.BlueprintsToRollback)
 			var rollbackWg sync.WaitGroup

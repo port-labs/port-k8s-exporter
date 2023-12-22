@@ -27,7 +27,7 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config)
 	if err != nil {
 		var defaultsInitializationError error
 		if applicationConfig.Resources == nil {
-			defaultsInitializationError = InitializeDefaults(portClient, applicationConfig)
+			defaultsInitializationError = initializeDefaults(portClient, applicationConfig)
 			if err != nil {
 				klog.Warningf("Error initializing defaults: %s", err.Error())
 			}
