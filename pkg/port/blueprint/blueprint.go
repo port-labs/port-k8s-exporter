@@ -1,65 +1,60 @@
 package blueprint
 
 import (
+	"context"
 	"fmt"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 )
 
 func NewBlueprint(portClient *cli.PortClient, blueprint port.Blueprint) (*port.Blueprint, error) {
-	pb := &port.ResponseBody{}
-	resp, err := portClient.Client.R().
-		SetResult(&pb).
-		SetBody(blueprint).
-		Post("v1/blueprints")
+	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error authenticating with Port: %v", err)
 	}
-	if !pb.OK {
-		return nil, fmt.Errorf("failed to create blueprint, got: %s", resp.Body())
+
+	bp, err := cli.NewBlueprint(portClient, blueprint)
+	if err != nil {
+		return nil, fmt.Errorf("error creating Port blueprint: %v", err)
 	}
-	return &pb.Blueprint, nil
+	return bp, nil
 }
 
 func PatchBlueprint(portClient *cli.PortClient, blueprint port.Blueprint) (*port.Blueprint, error) {
-	pb := &port.ResponseBody{}
-	resp, err := portClient.Client.R().
-		SetResult(&pb).
-		SetBody(blueprint).
-		Patch(fmt.Sprintf("v1/blueprints/%s", blueprint.Identifier))
+	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error authenticating with Port: %v", err)
 	}
-	if !pb.OK {
-		return nil, fmt.Errorf("failed to patch blueprint, got: %s", resp.Body())
+
+	bp, err := cli.PatchBlueprint(portClient, blueprint)
+	if err != nil {
+		return nil, fmt.Errorf("error patching Port blueprint: %v", err)
 	}
-	return &pb.Blueprint, nil
+	return bp, nil
 }
 
 func DeleteBlueprint(portClient *cli.PortClient, blueprintIdentifier string) error {
-	pb := &port.ResponseBody{}
-	resp, err := portClient.Client.R().
-		SetResult(&pb).
-		Delete(fmt.Sprintf("v1/blueprints/%s", blueprintIdentifier))
+	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
 	if err != nil {
-		return err
+		return fmt.Errorf("error authenticating with Port: %v", err)
 	}
-	if !pb.OK {
-		return fmt.Errorf("failed to delete blueprint, got: %s", resp.Body())
+
+	err = cli.DeleteBlueprint(portClient, blueprintIdentifier)
+	if err != nil {
+		return fmt.Errorf("error deleting Port blueprint: %v", err)
 	}
 	return nil
 }
 
 func GetBlueprint(portClient *cli.PortClient, blueprintIdentifier string) (*port.Blueprint, error) {
-	pb := &port.ResponseBody{}
-	resp, err := portClient.Client.R().
-		SetResult(&pb).
-		Get(fmt.Sprintf("v1/blueprints/%s", blueprintIdentifier))
+	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error authenticating with Port: %v", err)
 	}
-	if !pb.OK {
-		return nil, fmt.Errorf("failed to get blueprint, got: %s", resp.Body())
+
+	bp, err := cli.GetBlueprint(portClient, blueprintIdentifier)
+	if err != nil {
+		return nil, fmt.Errorf("error getting Port blueprint: %v", err)
 	}
-	return &pb.Blueprint, nil
+	return bp, nil
 }

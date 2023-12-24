@@ -8,6 +8,7 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/port/blueprint"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/integration"
+	_ "github.com/port-labs/port-k8s-exporter/test_utils"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -19,7 +20,6 @@ type Fixture struct {
 }
 
 func NewFixture(t *testing.T) *Fixture {
-	config.Init()
 	stateKey := guuid.NewString()
 	portClient, err := cli.New(config.ApplicationConfig.PortBaseURL, cli.WithHeader("User-Agent", fmt.Sprintf("port-k8s-exporter/0.1 (statekey/%s)", stateKey)),
 		cli.WithClientID(config.ApplicationConfig.PortClientId), cli.WithClientSecret(config.ApplicationConfig.PortClientSecret))

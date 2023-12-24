@@ -5,7 +5,6 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"gopkg.in/yaml.v2"
-	"k8s.io/klog/v2"
 	"k8s.io/utils/strings/slices"
 	"os"
 	"strings"
@@ -17,7 +16,7 @@ func prepareEnvKey(key string) string {
 	newKey := strings.ToUpper(strings.ReplaceAll(key, "-", "_"))
 
 	if slices.Contains(keys, newKey) {
-		klog.Fatalf("Application Error : Found duplicate config key: %s", newKey)
+		panic("Application Error : Found duplicate config key: " + newKey)
 	}
 
 	keys = append(keys, newKey)
