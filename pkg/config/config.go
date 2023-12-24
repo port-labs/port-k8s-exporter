@@ -3,7 +3,6 @@ package config
 import (
 	"flag"
 	"github.com/joho/godotenv"
-	"k8s.io/klog/v2"
 )
 
 var KafkaConfig = &KafkaConfiguration{}
@@ -12,10 +11,7 @@ var PollingListenerRate uint
 var ApplicationConfig = &ApplicationConfiguration{}
 
 func Init() {
-	e := godotenv.Load()
-	if e != nil {
-		klog.Warningf("Error loading .env file: %s", e.Error())
-	}
+	_ = godotenv.Load()
 	// Kafka listener Configuration
 	NewString(&KafkaConfig.Brokers, "event-listener-brokers", "localhost:9092", "Kafka event listener brokers")
 	NewString(&KafkaConfig.SecurityProtocol, "event-listener-security-protocol", "plaintext", "Kafka event listener security protocol")
