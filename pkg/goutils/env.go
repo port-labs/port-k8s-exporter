@@ -7,7 +7,6 @@ import (
 )
 
 func GetStringEnvOrDefault(key string, defaultValue string) string {
-	// Try to get from .env file
 	value := os.Getenv(key)
 	if value == "" {
 		return defaultValue
