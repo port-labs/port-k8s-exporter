@@ -23,7 +23,7 @@ type ScorecardDefault struct {
 type Defaults struct {
 	Blueprints []port.Blueprint
 	Scorecards []ScorecardDefault
-	AppConfig  *port.IntegrationConfig
+	AppConfig  *port.IntegrationAppConfig
 }
 
 func getDefaults() (*Defaults, error) {
@@ -49,7 +49,7 @@ func getDefaults() (*Defaults, error) {
 		}
 	}
 
-	var appConfig *port.IntegrationConfig
+	var appConfig *port.IntegrationAppConfig
 	file, err = os.ReadFile("./assets/defaults/appConfig.yaml")
 	if err != nil {
 		klog.Infof("No default appConfig found. Skipping...")
@@ -118,8 +118,9 @@ func validateBlueprintErrors(createdBlueprints []string, blueprintErrors []error
 
 func createResources(portClient *cli.PortClient, defaults *Defaults, config *port.Config) *AbortDefaultCreationError {
 	if _, err := integration.GetIntegration(portClient, config.StateKey); err == nil {
-		log.Println("Integration already exists. Skipping...")
-		return nil
+		return &AbortDefaultCreationError{Errors: []error{
+			fmt.Errorf("integration with state key %s already exists", config.StateKey),
+		}}
 	}
 
 	bareBlueprints, patchStages := deconstructBlueprintsToCreationSteps(defaults.Blueprints)

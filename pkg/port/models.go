@@ -33,7 +33,7 @@ type (
 		Version             string                 `json:"version,omitempty"`
 		InstallationAppType string                 `json:"installationAppType,omitempty"`
 		EventListener       *EventListenerSettings `json:"changelogDestination,omitempty"`
-		Config              *IntegrationConfig     `json:"config,omitempty"`
+		Config              *IntegrationAppConfig  `json:"config,omitempty"`
 		UpdatedAt           *time.Time             `json:"updatedAt,omitempty"`
 	}
 
@@ -83,7 +83,7 @@ type (
 	Blueprint struct {
 		Meta
 		Identifier           string                              `json:"identifier,omitempty"`
-		Title                string                              `json:"title"`
+		Title                string                              `json:"title,omitempty"`
 		Icon                 string                              `json:"icon"`
 		Description          string                              `json:"description"`
 		Schema               BlueprintSchema                     `json:"schema"`
@@ -193,7 +193,7 @@ type AggregatedResource struct {
 	KindConfigs []KindConfig
 }
 
-type IntegrationConfig struct {
+type IntegrationAppConfig struct {
 	DeleteDependents             bool       `json:"deleteDependents,omitempty"`
 	CreateMissingRelatedEntities bool       `json:"createMissingRelatedEntities,omitempty"`
 	Resources                    []Resource `json:"resources,omitempty"`
@@ -203,6 +203,6 @@ type Config struct {
 	ResyncInterval    uint
 	StateKey          string
 	EventListenerType string
-	// Deprecated: use IntegrationConfig instead. Used for updating the Port integration config on startup.
+	// Deprecated: use IntegrationAppConfig instead. Used for updating the Port integration config on startup.
 	Resources []Resource
 }

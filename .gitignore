@@ -23,3 +23,5 @@ __debug_bin
 config.yaml
 
 deployments/k8s
+
+.env

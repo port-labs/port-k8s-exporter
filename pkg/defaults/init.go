@@ -8,7 +8,7 @@ import (
 )
 
 func getEventListenerConfig(eventListenerType string) *port.EventListenerSettings {
-	if eventListenerType == "Kafka" {
+	if eventListenerType == "KAFKA" {
 		return &port.EventListenerSettings{
 			Type: eventListenerType,
 		}
@@ -18,35 +18,31 @@ func getEventListenerConfig(eventListenerType string) *port.EventListenerSetting
 
 func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config) error {
 	existingIntegration, err := integration.GetIntegration(portClient, applicationConfig.StateKey)
-	defaultIntegrationConfig := &port.IntegrationConfig{}
-
-	if applicationConfig.Resources != nil {
-		defaultIntegrationConfig.Resources = applicationConfig.Resources
-	}
+	defaultIntegrationConfig := &port.IntegrationAppConfig{}
 
 	if err != nil {
-		var defaultsInitializationError error
-		if applicationConfig.Resources == nil {
-			defaultsInitializationError = initializeDefaults(portClient, applicationConfig)
-			if err != nil {
+		if defaultIntegrationConfig.Resources == nil {
+			if err := initializeDefaults(portClient, applicationConfig); err != nil {
 				klog.Warningf("Error initializing defaults: %s", err.Error())
+			} else {
+				return nil
 			}
 		}
-		if defaultsInitializationError != nil || applicationConfig.Resources != nil {
-			// Handle a deprecated case where resources are provided in config file
-			return integration.NewIntegration(portClient, applicationConfig.StateKey, applicationConfig.EventListenerType, defaultIntegrationConfig)
-		}
+
+		// Handle a deprecated case where resources are provided in config file
+		return integration.NewIntegration(portClient, applicationConfig.StateKey, applicationConfig.EventListenerType, defaultIntegrationConfig)
 	} else {
-		// Handle a deprecated case where resources are provided in config file and integration already exists in port with no resources
 		integrationPatch := &port.Integration{
 			EventListener: getEventListenerConfig(applicationConfig.EventListenerType),
 		}
-		if existingIntegration.Config == nil {
-			integrationPatch.Config = defaultIntegrationConfig
+		if existingIntegration.Config == nil && applicationConfig.Resources != nil {
+			integrationPatch.Config = &port.IntegrationAppConfig{
+				DeleteDependents:             defaultIntegrationConfig.DeleteDependents,
+				CreateMissingRelatedEntities: defaultIntegrationConfig.CreateMissingRelatedEntities,
+				Resources:                    applicationConfig.Resources,
+			}
 		}
 
 		return integration.PatchIntegration(portClient, applicationConfig.StateKey, integrationPatch)
 	}
-
-	return nil
 }

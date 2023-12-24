@@ -52,7 +52,7 @@ func (c *PortClient) GetIntegration(stateKey string) (*port.Integration, error) 
 	return &pb.Integration, nil
 }
 
-func (c *PortClient) GetIntegrationConfig(stateKey string) (*port.IntegrationConfig, error) {
+func (c *PortClient) GetIntegrationConfig(stateKey string) (*port.IntegrationAppConfig, error) {
 	pb := &port.ResponseBody{}
 	resp, err := c.Client.R().
 		SetResult(&pb).

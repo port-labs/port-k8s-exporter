@@ -7,7 +7,7 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 )
 
-func NewIntegration(portClient *cli.PortClient, stateKey string, eventListenerType string, appConfig *port.IntegrationConfig) error {
+func NewIntegration(portClient *cli.PortClient, stateKey string, eventListenerType string, appConfig *port.IntegrationAppConfig) error {
 	integration := &port.Integration{
 		Title:               stateKey,
 		InstallationAppType: "K8S EXPORTER",

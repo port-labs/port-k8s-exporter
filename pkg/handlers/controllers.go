@@ -21,7 +21,7 @@ type ControllersHandler struct {
 	stopCh           chan struct{}
 }
 
-func NewControllersHandler(exporterConfig *port.Config, portConfig *port.IntegrationConfig, k8sClient *k8s.Client, portClient *cli.PortClient) *ControllersHandler {
+func NewControllersHandler(exporterConfig *port.Config, portConfig *port.IntegrationAppConfig, k8sClient *k8s.Client, portClient *cli.PortClient) *ControllersHandler {
 	resync := time.Minute * time.Duration(exporterConfig.ResyncInterval)
 	informersFactory := dynamicinformer.NewDynamicSharedInformerFactory(k8sClient.DynamicClient, resync)
 

@@ -49,3 +49,17 @@ func DeleteBlueprint(portClient *cli.PortClient, blueprintIdentifier string) err
 	}
 	return nil
 }
+
+func GetBlueprint(portClient *cli.PortClient, blueprintIdentifier string) (*port.Blueprint, error) {
+	pb := &port.ResponseBody{}
+	resp, err := portClient.Client.R().
+		SetResult(&pb).
+		Get(fmt.Sprintf("v1/blueprints/%s", blueprintIdentifier))
+	if err != nil {
+		return nil, err
+	}
+	if !pb.OK {
+		return nil, fmt.Errorf("failed to get blueprint, got: %s", resp.Body())
+	}
+	return &pb.Blueprint, nil
+}

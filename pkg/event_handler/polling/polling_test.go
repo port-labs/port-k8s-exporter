@@ -1,7 +1,6 @@
 package polling
 
 import (
-	"flag"
 	"fmt"
 	guuid "github.com/google/uuid"
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
@@ -30,16 +29,15 @@ func (m *MockTicker) GetC() <-chan time.Time {
 
 func NewFixture(t *testing.T, c chan time.Time) *Fixture {
 	config.Init()
-	flag.Parse()
 	stateKey := guuid.NewString()
-	portClient, err := cli.New("https://api.getport.io", cli.WithHeader("User-Agent", fmt.Sprintf("port-k8s-exporter/0.1 (statekey/%s)", stateKey)),
+	portClient, err := cli.New(config.ApplicationConfig.PortBaseURL, cli.WithHeader("User-Agent", fmt.Sprintf("port-k8s-exporter/0.1 (statekey/%s)", stateKey)),
 		cli.WithClientID(config.ApplicationConfig.PortClientId), cli.WithClientSecret(config.ApplicationConfig.PortClientSecret))
 	if err != nil {
 		t.Errorf("Error building Port client: %s", err.Error())
 	}
 
 	_ = integration.DeleteIntegration(portClient, stateKey)
-	err = integration.NewIntegration(portClient, stateKey, "", &port.IntegrationConfig{
+	err = integration.NewIntegration(portClient, stateKey, "", &port.IntegrationAppConfig{
 		Resources: []port.Resource{},
 	})
 	if err != nil {
@@ -72,7 +70,7 @@ func TestPolling_DifferentConfiguration(t *testing.T) {
 	assert.False(t, called)
 
 	_ = integration.PatchIntegration(fixture.portClient, fixture.stateKey, &port.Integration{
-		Config: &port.IntegrationConfig{
+		Config: &port.IntegrationAppConfig{
 			Resources: []port.Resource{},
 		},
 	})

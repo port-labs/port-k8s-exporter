@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/defaults"
@@ -112,5 +111,4 @@ func main() {
 
 func init() {
 	config.Init()
-	flag.Parse()
 }
