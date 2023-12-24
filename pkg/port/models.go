@@ -200,9 +200,10 @@ type IntegrationAppConfig struct {
 }
 
 type Config struct {
-	ResyncInterval    uint
-	StateKey          string
-	EventListenerType string
+	ResyncInterval         uint
+	StateKey               string
+	EventListenerType      string
+	CreateDefaultResources bool
 	// Deprecated: use IntegrationAppConfig instead. Used for updating the Port integration config on startup.
 	Resources []Resource
 }

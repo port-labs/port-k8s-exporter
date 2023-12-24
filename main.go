@@ -52,8 +52,9 @@ func getApplicationConfig() *port.Config {
 	var fileNotFoundError *config.FileNotFoundError
 	if errors.As(err, &fileNotFoundError) {
 		appConfig = &port.Config{
-			StateKey:          config.ApplicationConfig.StateKey,
-			EventListenerType: config.ApplicationConfig.EventListenerType,
+			StateKey:               config.ApplicationConfig.StateKey,
+			EventListenerType:      config.ApplicationConfig.EventListenerType,
+			CreateDefaultResources: config.ApplicationConfig.CreateDefaultResources,
 		}
 	}
 

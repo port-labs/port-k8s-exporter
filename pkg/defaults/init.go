@@ -18,10 +18,12 @@ func getEventListenerConfig(eventListenerType string) *port.EventListenerSetting
 
 func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config) error {
 	existingIntegration, err := integration.GetIntegration(portClient, applicationConfig.StateKey)
-	defaultIntegrationConfig := &port.IntegrationAppConfig{}
+	defaultIntegrationConfig := &port.IntegrationAppConfig{
+		Resources: applicationConfig.Resources,
+	}
 
 	if err != nil {
-		if defaultIntegrationConfig.Resources == nil {
+		if defaultIntegrationConfig.Resources == nil && applicationConfig.CreateDefaultResources {
 			if err := initializeDefaults(portClient, applicationConfig); err != nil {
 				klog.Warningf("Error initializing defaults: %s", err.Error())
 			} else {
@@ -39,7 +41,6 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config)
 			integrationPatch.Config = &port.IntegrationAppConfig{
 				DeleteDependents:             defaultIntegrationConfig.DeleteDependents,
 				CreateMissingRelatedEntities: defaultIntegrationConfig.CreateMissingRelatedEntities,
-				Resources:                    applicationConfig.Resources,
 			}
 		}
 

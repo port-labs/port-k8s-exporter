@@ -33,6 +33,11 @@ func NewUInt(v *uint, key string, defaultValue uint, description string) {
 	flag.UintVar(v, key, value, description)
 }
 
+func NewBool(v *bool, key string, defaultValue bool, description string) {
+	value := goutils.GetBoolEnvOrDefault(prepareEnvKey(key), defaultValue)
+	flag.BoolVar(v, key, value, description)
+}
+
 type FileNotFoundError struct {
 	s string
 }

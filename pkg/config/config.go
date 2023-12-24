@@ -28,6 +28,7 @@ func Init() {
 	NewString(&ApplicationConfig.PortClientId, "port-client-id", "", "Port client id. Required.")
 	NewString(&ApplicationConfig.PortClientSecret, "port-client-secret", "", "Port client secret. Required.")
 	NewString(&ApplicationConfig.EventListenerType, "event-listener-type", "POLLING", "Event listener type, can be either POLLING or KAFKA. Optional.")
+	NewBool(&ApplicationConfig.CreateDefaultResources, "create-default-resources", true, "Create default resources on installation. Optional.")
 
 	flag.Parse()
 }

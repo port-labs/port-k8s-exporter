@@ -11,11 +11,12 @@ type KafkaConfiguration struct {
 }
 
 type ApplicationConfiguration struct {
-	ConfigFilePath    string
-	StateKey          string
-	ResyncInterval    uint
-	PortBaseURL       string
-	PortClientId      string
-	PortClientSecret  string
-	EventListenerType string
+	ConfigFilePath         string
+	StateKey               string
+	ResyncInterval         uint
+	PortBaseURL            string
+	PortClientId           string
+	PortClientSecret       string
+	EventListenerType      string
+	CreateDefaultResources bool
 }
