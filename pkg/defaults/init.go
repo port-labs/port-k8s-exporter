@@ -23,9 +23,13 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config)
 	}
 
 	if err != nil {
+		// The exporter supports a deprecated case where resources are provided in config file and integration does not
+		// exist. If this is not the case, we support the new way of creating the integration with the default resources.
+		// Only one of the two cases can be true.
 		if defaultIntegrationConfig.Resources == nil && applicationConfig.CreateDefaultResources {
 			if err := initializeDefaults(portClient, applicationConfig); err != nil {
 				klog.Warningf("Error initializing defaults: %s", err.Error())
+				klog.Warningf("The integration will start without default integration mapping and other default resources. Please create them manually in Port. ")
 			} else {
 				return nil
 			}
@@ -40,7 +44,7 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config)
 
 		// Handle a deprecated case where resources are provided in config file and integration exists from previous
 		//versions without a config
-		if existingIntegration.Config == nil && applicationConfig.Resources != nil {
+		if existingIntegration.Config == nil && defaultIntegrationConfig.Resources != nil {
 			integrationPatch.Config = &port.IntegrationAppConfig{
 				DeleteDependents:             defaultIntegrationConfig.DeleteDependents,
 				CreateMissingRelatedEntities: defaultIntegrationConfig.CreateMissingRelatedEntities,

@@ -58,7 +58,7 @@ func (h *Handler) Run(resync func()) {
 	klog.Infof("Starting polling handler")
 	currentState, err := integration.GetIntegration(h.portClient, h.stateKey)
 	if err != nil {
-		klog.Warningf("Error fetching the first AppConfig state: %s", err.Error())
+		klog.Errorf("Error fetching the first AppConfig state: %s", err.Error())
 	}
 
 	sigChan := make(chan os.Signal, 1)
@@ -75,7 +75,7 @@ func (h *Handler) Run(resync func()) {
 			klog.Infof("Polling event listener iteration after %d seconds. Checking for changes...", h.pollingRate)
 			configuration, err := integration.GetIntegration(h.portClient, h.stateKey)
 			if err != nil {
-				klog.Warningf("error resyncing: %s", err.Error())
+				klog.Errorf("error resyncing: %s", err.Error())
 			}
 
 			if reflect.DeepEqual(currentState, configuration) != true {

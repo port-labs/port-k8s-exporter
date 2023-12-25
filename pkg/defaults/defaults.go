@@ -138,6 +138,7 @@ func createResources(portClient *cli.PortClient, defaults *Defaults, config *por
 
 	var blueprintErrors []error
 	var createdBlueprints []string
+	mutex := sync.Mutex{}
 
 	for _, bp := range bareBlueprints {
 		waitGroup.Add(1)
@@ -145,11 +146,13 @@ func createResources(portClient *cli.PortClient, defaults *Defaults, config *por
 			defer waitGroup.Done()
 			result, err := blueprint.NewBlueprint(portClient, bp)
 
+			mutex.Lock()
 			if err != nil {
 				blueprintErrors = append(blueprintErrors, err)
 			} else {
 				createdBlueprints = append(createdBlueprints, result.Identifier)
 			}
+			mutex.Unlock()
 		}(bp)
 	}
 	waitGroup.Wait()
