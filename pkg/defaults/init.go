@@ -19,7 +19,8 @@ func getEventListenerConfig(eventListenerType string) *port.EventListenerSetting
 func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config) error {
 	existingIntegration, err := integration.GetIntegration(portClient, applicationConfig.StateKey)
 	defaultIntegrationConfig := &port.IntegrationAppConfig{
-		Resources: applicationConfig.Resources,
+		Resources:                    applicationConfig.Resources,
+		CreateMissingRelatedEntities: true,
 	}
 
 	if err != nil {

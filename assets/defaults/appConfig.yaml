@@ -104,14 +104,3 @@ resources:
           title: .metadata.name
     selector:
       query: .metadata.namespace | startswith("kube") | not
-  - kind: apps/v1/deployments
-    port:
-      entity:
-        mappings:
-        - blueprint: '"service"'
-          icon: '"Deployment"'
-          identifier: .metadata.name + "-Deployment-" + .metadata.namespace + "-" + env.CLUSTER_NAME
-          properties: {}
-          title: .metadata.name
-    selector:
-      query: .metadata.namespace | startswith("kube") | not
