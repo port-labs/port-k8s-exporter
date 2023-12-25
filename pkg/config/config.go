@@ -12,6 +12,9 @@ var ApplicationConfig = &ApplicationConfiguration{}
 
 func Init() {
 	_ = godotenv.Load()
+
+	NewString(&ApplicationConfig.EventListenerType, "event-listener-type", "POLLING", "Event listener type, can be either POLLING or KAFKA. Optional.")
+
 	// Kafka listener Configuration
 	NewString(&KafkaConfig.Brokers, "event-listener-brokers", "localhost:9092", "Kafka event listener brokers")
 	NewString(&KafkaConfig.SecurityProtocol, "event-listener-security-protocol", "plaintext", "Kafka event listener security protocol")
@@ -27,7 +30,6 @@ func Init() {
 	NewString(&ApplicationConfig.PortBaseURL, "port-base-url", "https://api.getport.io", "Port base URL. Optional.")
 	NewString(&ApplicationConfig.PortClientId, "port-client-id", "", "Port client id. Required.")
 	NewString(&ApplicationConfig.PortClientSecret, "port-client-secret", "", "Port client secret. Required.")
-	NewString(&ApplicationConfig.EventListenerType, "event-listener-type", "POLLING", "Event listener type, can be either POLLING or KAFKA. Optional.")
 	NewBool(&ApplicationConfig.CreateDefaultResources, "create-default-resources", true, "Create default resources on installation. Optional.")
 
 	flag.Parse()
