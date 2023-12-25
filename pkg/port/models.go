@@ -91,7 +91,7 @@ type (
 		Icon                  string                                  `json:"icon"`
 		Description           string                                  `json:"description"`
 		Schema                BlueprintSchema                         `json:"schema"`
-		CalculationProperties map[string]BlueprintCalculationProperty `json:"calculationProperties"`
+		CalculationProperties map[string]BlueprintCalculationProperty `json:"calculationProperties,omitempty"`
 		MirrorProperties      map[string]BlueprintMirrorProperty      `json:"mirrorProperties,omitempty"`
 		ChangelogDestination  *ChangelogDestination                   `json:"changelogDestination,omitempty"`
 		Relations             map[string]Relation                     `json:"relations,omitempty"`
