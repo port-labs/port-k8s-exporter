@@ -60,8 +60,9 @@ func Test_InitIntegration_InitDefaults(t *testing.T) {
 	f := NewFixture(t)
 	defer deleteDefaultResources(t, f.portClient, f.stateKey)
 	e := InitIntegration(f.portClient, &port.Config{
-		StateKey:          f.stateKey,
-		EventListenerType: "POLLING",
+		StateKey:               f.stateKey,
+		EventListenerType:      "POLLING",
+		CreateDefaultResources: true,
 	})
 	assert.Nil(t, e)
 
@@ -91,8 +92,9 @@ func Test_InitIntegration_FailingInitDefaults(t *testing.T) {
 		t.Errorf("Error creating Port blueprint: %s", err.Error())
 	}
 	e := InitIntegration(f.portClient, &port.Config{
-		StateKey:          f.stateKey,
-		EventListenerType: "POLLING",
+		StateKey:               f.stateKey,
+		EventListenerType:      "POLLING",
+		CreateDefaultResources: true,
 	})
 	assert.Nil(t, e)
 
@@ -140,9 +142,10 @@ func Test_InitIntegration_DeprecatedResourcesConfiguration(t *testing.T) {
 		},
 	}
 	e := InitIntegration(f.portClient, &port.Config{
-		StateKey:          f.stateKey,
-		EventListenerType: "POLLING",
-		Resources:         expectedResources,
+		StateKey:               f.stateKey,
+		EventListenerType:      "POLLING",
+		Resources:              expectedResources,
+		CreateDefaultResources: true,
 	})
 	assert.Nil(t, e)
 
@@ -177,9 +180,10 @@ func Test_InitIntegration_DeprecatedResourcesConfiguration_ExistingIntegration_E
 		t.Errorf("Error creating Port integration: %s", err.Error())
 	}
 	e := InitIntegration(f.portClient, &port.Config{
-		StateKey:          f.stateKey,
-		EventListenerType: "KAFKA",
-		Resources:         nil,
+		StateKey:               f.stateKey,
+		EventListenerType:      "KAFKA",
+		Resources:              nil,
+		CreateDefaultResources: true,
 	})
 	assert.Nil(t, e)
 
