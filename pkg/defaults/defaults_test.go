@@ -68,7 +68,6 @@ func deleteDefaultResources(portClient *cli.PortClient, stateKey string) {
 
 func Test_InitIntegration_InitDefaults(t *testing.T) {
 	f := NewFixture(t)
-	defer deleteDefaultResources(f.portClient, f.stateKey)
 	e := InitIntegration(f.portClient, &port.Config{
 		StateKey:               f.stateKey,
 		EventListenerType:      "POLLING",
@@ -91,7 +90,6 @@ func Test_InitIntegration_InitDefaults(t *testing.T) {
 
 func Test_InitIntegration_InitDefaults_CreateDefaultResources_False(t *testing.T) {
 	f := NewFixture(t)
-	defer deleteDefaultResources(f.portClient, f.stateKey)
 	e := InitIntegration(f.portClient, &port.Config{
 		StateKey:               f.stateKey,
 		EventListenerType:      "POLLING",
@@ -107,7 +105,6 @@ func Test_InitIntegration_InitDefaults_CreateDefaultResources_False(t *testing.T
 
 func Test_InitIntegration_FailingInitDefaults(t *testing.T) {
 	f := NewFixture(t)
-	defer deleteDefaultResources(f.portClient, f.stateKey)
 	if _, err := blueprint.NewBlueprint(f.portClient, port.Blueprint{
 		Identifier: "workload",
 		Title:      "Workload",
@@ -133,7 +130,6 @@ func Test_InitIntegration_FailingInitDefaults(t *testing.T) {
 
 func Test_InitIntegration_DeprecatedResourcesConfiguration(t *testing.T) {
 	f := NewFixture(t)
-	defer deleteDefaultResources(f.portClient, f.stateKey)
 	err := integration.CreateIntegration(f.portClient, f.stateKey, "", nil)
 	if err != nil {
 		t.Errorf("Error creating Port integration: %s", err.Error())
@@ -174,7 +170,6 @@ func Test_InitIntegration_DeprecatedResourcesConfiguration(t *testing.T) {
 
 func Test_InitIntegration_DeprecatedResourcesConfiguration_ExistingIntegration_EmptyConfiguration(t *testing.T) {
 	f := NewFixture(t)
-	defer deleteDefaultResources(f.portClient, f.stateKey)
 	err := integration.CreateIntegration(f.portClient, f.stateKey, "POLLING", nil)
 	if err != nil {
 		t.Errorf("Error creating Port integration: %s", err.Error())
