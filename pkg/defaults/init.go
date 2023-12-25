@@ -41,6 +41,7 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config)
 			integrationPatch.Config = &port.IntegrationAppConfig{
 				DeleteDependents:             defaultIntegrationConfig.DeleteDependents,
 				CreateMissingRelatedEntities: defaultIntegrationConfig.CreateMissingRelatedEntities,
+				Resources:                    defaultIntegrationConfig.Resources,
 			}
 		}
 
