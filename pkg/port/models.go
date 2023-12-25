@@ -67,6 +67,16 @@ type (
 		Type        string            `json:"type,omitempty"`
 	}
 
+	BlueprintAggregationProperty struct {
+		Title           string      `json:"title"`
+		Target          string      `json:"target"`
+		CalculationSpec interface{} `json:"calculationSpec"`
+		Query           interface{} `json:"query,omitempty"`
+		Description     string      `json:"description,omitempty"`
+		Icon            string      `json:"icon,omitempty"`
+		Type            string      `json:"type,omitempty"`
+	}
+
 	BlueprintSchema struct {
 		Properties map[string]BlueprintProperty `json:"properties"`
 		Required   []string                     `json:"required,omitempty"`
@@ -92,6 +102,7 @@ type (
 		Description           string                                  `json:"description"`
 		Schema                BlueprintSchema                         `json:"schema"`
 		CalculationProperties map[string]BlueprintCalculationProperty `json:"calculationProperties,omitempty"`
+		AggregationProperties map[string]BlueprintAggregationProperty `json:"aggregationProperties,omitempty"`
 		MirrorProperties      map[string]BlueprintMirrorProperty      `json:"mirrorProperties,omitempty"`
 		ChangelogDestination  *ChangelogDestination                   `json:"changelogDestination,omitempty"`
 		Relations             map[string]Relation                     `json:"relations,omitempty"`

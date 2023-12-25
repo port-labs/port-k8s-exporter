@@ -98,6 +98,7 @@ func deconstructBlueprintsToCreationSteps(rawBlueprints []port.Blueprint) ([]por
 		withRelations = append(withRelations, withRelation)
 
 		fullBlueprint := withRelation
+		fullBlueprint.AggregationProperties = bp.AggregationProperties
 		fullBlueprint.CalculationProperties = bp.CalculationProperties
 		fullBlueprint.MirrorProperties = bp.MirrorProperties
 		fullBlueprints = append(fullBlueprints, fullBlueprint)
