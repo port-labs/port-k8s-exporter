@@ -10,7 +10,6 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/port/scorecards"
 	"gopkg.in/yaml.v3"
 	"k8s.io/klog/v2"
-	"log"
 	"os"
 	"sync"
 )
@@ -197,7 +196,7 @@ func createResources(portClient *cli.PortClient, defaults *Defaults, config *por
 	}
 
 	if err := integration.CreateIntegration(portClient, config.StateKey, config.EventListenerType, defaults.AppConfig); err != nil {
-		log.Printf("Failed to create resources: %v.", err.Error())
+		klog.Infof("Failed to create resources: %v.", err.Error())
 		return &AbortDefaultCreationError{BlueprintsToRollback: createdBlueprints, Errors: []error{err}}
 	}
 
@@ -211,7 +210,7 @@ func initializeDefaults(portClient *cli.PortClient, config *port.Config) error {
 	}
 
 	if err := createResources(portClient, defaults, config); err != nil {
-		log.Printf("Failed to create resources. Rolling back blueprints: %v", err.BlueprintsToRollback)
+		klog.Infof("Failed to create resources. Rolling back blueprints: %v", err.BlueprintsToRollback)
 		var rollbackWg sync.WaitGroup
 		for _, identifier := range err.BlueprintsToRollback {
 			rollbackWg.Add(1)
