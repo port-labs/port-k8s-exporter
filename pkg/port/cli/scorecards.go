@@ -10,7 +10,7 @@ func (c *PortClient) CreateScorecard(blueprintIdentifier string, scorecard port.
 	resp, err := c.Client.R().
 		SetResult(&pb).
 		SetBody(scorecard).
-		SetPathParam("{blueprint}", blueprintIdentifier).
+		SetPathParam("blueprint", blueprintIdentifier).
 		Post("v1/blueprints/{blueprint}/scorecards")
 	if err != nil {
 		return nil, err
