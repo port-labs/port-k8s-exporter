@@ -38,7 +38,7 @@ func NewFixture(t *testing.T, c chan time.Time) *Fixture {
 	}
 
 	_ = integration.DeleteIntegration(portClient, stateKey)
-	err = integration.NewIntegration(portClient, stateKey, "", &port.IntegrationAppConfig{
+	err = integration.CreateIntegration(portClient, stateKey, "", &port.IntegrationAppConfig{
 		Resources: []port.Resource{},
 	})
 	if err != nil {

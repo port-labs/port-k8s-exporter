@@ -32,11 +32,14 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config)
 		}
 
 		// Handle a deprecated case where resources are provided in config file
-		return integration.NewIntegration(portClient, applicationConfig.StateKey, applicationConfig.EventListenerType, defaultIntegrationConfig)
+		return integration.CreateIntegration(portClient, applicationConfig.StateKey, applicationConfig.EventListenerType, defaultIntegrationConfig)
 	} else {
 		integrationPatch := &port.Integration{
 			EventListener: getEventListenerConfig(applicationConfig.EventListenerType),
 		}
+
+		// Handle a deprecated case where resources are provided in config file and integration exists from previous
+		//versions without a config
 		if existingIntegration.Config == nil && applicationConfig.Resources != nil {
 			integrationPatch.Config = &port.IntegrationAppConfig{
 				DeleteDependents:             defaultIntegrationConfig.DeleteDependents,

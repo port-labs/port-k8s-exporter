@@ -26,9 +26,13 @@ type Defaults struct {
 	AppConfig  *port.IntegrationAppConfig
 }
 
+var BlueprintsAsset = "assets/defaults/blueprints.json"
+var ScorecardsAsset = "assets/defaults/scorecards.json"
+var AppConfigAsset = "assets/defaults/appConfig.yaml"
+
 func getDefaults() (*Defaults, error) {
 	var bp []port.Blueprint
-	file, err := os.ReadFile("assets/defaults/blueprints.json")
+	file, err := os.ReadFile(BlueprintsAsset)
 	if err != nil {
 		klog.Infof("No default blueprints found. Skipping...")
 	} else {
@@ -39,7 +43,7 @@ func getDefaults() (*Defaults, error) {
 	}
 
 	var sc []ScorecardDefault
-	file, err = os.ReadFile("./assets/defaults/scorecards.json")
+	file, err = os.ReadFile(ScorecardsAsset)
 	if err != nil {
 		klog.Infof("No default scorecards found. Skipping...")
 	} else {
@@ -50,7 +54,7 @@ func getDefaults() (*Defaults, error) {
 	}
 
 	var appConfig *port.IntegrationAppConfig
-	file, err = os.ReadFile("./assets/defaults/appConfig.yaml")
+	file, err = os.ReadFile(AppConfigAsset)
 	if err != nil {
 		klog.Infof("No default appConfig found. Skipping...")
 	} else {
@@ -67,6 +71,11 @@ func getDefaults() (*Defaults, error) {
 	}, nil
 }
 
+// deconstructBlueprintsToCreationSteps takes a list of blueprints and returns a list of blueprints with only the
+// required fields for creation, a list of blueprints with the required fields for creation and relations, and a list
+// of blueprints with all fields for creation, relations, and calculation properties.
+// This is done because there might be a case where a blueprint has a relation to another blueprint that
+// hasn't been created yet.
 func deconstructBlueprintsToCreationSteps(rawBlueprints []port.Blueprint) ([]port.Blueprint, [][]port.Blueprint) {
 	var (
 		bareBlueprints []port.Blueprint
@@ -74,7 +83,7 @@ func deconstructBlueprintsToCreationSteps(rawBlueprints []port.Blueprint) ([]por
 		fullBlueprints []port.Blueprint
 	)
 
-	for _, bp := range append([]port.Blueprint{}, rawBlueprints...) {
+	for _, bp := range rawBlueprints {
 		bareBlueprint := port.Blueprint{
 			Identifier:  bp.Identifier,
 			Title:       bp.Title,
@@ -89,7 +98,7 @@ func deconstructBlueprintsToCreationSteps(rawBlueprints []port.Blueprint) ([]por
 		withRelations = append(withRelations, withRelation)
 
 		fullBlueprint := withRelation
-		fullBlueprint.FormulaProperties = bp.FormulaProperties
+		fullBlueprint.CalculationProperties = bp.CalculationProperties
 		fullBlueprint.MirrorProperties = bp.MirrorProperties
 		fullBlueprints = append(fullBlueprints, fullBlueprint)
 	}
@@ -109,7 +118,7 @@ func (e *AbortDefaultCreationError) Error() string {
 func validateBlueprintErrors(createdBlueprints []string, blueprintErrors []error) *AbortDefaultCreationError {
 	if len(blueprintErrors) > 0 {
 		for _, err := range blueprintErrors {
-			log.Printf("Failed to create resources: %v.", err.Error())
+			klog.Infof("Failed to create resources: %v.", err.Error())
 		}
 		return &AbortDefaultCreationError{BlueprintsToRollback: createdBlueprints, Errors: blueprintErrors}
 	}
@@ -171,7 +180,7 @@ func createResources(portClient *cli.PortClient, defaults *Defaults, config *por
 			waitGroup.Add(1)
 			go func(blueprintIdentifier string, scorecard port.Scorecard) {
 				defer waitGroup.Done()
-				if _, err := scorecards.NewScorecard(portClient, blueprintIdentifier, scorecard); err != nil {
+				if err := scorecards.CreateScorecard(portClient, blueprintIdentifier, scorecard); err != nil {
 					blueprintErrors = append(blueprintErrors, err)
 				}
 			}(blueprintScorecards.Blueprint, scorecard)
@@ -183,7 +192,7 @@ func createResources(portClient *cli.PortClient, defaults *Defaults, config *por
 		return err
 	}
 
-	if err := integration.NewIntegration(portClient, config.StateKey, config.EventListenerType, defaults.AppConfig); err != nil {
+	if err := integration.CreateIntegration(portClient, config.StateKey, config.EventListenerType, defaults.AppConfig); err != nil {
 		log.Printf("Failed to create resources: %v.", err.Error())
 		return &AbortDefaultCreationError{BlueprintsToRollback: createdBlueprints, Errors: []error{err}}
 	}
@@ -198,20 +207,19 @@ func initializeDefaults(portClient *cli.PortClient, config *port.Config) error {
 	}
 
 	if err := createResources(portClient, defaults, config); err != nil {
-		if err != nil {
-			log.Printf("Failed to create resources. Rolling back blueprints: %v", err.BlueprintsToRollback)
-			var rollbackWg sync.WaitGroup
-			for _, identifier := range err.BlueprintsToRollback {
-				rollbackWg.Add(1)
-				go func(identifier string) {
-					defer rollbackWg.Done()
-					_ = blueprint.DeleteBlueprint(portClient, identifier)
-				}(identifier)
-			}
-			rollbackWg.Wait()
-			return &ExceptionGroup{Message: err.Error(), Errors: err.Errors}
+		log.Printf("Failed to create resources. Rolling back blueprints: %v", err.BlueprintsToRollback)
+		var rollbackWg sync.WaitGroup
+		for _, identifier := range err.BlueprintsToRollback {
+			rollbackWg.Add(1)
+			go func(identifier string) {
+				defer rollbackWg.Done()
+				if err := blueprint.DeleteBlueprint(portClient, identifier); err != nil {
+					klog.Warningf("Failed to rollback blueprint %s creation: %v", identifier, err)
+				}
+			}(identifier)
 		}
-		return fmt.Errorf("unknown error during resource creation")
+		rollbackWg.Wait()
+		return &ExceptionGroup{Message: err.Error(), Errors: err.Errors}
 	}
 
 	return nil

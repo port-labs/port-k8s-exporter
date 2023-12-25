@@ -52,20 +52,6 @@ func (c *PortClient) GetIntegration(stateKey string) (*port.Integration, error) 
 	return &pb.Integration, nil
 }
 
-func (c *PortClient) GetIntegrationConfig(stateKey string) (*port.IntegrationAppConfig, error) {
-	pb := &port.ResponseBody{}
-	resp, err := c.Client.R().
-		SetResult(&pb).
-		Get(fmt.Sprintf("v1/integration/%s", stateKey))
-	if err != nil {
-		return nil, err
-	}
-	if !pb.OK {
-		return nil, fmt.Errorf("failed to get integration config, got: %s", resp.Body())
-	}
-	return pb.Integration.Config, nil
-}
-
 func (c *PortClient) DeleteIntegration(stateKey string) error {
 	resp, err := c.Client.R().
 		Delete(fmt.Sprintf("v1/integration/%s", stateKey))

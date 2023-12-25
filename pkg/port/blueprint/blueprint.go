@@ -13,7 +13,7 @@ func NewBlueprint(portClient *cli.PortClient, blueprint port.Blueprint) (*port.B
 		return nil, fmt.Errorf("error authenticating with Port: %v", err)
 	}
 
-	bp, err := cli.NewBlueprint(portClient, blueprint)
+	bp, err := cli.CreateBlueprint(portClient, blueprint)
 	if err != nil {
 		return nil, fmt.Errorf("error creating Port blueprint: %v", err)
 	}

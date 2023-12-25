@@ -6,8 +6,6 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/defaults"
 	"github.com/port-labs/port-k8s-exporter/pkg/event_handler"
-	"github.com/port-labs/port-k8s-exporter/pkg/event_handler/consumer"
-	"github.com/port-labs/port-k8s-exporter/pkg/event_handler/polling"
 	"github.com/port-labs/port-k8s-exporter/pkg/handlers"
 	"github.com/port-labs/port-k8s-exporter/pkg/k8s"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
@@ -35,42 +33,11 @@ func initiateHandler(exporterConfig *port.Config, k8sClient *k8s.Client, portCli
 	return newHandler, nil
 }
 
-func createEventListener(stateKey string, eventListenerType string, portClient *cli.PortClient) (event_handler.IListener, error) {
-	klog.Infof("Received event listener type: %s", eventListenerType)
-	switch eventListenerType {
-	case "KAFKA":
-		return consumer.NewEventListener(stateKey, portClient)
-	case "POLLING":
-		return polling.NewEventListener(stateKey, portClient), nil
-	default:
-		return nil, fmt.Errorf("unknown event listener type: %s", eventListenerType)
-	}
-}
-
-func getApplicationConfig() *port.Config {
-	appConfig, err := config.GetConfigFile(config.ApplicationConfig.ConfigFilePath)
-	var fileNotFoundError *config.FileNotFoundError
-	if errors.As(err, &fileNotFoundError) {
-		appConfig = &port.Config{
-			StateKey:               config.ApplicationConfig.StateKey,
-			EventListenerType:      config.ApplicationConfig.EventListenerType,
-			CreateDefaultResources: config.ApplicationConfig.CreateDefaultResources,
-		}
-	}
-
-	if config.ApplicationConfig.ResyncInterval != 0 {
-		appConfig.ResyncInterval = config.ApplicationConfig.ResyncInterval
-	}
-
-	return appConfig
-}
-
 func main() {
 	klog.InitFlags(nil)
 
 	k8sConfig := k8s.NewKubeConfig()
-
-	applicationConfig := getApplicationConfig()
+	applicationConfig := config.NewConfiguration()
 
 	clientConfig, err := k8sConfig.ClientConfig()
 	if err != nil {
@@ -95,7 +62,7 @@ func main() {
 		klog.Fatalf("Error initializing Port integration: %s", err.Error())
 	}
 
-	eventListener, err := createEventListener(applicationConfig.StateKey, applicationConfig.EventListenerType, portClient)
+	eventListener, err := event_handler.CreateEventListener(applicationConfig.StateKey, applicationConfig.EventListenerType, portClient)
 	if err != nil {
 		klog.Fatalf("Error creating event listener: %s", err.Error())
 	}

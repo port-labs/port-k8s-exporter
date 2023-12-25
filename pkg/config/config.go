@@ -1,8 +1,10 @@
 package config
 
 import (
+	"errors"
 	"flag"
 	"github.com/joho/godotenv"
+	"github.com/port-labs/port-k8s-exporter/pkg/port"
 )
 
 var KafkaConfig = &KafkaConfiguration{}
@@ -33,4 +35,22 @@ func Init() {
 	NewBool(&ApplicationConfig.CreateDefaultResources, "create-default-resources", true, "Create default resources on installation. Optional.")
 
 	flag.Parse()
+}
+
+func NewConfiguration() *port.Config {
+	c, err := GetConfigFile(ApplicationConfig.ConfigFilePath)
+	var fileNotFoundError *FileNotFoundError
+	if errors.As(err, &fileNotFoundError) {
+		c = &port.Config{
+			StateKey:               ApplicationConfig.StateKey,
+			EventListenerType:      ApplicationConfig.EventListenerType,
+			CreateDefaultResources: ApplicationConfig.CreateDefaultResources,
+		}
+	}
+
+	if ApplicationConfig.ResyncInterval != 0 {
+		c.ResyncInterval = ApplicationConfig.ResyncInterval
+	}
+
+	return c
 }

@@ -5,7 +5,7 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 )
 
-func NewBlueprint(portClient *PortClient, blueprint port.Blueprint) (*port.Blueprint, error) {
+func CreateBlueprint(portClient *PortClient, blueprint port.Blueprint) (*port.Blueprint, error) {
 	pb := &port.ResponseBody{}
 	resp, err := portClient.Client.R().
 		SetResult(&pb).

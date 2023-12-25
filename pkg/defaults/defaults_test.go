@@ -19,6 +19,16 @@ type Fixture struct {
 	stateKey   string
 }
 
+func checkBlueprintsDoesNotExist(f *Fixture, blueprints []string) {
+	for _, bp := range blueprints {
+		_, err := blueprint.GetBlueprint(f.portClient, bp)
+		if err != nil {
+			_ = blueprint.DeleteBlueprint(f.portClient, bp)
+		}
+		assert.NotNil(f.t, err)
+	}
+}
+
 func NewFixture(t *testing.T) *Fixture {
 	stateKey := guuid.NewString()
 	portClient, err := cli.New(config.ApplicationConfig.PortBaseURL, cli.WithHeader("User-Agent", fmt.Sprintf("port-k8s-exporter/0.1 (statekey/%s)", stateKey)),
@@ -27,7 +37,7 @@ func NewFixture(t *testing.T) *Fixture {
 		t.Errorf("Error building Port client: %s", err.Error())
 	}
 
-	_ = integration.DeleteIntegration(portClient, stateKey)
+	deleteDefaultResources(portClient, stateKey)
 	return &Fixture{
 		t:          t,
 		portClient: portClient,
@@ -36,7 +46,7 @@ func NewFixture(t *testing.T) *Fixture {
 }
 
 func (f *Fixture) CreateIntegration() {
-	err := integration.NewIntegration(f.portClient, f.stateKey, "", &port.IntegrationAppConfig{
+	err := integration.CreateIntegration(f.portClient, f.stateKey, "", &port.IntegrationAppConfig{
 		Resources: []port.Resource{},
 	})
 
@@ -49,7 +59,7 @@ func (f *Fixture) CleanIntegration() {
 	_ = integration.DeleteIntegration(f.portClient, f.stateKey)
 }
 
-func deleteDefaultResources(t *testing.T, portClient *cli.PortClient, stateKey string) {
+func deleteDefaultResources(portClient *cli.PortClient, stateKey string) {
 	_ = integration.DeleteIntegration(portClient, stateKey)
 	_ = blueprint.DeleteBlueprint(portClient, "workload")
 	_ = blueprint.DeleteBlueprint(portClient, "namespace")
@@ -58,7 +68,7 @@ func deleteDefaultResources(t *testing.T, portClient *cli.PortClient, stateKey s
 
 func Test_InitIntegration_InitDefaults(t *testing.T) {
 	f := NewFixture(t)
-	defer deleteDefaultResources(t, f.portClient, f.stateKey)
+	defer deleteDefaultResources(f.portClient, f.stateKey)
 	e := InitIntegration(f.portClient, &port.Config{
 		StateKey:               f.stateKey,
 		EventListenerType:      "POLLING",
@@ -79,9 +89,25 @@ func Test_InitIntegration_InitDefaults(t *testing.T) {
 	assert.Nil(t, err)
 }
 
+func Test_InitIntegration_InitDefaults_CreateDefaultResources_False(t *testing.T) {
+	f := NewFixture(t)
+	defer deleteDefaultResources(f.portClient, f.stateKey)
+	e := InitIntegration(f.portClient, &port.Config{
+		StateKey:               f.stateKey,
+		EventListenerType:      "POLLING",
+		CreateDefaultResources: false,
+	})
+	assert.Nil(t, e)
+
+	_, err := integration.GetIntegration(f.portClient, f.stateKey)
+	assert.Nil(t, err)
+
+	checkBlueprintsDoesNotExist(f, []string{"workload", "namespace", "cluster"})
+}
+
 func Test_InitIntegration_FailingInitDefaults(t *testing.T) {
 	f := NewFixture(t)
-	defer deleteDefaultResources(t, f.portClient, f.stateKey)
+	defer deleteDefaultResources(f.portClient, f.stateKey)
 	if _, err := blueprint.NewBlueprint(f.portClient, port.Blueprint{
 		Identifier: "workload",
 		Title:      "Workload",
@@ -102,23 +128,13 @@ func Test_InitIntegration_FailingInitDefaults(t *testing.T) {
 	assert.True(t, nil == i.Config.Resources)
 	assert.Nil(t, err)
 
-	_, err = blueprint.GetBlueprint(f.portClient, "namespace")
-	if err != nil {
-		_ = blueprint.DeleteBlueprint(f.portClient, "namespace")
-	}
-	assert.NotNil(t, err)
-
-	_, err = blueprint.GetBlueprint(f.portClient, "cluster")
-	if err != nil {
-		_ = blueprint.DeleteBlueprint(f.portClient, "cluster")
-	}
-	assert.NotNil(t, err)
+	checkBlueprintsDoesNotExist(f, []string{"namespace", "cluster"})
 }
 
 func Test_InitIntegration_DeprecatedResourcesConfiguration(t *testing.T) {
 	f := NewFixture(t)
-	defer deleteDefaultResources(t, f.portClient, f.stateKey)
-	err := integration.NewIntegration(f.portClient, f.stateKey, "", nil)
+	defer deleteDefaultResources(f.portClient, f.stateKey)
+	err := integration.CreateIntegration(f.portClient, f.stateKey, "", nil)
 	if err != nil {
 		t.Errorf("Error creating Port integration: %s", err.Error())
 	}
@@ -153,29 +169,13 @@ func Test_InitIntegration_DeprecatedResourcesConfiguration(t *testing.T) {
 	assert.Equal(t, expectedResources, i.Config.Resources)
 	assert.Nil(t, err)
 
-	_, err = blueprint.GetBlueprint(f.portClient, "workload")
-	if err != nil {
-		_ = blueprint.DeleteBlueprint(f.portClient, "namespace")
-	}
-	assert.NotNil(t, err)
-
-	_, err = blueprint.GetBlueprint(f.portClient, "namespace")
-	if err != nil {
-		_ = blueprint.DeleteBlueprint(f.portClient, "namespace")
-	}
-	assert.NotNil(t, err)
-
-	_, err = blueprint.GetBlueprint(f.portClient, "cluster")
-	if err != nil {
-		_ = blueprint.DeleteBlueprint(f.portClient, "cluster")
-	}
-	assert.NotNil(t, err)
+	checkBlueprintsDoesNotExist(f, []string{"workload", "namespace", "cluster"})
 }
 
 func Test_InitIntegration_DeprecatedResourcesConfiguration_ExistingIntegration_EmptyConfiguration(t *testing.T) {
 	f := NewFixture(t)
-	defer deleteDefaultResources(t, f.portClient, f.stateKey)
-	err := integration.NewIntegration(f.portClient, f.stateKey, "POLLING", nil)
+	defer deleteDefaultResources(f.portClient, f.stateKey)
+	err := integration.CreateIntegration(f.portClient, f.stateKey, "POLLING", nil)
 	if err != nil {
 		t.Errorf("Error creating Port integration: %s", err.Error())
 	}
@@ -191,21 +191,5 @@ func Test_InitIntegration_DeprecatedResourcesConfiguration_ExistingIntegration_E
 	assert.Nil(t, err)
 	assert.Equal(t, "KAFKA", i.EventListener.Type)
 
-	_, err = blueprint.GetBlueprint(f.portClient, "workload")
-	if err != nil {
-		_ = blueprint.DeleteBlueprint(f.portClient, "namespace")
-	}
-	assert.NotNil(t, err)
-
-	_, err = blueprint.GetBlueprint(f.portClient, "namespace")
-	if err != nil {
-		_ = blueprint.DeleteBlueprint(f.portClient, "namespace")
-	}
-	assert.NotNil(t, err)
-
-	_, err = blueprint.GetBlueprint(f.portClient, "cluster")
-	if err != nil {
-		_ = blueprint.DeleteBlueprint(f.portClient, "cluster")
-	}
-	assert.NotNil(t, err)
+	checkBlueprintsDoesNotExist(f, []string{"workload", "namespace", "cluster"})
 }
