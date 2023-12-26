@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/joho/godotenv"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
+	"strings"
 )
 
 var KafkaConfig = &KafkaConfiguration{}
@@ -61,6 +62,8 @@ func NewConfiguration() (*port.Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed loading configuration: %w", err)
 	}
+
+	c.StateKey = strings.ToLower(c.StateKey)
 
 	return c, nil
 }
