@@ -37,7 +37,10 @@ func main() {
 	klog.InitFlags(nil)
 
 	k8sConfig := k8s.NewKubeConfig()
-	applicationConfig := config.NewConfiguration()
+	applicationConfig, err := config.NewConfiguration()
+	if err != nil {
+		klog.Fatalf("Error getting application config: %s", err.Error())
+	}
 
 	clientConfig, err := k8sConfig.ClientConfig()
 	if err != nil {

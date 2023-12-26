@@ -1,8 +1,10 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"github.com/joho/godotenv"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 )
@@ -37,20 +39,28 @@ func Init() {
 	flag.Parse()
 }
 
-func NewConfiguration() *port.Config {
+func NewConfiguration() (*port.Config, error) {
+	overrides := &port.Config{
+		StateKey:               ApplicationConfig.StateKey,
+		EventListenerType:      ApplicationConfig.EventListenerType,
+		CreateDefaultResources: ApplicationConfig.CreateDefaultResources,
+		ResyncInterval:         ApplicationConfig.ResyncInterval,
+	}
+
 	c, err := GetConfigFile(ApplicationConfig.ConfigFilePath)
 	var fileNotFoundError *FileNotFoundError
 	if errors.As(err, &fileNotFoundError) {
-		c = &port.Config{
-			StateKey:               ApplicationConfig.StateKey,
-			EventListenerType:      ApplicationConfig.EventListenerType,
-			CreateDefaultResources: ApplicationConfig.CreateDefaultResources,
-		}
+		return overrides, nil
+	}
+	v, err := json.Marshal(overrides)
+	if err != nil {
+		return nil, fmt.Errorf("failed loading configuration: %w", err)
 	}
 
-	if ApplicationConfig.ResyncInterval != 0 {
-		c.ResyncInterval = ApplicationConfig.ResyncInterval
+	err = json.Unmarshal(v, &c)
+	if err != nil {
+		return nil, fmt.Errorf("failed loading configuration: %w", err)
 	}
 
-	return c
+	return c, nil
 }
