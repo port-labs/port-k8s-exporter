@@ -1,9 +1,5 @@
 FROM golang:1.21-alpine
 
-ENV LIBRDKAFKA_VERSION 2.3.0
-
-RUN apk add --no-cache wget make g++ openssl-dev autoconf automake libtool curl librdkafka-dev
-
 USER nonroot:nonroot
 
 ENTRYPOINT ["/usr/bin/port-k8s-exporter"]
