@@ -2,24 +2,26 @@ before:
   hooks:
     - go mod tidy
 builds:
-- id: linux-build
-  env:
+- env:
   - CGO_ENABLED=1
   binary: "{{ .ProjectName }}"
   goos:
   - linux
   goarch:
   - amd64
-- id: darwin-build
+- id: arm
+  flags:
+  - -tags=musl
+  ldflags:
+  - -extldflags=-static
   env:
   - CGO_ENABLED=1
-  - CC=/home/runner/work/osxcross/target/bin/o64-clang
-  - CXX=/home/runner/work/osxcross/target/bin/o64-clang++
+  - CC=/home/runner/work/musl-cross/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc
+  binary: "{{ .ProjectName }}"
   goos:
-  - darwin
-  ignore:
-  - goos: darwin
-    goarch: 386
+  - linux
+  goarch:
+  - arm64
 dockers:
 - image_templates:
   - "{{ .Env.REGISTRY }}/{{ .Env.IMAGE_NAME }}:{{ .Version }}-amd64"

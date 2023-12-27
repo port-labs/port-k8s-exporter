@@ -1,7 +1,7 @@
 package consumer
 
 import (
-	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"k8s.io/klog/v2"
 	"os"
