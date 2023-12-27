@@ -1,4 +1,4 @@
-FROM golang:1.19-alpine
+FROM golang:1.21-alpine
 
 ENV LIBRDKAFKA_VERSION 2.3.0
 
