@@ -28,13 +28,13 @@ type (
 	}
 
 	Integration struct {
-		InstallationId      string                `json:"installationId,omitempty"`
-		Title               string                `json:"title,omitempty"`
-		Version             string                `json:"version,omitempty"`
-		InstallationAppType string                `json:"installationAppType,omitempty"`
-		EventListener       EventListenerSettings `json:"changelogDestination,omitempty"`
-		Config              *AppConfig            `json:"config,omitempty"`
-		UpdatedAt           *time.Time            `json:"updatedAt,omitempty"`
+		InstallationId      string                 `json:"installationId,omitempty"`
+		Title               string                 `json:"title,omitempty"`
+		Version             string                 `json:"version,omitempty"`
+		InstallationAppType string                 `json:"installationAppType,omitempty"`
+		EventListener       *EventListenerSettings `json:"changelogDestination,omitempty"`
+		Config              *IntegrationAppConfig  `json:"config,omitempty"`
+		UpdatedAt           *time.Time             `json:"updatedAt,omitempty"`
 	}
 
 	BlueprintProperty struct {
@@ -57,10 +57,24 @@ type (
 		Path       string `json:"path,omitempty"`
 	}
 
-	BlueprintFormulaProperty struct {
-		Identifier string `json:"identifier,omitempty"`
-		Title      string `json:"title,omitempty"`
-		Formula    string `json:"formula,omitempty"`
+	BlueprintCalculationProperty struct {
+		Identifier  string            `json:"identifier,omitempty"`
+		Title       string            `json:"title,omitempty"`
+		Calculation string            `json:"calculation,omitempty"`
+		Colors      map[string]string `json:"colors,omitempty"`
+		Colorized   bool              `json:"colorized,omitempty"`
+		Format      string            `json:"format,omitempty"`
+		Type        string            `json:"type,omitempty"`
+	}
+
+	BlueprintAggregationProperty struct {
+		Title           string      `json:"title"`
+		Target          string      `json:"target"`
+		CalculationSpec interface{} `json:"calculationSpec"`
+		Query           interface{} `json:"query,omitempty"`
+		Description     string      `json:"description,omitempty"`
+		Icon            string      `json:"icon,omitempty"`
+		Type            string      `json:"type,omitempty"`
 	}
 
 	BlueprintSchema struct {
@@ -82,15 +96,16 @@ type (
 
 	Blueprint struct {
 		Meta
-		Identifier           string                              `json:"identifier,omitempty"`
-		Title                string                              `json:"title"`
-		Icon                 string                              `json:"icon"`
-		Description          string                              `json:"description"`
-		Schema               BlueprintSchema                     `json:"schema"`
-		FormulaProperties    map[string]BlueprintFormulaProperty `json:"formulaProperties"`
-		MirrorProperties     map[string]BlueprintMirrorProperty  `json:"mirrorProperties,omitempty"`
-		ChangelogDestination *ChangelogDestination               `json:"changelogDestination,omitempty"`
-		Relations            map[string]Relation                 `json:"relations,omitempty"`
+		Identifier            string                                  `json:"identifier,omitempty"`
+		Title                 string                                  `json:"title,omitempty"`
+		Icon                  string                                  `json:"icon"`
+		Description           string                                  `json:"description"`
+		Schema                BlueprintSchema                         `json:"schema"`
+		CalculationProperties map[string]BlueprintCalculationProperty `json:"calculationProperties,omitempty"`
+		AggregationProperties map[string]BlueprintAggregationProperty `json:"aggregationProperties,omitempty"`
+		MirrorProperties      map[string]BlueprintMirrorProperty      `json:"mirrorProperties,omitempty"`
+		ChangelogDestination  *ChangelogDestination                   `json:"changelogDestination,omitempty"`
+		Relations             map[string]Relation                     `json:"relations,omitempty"`
 	}
 
 	Action struct {
@@ -102,6 +117,13 @@ type (
 		UserInputs       ActionUserInputs  `json:"userInputs"`
 		Trigger          string            `json:"trigger"`
 		InvocationMethod *InvocationMethod `json:"invocationMethod,omitempty"`
+	}
+
+	Scorecard struct {
+		Identifier string        `json:"identifier,omitempty"`
+		Title      string        `json:"title,omitempty"`
+		Filter     interface{}   `json:"filter,omitempty"`
+		Rules      []interface{} `json:"rules,omitempty"`
 	}
 
 	Relation struct {
@@ -142,6 +164,7 @@ type ResponseBody struct {
 	Integration      Integration         `json:"integration"`
 	KafkaCredentials OrgKafkaCredentials `json:"credentials"`
 	OrgDetails       OrgDetails          `json:"organization"`
+	Scorecard        Scorecard           `json:"scorecard"`
 }
 
 type EntityMapping struct {
@@ -185,16 +208,21 @@ type AggregatedResource struct {
 	KindConfigs []KindConfig
 }
 
-type AppConfig struct {
+type IntegrationAppConfig struct {
 	DeleteDependents             bool       `json:"deleteDependents,omitempty"`
 	CreateMissingRelatedEntities bool       `json:"createMissingRelatedEntities,omitempty"`
-	Resources                    []Resource `json:"resources"`
+	Resources                    []Resource `json:"resources,omitempty"`
 }
 
 type Config struct {
-	ResyncInterval    uint
-	StateKey          string
-	EventListenerType string
-	// Deprecated: use AppConfig instead. Used for updating the Port integration config on startup.
-	Resources []Resource
+	ResyncInterval         uint
+	StateKey               string
+	EventListenerType      string
+	CreateDefaultResources bool
+	// Deprecated: use IntegrationAppConfig instead. Used for updating the Port integration config on startup.
+	Resources []Resource `json:"resources,omitempty"`
+	// Deprecated: use IntegrationAppConfig instead. Used for updating the Port integration config on startup.
+	DeleteDependents bool `json:"deleteDependents,omitempty"`
+	// Deprecated: use IntegrationAppConfig instead. Used for updating the Port integration config on startup.
+	CreateMissingRelatedEntities bool `json:"createMissingRelatedEntities,omitempty"`
 }

@@ -1,0 +1,151 @@
+[
+  {
+    "identifier": "cluster",
+    "description": "This blueprint represents a Kubernetes Cluster",
+    "title": "Cluster",
+    "icon": "Cluster",
+    "schema": {
+      "properties": {},
+      "required": []
+    },
+    "mirrorProperties": {},
+    "calculationProperties": {},
+    "relations": {}
+  },
+  {
+    "identifier": "namespace",
+    "description": "This blueprint represents a k8s Namespace",
+    "title": "Namespace",
+    "icon": "Environment",
+    "schema": {
+      "properties": {
+        "creationTimestamp": {
+          "type": "string",
+          "title": "Created",
+          "format": "date-time",
+          "description": "When the Namespace was created"
+        },
+        "labels": {
+          "type": "object",
+          "title": "Labels",
+          "description": "Labels of the Namespace"
+        }
+      },
+      "required": []
+    },
+    "mirrorProperties": {},
+    "calculationProperties": {},
+    "relations": {
+      "Cluster": {
+        "title": "Cluster",
+        "description": "The namespace's Kubernetes cluster",
+        "target": "cluster",
+        "required": false,
+        "many": false
+      }
+    }
+  },
+  {
+    "identifier": "workload",
+    "description": "This blueprint represents a k8s Workload. This includes all k8s objects which can create pods (deployments[replicasets], daemonsets, statefulsets...)",
+    "title": "Workload",
+    "icon": "Deployment",
+    "schema": {
+      "properties": {
+        "availableReplicas": {
+          "type": "number",
+          "title": "Running Replicas",
+          "description": "Current running replica count"
+        },
+        "containers": {
+          "type": "array",
+          "title": "Containers",
+          "default": [],
+          "description": "The containers for each pod instance of the Workload"
+        },
+        "creationTimestamp": {
+          "type": "string",
+          "title": "Created",
+          "format": "date-time",
+          "description": "When the Workload was created"
+        },
+        "labels": {
+          "type": "object",
+          "title": "Labels",
+          "description": "Labels of the Workload"
+        },
+        "replicas": {
+          "type": "number",
+          "title": "Wanted Replicas",
+          "description": "Wanted replica count"
+        },
+        "strategy": {
+          "type": "string",
+          "title": "Strategy",
+          "description": "Rollout Strategy"
+        },
+        "hasPrivileged": {
+          "type": "boolean",
+          "title": "Has Privileged Container"
+        },
+        "hasLatest": {
+          "type": "boolean",
+          "title": "Has 'latest' tag",
+          "description": "Has Container with 'latest' as image tag"
+        },
+        "hasLimits": {
+          "type": "boolean",
+          "title": "All containers have limits"
+        },
+        "isHealthy": {
+          "type": "string",
+          "enum": [
+            "Healthy",
+            "Unhealthy"
+          ],
+          "enumColors": {
+            "Healthy": "green",
+            "Unhealthy": "red"
+          },
+          "title": "Workload Health"
+        },
+        "kind": {
+          "title": "Workload Kind",
+          "description": "The kind of Workload",
+          "type": "string",
+          "enum": [
+            "StatefulSet",
+            "DaemonSet",
+            "Deployment",
+            "Rollout"
+          ]
+        },
+        "strategyConfig": {
+          "type": "object",
+          "title": "Strategy Config",
+          "description": "The workloads rollout strategy"
+        }
+      },
+      "required": []
+    },
+    "mirrorProperties": {
+      "Cluster": {
+        "title": "Cluster",
+        "path": "Namespace.Cluster.$title"
+      },
+      "namespace": {
+        "title": "Namespace",
+        "path": "Namespace.$title"
+      }
+    },
+    "calculationProperties": {},
+    "relations": {
+      "Namespace": {
+        "title": "Namespace",
+        "target": "namespace",
+        "required": false,
+        "many": false
+      }
+    }
+  }
+]

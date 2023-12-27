@@ -1,11 +1,25 @@
 package config
 
+import (
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"github.com/joho/godotenv"
+	"github.com/port-labs/port-k8s-exporter/pkg/port"
+	"strings"
+)
+
 var KafkaConfig = &KafkaConfiguration{}
 var PollingListenerRate uint
 
 var ApplicationConfig = &ApplicationConfiguration{}
 
 func Init() {
+	_ = godotenv.Load()
+
+	NewString(&ApplicationConfig.EventListenerType, "event-listener-type", "POLLING", "Event listener type, can be either POLLING or KAFKA. Optional.")
+
 	// Kafka listener Configuration
 	NewString(&KafkaConfig.Brokers, "event-listener-brokers", "localhost:9092", "Kafka event listener brokers")
 	NewString(&KafkaConfig.SecurityProtocol, "event-listener-security-protocol", "plaintext", "Kafka event listener security protocol")
@@ -21,5 +35,41 @@ func Init() {
 	NewString(&ApplicationConfig.PortBaseURL, "port-base-url", "https://api.getport.io", "Port base URL. Optional.")
 	NewString(&ApplicationConfig.PortClientId, "port-client-id", "", "Port client id. Required.")
 	NewString(&ApplicationConfig.PortClientSecret, "port-client-secret", "", "Port client secret. Required.")
-	NewString(&ApplicationConfig.EventListenerType, "event-listener-type", "POLLING", "Event listener type, can be either POLLING or KAFKA. Optional.")
+	NewBool(&ApplicationConfig.CreateDefaultResources, "create-default-resources", true, "Create default resources on installation. Optional.")
+
+	// Deprecated
+	NewBool(&ApplicationConfig.DeleteDependents, "delete-dependents", false, "Delete dependents. Optional.")
+	NewBool(&ApplicationConfig.CreateMissingRelatedEntities, "create-missing-related-entities", false, "Create missing related entities. Optional.")
+
+	flag.Parse()
+}
+
+func NewConfiguration() (*port.Config, error) {
+	overrides := &port.Config{
+		StateKey:                     ApplicationConfig.StateKey,
+		EventListenerType:            ApplicationConfig.EventListenerType,
+		CreateDefaultResources:       ApplicationConfig.CreateDefaultResources,
+		ResyncInterval:               ApplicationConfig.ResyncInterval,
+		CreateMissingRelatedEntities: ApplicationConfig.CreateMissingRelatedEntities,
+		DeleteDependents:             ApplicationConfig.DeleteDependents,
+	}
+
+	c, err := GetConfigFile(ApplicationConfig.ConfigFilePath)
+	var fileNotFoundError *FileNotFoundError
+	if errors.As(err, &fileNotFoundError) {
+		return overrides, nil
+	}
+	v, err := json.Marshal(overrides)
+	if err != nil {
+		return nil, fmt.Errorf("failed loading configuration: %w", err)
+	}
+
+	err = json.Unmarshal(v, &c)
+	if err != nil {
+		return nil, fmt.Errorf("failed loading configuration: %w", err)
+	}
+
+	c.StateKey = strings.ToLower(c.StateKey)
+
+	return c, nil
 }

@@ -1,13 +1,14 @@
 package k8s
 
 import (
+	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
+	_ "github.com/port-labs/port-k8s-exporter/test_utils"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	k8sfake "k8s.io/client-go/dynamic/fake"
-	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -33,12 +34,12 @@ func newFixture(t *testing.T, portClientId string, portClientSecret string, reso
 	kubeclient := k8sfake.NewSimpleDynamicClient(runtime.NewScheme())
 
 	if portClientId == "" {
-		portClientId = os.Getenv("PORT_CLIENT_ID")
+		portClientId = config.ApplicationConfig.PortClientId
 	}
 	if portClientSecret == "" {
-		portClientSecret = os.Getenv("PORT_CLIENT_SECRET")
+		portClientSecret = config.ApplicationConfig.PortClientSecret
 	}
-	portClient, err := cli.New("https://api.getport.io", cli.WithHeader("User-Agent", "port-k8s-exporter/0.1"),
+	portClient, err := cli.New(config.ApplicationConfig.PortBaseURL, cli.WithHeader("User-Agent", "port-k8s-exporter/0.1"),
 		cli.WithClientID(portClientId), cli.WithClientSecret(portClientSecret))
 	if err != nil {
 		t.Errorf("Error building Port client: %s", err.Error())

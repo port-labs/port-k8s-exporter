@@ -1,5 +1,7 @@
 package config
 
+import "github.com/port-labs/port-k8s-exporter/pkg/port"
+
 type KafkaConfiguration struct {
 	Brokers                 string
 	SecurityProtocol        string
@@ -11,11 +13,18 @@ type KafkaConfiguration struct {
 }
 
 type ApplicationConfiguration struct {
-	ConfigFilePath    string
-	StateKey          string
-	ResyncInterval    uint
-	PortBaseURL       string
-	PortClientId      string
-	PortClientSecret  string
-	EventListenerType string
+	ConfigFilePath         string
+	StateKey               string
+	ResyncInterval         uint
+	PortBaseURL            string
+	PortClientId           string
+	PortClientSecret       string
+	EventListenerType      string
+	CreateDefaultResources bool
+	// Deprecated: use IntegrationAppConfig instead. Used for updating the Port integration config on startup.
+	Resources []port.Resource
+	// Deprecated: use IntegrationAppConfig instead. Used for updating the Port integration config on startup.
+	DeleteDependents bool `json:"deleteDependents,omitempty"`
+	// Deprecated: use IntegrationAppConfig instead. Used for updating the Port integration config on startup.
+	CreateMissingRelatedEntities bool `json:"createMissingRelatedEntities,omitempty"`
 }

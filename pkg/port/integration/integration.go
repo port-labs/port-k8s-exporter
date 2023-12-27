@@ -7,17 +7,15 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 )
 
-func NewIntegration(portClient *cli.PortClient, stateKey string, eventListenerType string, resources []port.Resource) error {
+func CreateIntegration(portClient *cli.PortClient, stateKey string, eventListenerType string, appConfig *port.IntegrationAppConfig) error {
 	integration := &port.Integration{
 		Title:               stateKey,
 		InstallationAppType: "K8S EXPORTER",
 		InstallationId:      stateKey,
-		EventListener: port.EventListenerSettings{
+		EventListener: &port.EventListenerSettings{
 			Type: eventListenerType,
 		},
-		Config: &port.AppConfig{
-			Resources: resources,
-		},
+		Config: appConfig,
 	}
 	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
 	if err != nil {
@@ -29,21 +27,6 @@ func NewIntegration(portClient *cli.PortClient, stateKey string, eventListenerTy
 		return fmt.Errorf("error creating Port integration: %v", err)
 	}
 	return nil
-}
-
-// ToDo: remove this function
-func GetIntegrationConfig(portClient *cli.PortClient, stateKey string) (*port.AppConfig, error) {
-	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
-	if err != nil {
-		return nil, fmt.Errorf("error authenticating with Port: %v", err)
-	}
-
-	apiConfig, err := portClient.GetIntegrationConfig(stateKey)
-	if err != nil {
-		return nil, fmt.Errorf("error getting Port integration config: %v", err)
-	}
-
-	return apiConfig, nil
 }
 
 func GetIntegration(portClient *cli.PortClient, stateKey string) (*port.Integration, error) {
@@ -73,15 +56,15 @@ func DeleteIntegration(portClient *cli.PortClient, stateKey string) error {
 	return nil
 }
 
-func UpdateIntegrationConfig(portClient *cli.PortClient, stateKey string, config *port.AppConfig) error {
+func PatchIntegration(portClient *cli.PortClient, stateKey string, integration *port.Integration) error {
 	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
 	if err != nil {
 		return fmt.Errorf("error authenticating with Port: %v", err)
 	}
 
-	err = portClient.UpdateConfig(stateKey, config)
+	err = portClient.PatchIntegration(stateKey, integration)
 	if err != nil {
-		return fmt.Errorf("error updating Port integration config: %v", err)
+		return fmt.Errorf("error updating Port integration: %v", err)
 	}
 	return nil
 }

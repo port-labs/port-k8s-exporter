@@ -14,7 +14,7 @@ func parseIntegration(i *port.Integration) *port.Integration {
 	}
 
 	if i.EventListener.Type == "KAFKA" {
-		x.EventListener = port.EventListenerSettings{
+		x.EventListener = &port.EventListenerSettings{
 			Type: i.EventListener.Type,
 		}
 	}
@@ -52,20 +52,6 @@ func (c *PortClient) GetIntegration(stateKey string) (*port.Integration, error) 
 	return &pb.Integration, nil
 }
 
-func (c *PortClient) GetIntegrationConfig(stateKey string) (*port.AppConfig, error) {
-	pb := &port.ResponseBody{}
-	resp, err := c.Client.R().
-		SetResult(&pb).
-		Get(fmt.Sprintf("v1/integration/%s", stateKey))
-	if err != nil {
-		return nil, err
-	}
-	if !pb.OK {
-		return nil, fmt.Errorf("failed to get integration config, got: %s", resp.Body())
-	}
-	return pb.Integration.Config, nil
-}
-
 func (c *PortClient) DeleteIntegration(stateKey string) error {
 	resp, err := c.Client.R().
 		Delete(fmt.Sprintf("v1/integration/%s", stateKey))
@@ -78,17 +64,12 @@ func (c *PortClient) DeleteIntegration(stateKey string) error {
 	return nil
 }
 
-func (c *PortClient) UpdateConfig(stateKey string, config *port.AppConfig) error {
-	type Config struct {
-		Config *port.AppConfig `json:"config"`
-	}
+func (c *PortClient) PatchIntegration(stateKey string, integration *port.Integration) error {
 	pb := &port.ResponseBody{}
 	resp, err := c.Client.R().
-		SetBody(&Config{
-			Config: config,
-		}).
+		SetBody(integration).
 		SetResult(&pb).
-		Patch(fmt.Sprintf("v1/integration/%s/config", stateKey))
+		Patch(fmt.Sprintf("v1/integration/%s", stateKey))
 	if err != nil {
 		return err
 	}

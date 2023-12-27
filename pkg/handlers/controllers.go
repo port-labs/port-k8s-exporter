@@ -21,7 +21,7 @@ type ControllersHandler struct {
 	stopCh           chan struct{}
 }
 
-func NewControllersHandler(exporterConfig *port.Config, portConfig *port.AppConfig, k8sClient *k8s.Client, portClient *cli.PortClient) *ControllersHandler {
+func NewControllersHandler(exporterConfig *port.Config, portConfig *port.IntegrationAppConfig, k8sClient *k8s.Client, portClient *cli.PortClient) *ControllersHandler {
 	resync := time.Minute * time.Duration(exporterConfig.ResyncInterval)
 	informersFactory := dynamicinformer.NewDynamicSharedInformerFactory(k8sClient.DynamicClient, resync)
 
@@ -48,10 +48,6 @@ func NewControllersHandler(exporterConfig *port.Config, portConfig *port.AppConf
 		informer := informersFactory.ForResource(gvr)
 		controller := k8s.NewController(port.AggregatedResource{Kind: kind, KindConfigs: kindConfigs}, portClient, informer)
 		controllers = append(controllers, controller)
-	}
-
-	if len(controllers) == 0 {
-		klog.Fatalf("Failed to initiate a controller for all resources, exiting...")
 	}
 
 	controllersHandler := &ControllersHandler{

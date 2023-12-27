@@ -5,7 +5,6 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"gopkg.in/yaml.v2"
-	"k8s.io/klog/v2"
 	"k8s.io/utils/strings/slices"
 	"os"
 	"strings"
@@ -17,7 +16,7 @@ func prepareEnvKey(key string) string {
 	newKey := strings.ToUpper(strings.ReplaceAll(key, "-", "_"))
 
 	if slices.Contains(keys, newKey) {
-		klog.Fatalf("Application Error : Found duplicate config key: %s", newKey)
+		panic("Application Error : Found duplicate config key: " + newKey)
 	}
 
 	keys = append(keys, newKey)
@@ -34,6 +33,11 @@ func NewUInt(v *uint, key string, defaultValue uint, description string) {
 	flag.UintVar(v, key, value, description)
 }
 
+func NewBool(v *bool, key string, defaultValue bool, description string) {
+	value := goutils.GetBoolEnvOrDefault(prepareEnvKey(key), defaultValue)
+	flag.BoolVar(v, key, value, description)
+}
+
 type FileNotFoundError struct {
 	s string
 }
@@ -42,12 +46,8 @@ func (e *FileNotFoundError) Error() string {
 	return e.s
 }
 
-func GetConfigFile(filepath string, resyncInterval uint, stateKey string, eventListenerType string) (*port.Config, error) {
-	c := &port.Config{
-		ResyncInterval:    resyncInterval,
-		StateKey:          stateKey,
-		EventListenerType: eventListenerType,
-	}
+func GetConfigFile(filepath string) (*port.Config, error) {
+	c := &port.Config{}
 	config, err := os.ReadFile(filepath)
 	if err != nil {
 		return c, &FileNotFoundError{err.Error()}
