@@ -43,17 +43,17 @@ jobs:
           go-version: 1.21
           cache: true
 
-      - name: OSXCross for CGO Support
+      - name: musl-cross for CGO Support
         run: |
-          mkdir ../../osxcross
+          mkdir ../../musl-cross
           wget -P ~ https://musl.cc/aarch64-linux-musl-cross.tgz
-          tar -xvf ~/aarch64-linux-musl-cross.tgz -C ../../osxcross
+          tar -xvf ~/aarch64-linux-musl-cross.tgz -C ../../musl-cross
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v3
         with:
           version: latest
-          args: release --rm-dist --snapshot
+          args: release --rm-dist
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
