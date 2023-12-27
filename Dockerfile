@@ -1,6 +1,6 @@
 FROM golang:1.19-alpine
 
-RUN apk add --no-cache wget make g++ autoconf automake libtool curl librdkafka-dev
+RUN apk add --no-cache wget make g++ openssl-dev autoconf automake libtool curl librdkafka-dev
 
 USER nonroot:nonroot
 
