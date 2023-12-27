@@ -43,11 +43,6 @@ jobs:
           go-version: 1.19
           cache: true
 
-      - name: OSXCross for CGO Support
-        run: |
-          mkdir ../../osxcross
-          git clone https://github.com/plentico/osxcross-target.git ../../osxcross/target
-
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v3
         with:
