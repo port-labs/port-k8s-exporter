@@ -45,8 +45,9 @@ jobs:
 
       - name: OSXCross for CGO Support
         run: |
+          mkdir ../../osxcross
           wget -P ~ https://musl.cc/aarch64-linux-musl-cross.tgz
-          tar -xvf ~/aarch64-linux-musl-cross.tgz -C ~
+          tar -xvf ~/aarch64-linux-musl-cross.tgz -C ../../osxcross/target
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v3

@@ -14,7 +14,7 @@ builds:
   - -extldflags=-static
   env:
   - CGO_ENABLED=1
-  - CC=~/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc
+  - CC=/home/runner/work/osxcross/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc
   binary: "{{ .ProjectName }}"
   goos:
   - linux
