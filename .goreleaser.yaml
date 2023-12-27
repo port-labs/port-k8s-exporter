@@ -11,6 +11,8 @@ builds:
   goarch:
   - amd64
 - id: darwin-build
+  ldflags:
+  - -s
   env:
   - CGO_ENABLED=1
   - CC=/home/runner/work/osxcross/target/bin/o64-clang
