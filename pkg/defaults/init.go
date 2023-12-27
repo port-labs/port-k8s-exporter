@@ -19,7 +19,9 @@ func getEventListenerConfig(eventListenerType string) *port.EventListenerSetting
 func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config) error {
 	existingIntegration, err := integration.GetIntegration(portClient, applicationConfig.StateKey)
 	defaultIntegrationConfig := &port.IntegrationAppConfig{
-		Resources: applicationConfig.Resources,
+		Resources:                    applicationConfig.Resources,
+		DeleteDependents:             applicationConfig.DeleteDependents,
+		CreateMissingRelatedEntities: applicationConfig.CreateMissingRelatedEntities,
 	}
 
 	if err != nil {
@@ -44,12 +46,8 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config)
 
 		// Handle a deprecated case where resources are provided in config file and integration exists from previous
 		//versions without a config
-		if existingIntegration.Config == nil && defaultIntegrationConfig.Resources != nil {
-			integrationPatch.Config = &port.IntegrationAppConfig{
-				DeleteDependents:             defaultIntegrationConfig.DeleteDependents,
-				CreateMissingRelatedEntities: defaultIntegrationConfig.CreateMissingRelatedEntities,
-				Resources:                    defaultIntegrationConfig.Resources,
-			}
+		if existingIntegration.Config == nil {
+			integrationPatch.Config = defaultIntegrationConfig
 		}
 
 		return integration.PatchIntegration(portClient, applicationConfig.StateKey, integrationPatch)

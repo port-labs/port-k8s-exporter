@@ -50,10 +50,6 @@ func NewControllersHandler(exporterConfig *port.Config, portConfig *port.Integra
 		controllers = append(controllers, controller)
 	}
 
-	if len(controllers) == 0 {
-		klog.Fatalf("Failed to initiate a controller for all resources, exiting...")
-	}
-
 	controllersHandler := &ControllersHandler{
 		controllers:      controllers,
 		informersFactory: informersFactory,

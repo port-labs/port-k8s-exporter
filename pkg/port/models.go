@@ -220,5 +220,9 @@ type Config struct {
 	EventListenerType      string
 	CreateDefaultResources bool
 	// Deprecated: use IntegrationAppConfig instead. Used for updating the Port integration config on startup.
-	Resources []Resource
+	Resources []Resource `json:"resources,omitempty"`
+	// Deprecated: use IntegrationAppConfig instead. Used for updating the Port integration config on startup.
+	DeleteDependents bool `json:"deleteDependents,omitempty"`
+	// Deprecated: use IntegrationAppConfig instead. Used for updating the Port integration config on startup.
+	CreateMissingRelatedEntities bool `json:"createMissingRelatedEntities,omitempty"`
 }

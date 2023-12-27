@@ -37,15 +37,21 @@ func Init() {
 	NewString(&ApplicationConfig.PortClientSecret, "port-client-secret", "", "Port client secret. Required.")
 	NewBool(&ApplicationConfig.CreateDefaultResources, "create-default-resources", true, "Create default resources on installation. Optional.")
 
+	// Deprecated
+	NewBool(&ApplicationConfig.DeleteDependents, "delete-dependents", false, "Delete dependents. Optional.")
+	NewBool(&ApplicationConfig.CreateMissingRelatedEntities, "create-missing-related-entities", false, "Create missing related entities. Optional.")
+
 	flag.Parse()
 }
 
 func NewConfiguration() (*port.Config, error) {
 	overrides := &port.Config{
-		StateKey:               ApplicationConfig.StateKey,
-		EventListenerType:      ApplicationConfig.EventListenerType,
-		CreateDefaultResources: ApplicationConfig.CreateDefaultResources,
-		ResyncInterval:         ApplicationConfig.ResyncInterval,
+		StateKey:                     ApplicationConfig.StateKey,
+		EventListenerType:            ApplicationConfig.EventListenerType,
+		CreateDefaultResources:       ApplicationConfig.CreateDefaultResources,
+		ResyncInterval:               ApplicationConfig.ResyncInterval,
+		CreateMissingRelatedEntities: ApplicationConfig.CreateMissingRelatedEntities,
+		DeleteDependents:             ApplicationConfig.DeleteDependents,
 	}
 
 	c, err := GetConfigFile(ApplicationConfig.ConfigFilePath)

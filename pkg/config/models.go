@@ -23,4 +23,8 @@ type ApplicationConfiguration struct {
 	CreateDefaultResources bool
 	// Deprecated: use IntegrationAppConfig instead. Used for updating the Port integration config on startup.
 	Resources []port.Resource
+	// Deprecated: use IntegrationAppConfig instead. Used for updating the Port integration config on startup.
+	DeleteDependents bool `json:"deleteDependents,omitempty"`
+	// Deprecated: use IntegrationAppConfig instead. Used for updating the Port integration config on startup.
+	CreateMissingRelatedEntities bool `json:"createMissingRelatedEntities,omitempty"`
 }
