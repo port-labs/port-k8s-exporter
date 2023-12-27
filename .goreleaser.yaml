@@ -2,14 +2,24 @@ before:
   hooks:
     - go mod tidy
 builds:
-- env:
+- id: linux-build
+  env:
   - CGO_ENABLED=1
   binary: "{{ .ProjectName }}"
   goos:
   - linux
   goarch:
   - amd64
-  - arm64
+- id: darwin-build
+  env:
+  - CGO_ENABLED=1
+  - CC=/home/runner/work/osxcross/target/bin/o64-clang
+  - CXX=/home/runner/work/osxcross/target/bin/o64-clang++
+  goos:
+  - darwin
+  ignore:
+  - goos: darwin
+    goarch: 386
 dockers:
 - image_templates:
   - "{{ .Env.REGISTRY }}/{{ .Env.IMAGE_NAME }}:{{ .Version }}-amd64"
