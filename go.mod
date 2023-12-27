@@ -1,6 +1,6 @@
 module github.com/port-labs/port-k8s-exporter
 
-go 1.19
+go 1.21.5
 
 require (
 	github.com/confluentinc/confluent-kafka-go v1.9.2
@@ -33,7 +33,6 @@ require (
 	github.com/google/gofuzz v1.1.0 // indirect
 	github.com/imdario/mergo v0.3.6 // indirect
 	github.com/itchyny/timefmt-go v0.1.4 // indirect
-	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/mailru/easyjson v0.7.6 // indirect
@@ -52,7 +51,6 @@ require (
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/protobuf v1.28.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20220803162953-67bda5d908f1 // indirect
 	sigs.k8s.io/json v0.0.0-20220713155537-f223a00ba0e2 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.3 // indirect
