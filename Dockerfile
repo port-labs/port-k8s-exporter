@@ -1,6 +1,6 @@
-FROM gcr.io/distroless/static-debian11
+FROM golang:1.19-alpine
 
-USER nonroot:nonroot
+RUN apk add --no-cache wget make g++ autoconf automake libtool curl librdkafka-dev
 
 ENTRYPOINT ["/usr/bin/port-k8s-exporter"]
 
