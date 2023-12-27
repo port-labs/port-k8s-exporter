@@ -2,15 +2,16 @@ before:
   hooks:
     - go mod tidy
 builds:
-- id: linux-build
-  env:
+- env:
   - CGO_ENABLED=1
   binary: "{{ .ProjectName }}"
   goos:
   - linux
   goarch:
   - amd64
+  - arm64
 - id: darwin-build
+  binary: "{{ .ProjectName }}"
   ldflags:
   - -s
   env:
