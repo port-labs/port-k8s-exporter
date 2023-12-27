@@ -9,7 +9,6 @@ builds:
   - linux
   goarch:
   - amd64
-  - arm64
 - id: darwin-build
   binary: "{{ .ProjectName }}"
   ldflags:
