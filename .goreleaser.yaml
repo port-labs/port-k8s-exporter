@@ -9,6 +9,16 @@ builds:
   - linux
   goarch:
   - amd64
+- id: arm
+  ldflags:
+  - -extldflags=-static
+  env:
+  - CGO_ENABLED=1
+  - CC=~/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc
+  binary: "{{ .ProjectName }}"
+  goos:
+  - linux
+  goarch:
   - arm64
 dockers:
 - image_templates:

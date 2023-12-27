@@ -43,6 +43,11 @@ jobs:
           go-version: 1.21
           cache: true
 
+      - name: OSXCross for CGO Support
+        run: |
+          wget -P ~ https://musl.cc/aarch64-linux-musl-cross.tgz
+          tar -xvf ~/aarch64-linux-musl-cross.tgz -C ~
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v3
         with:
