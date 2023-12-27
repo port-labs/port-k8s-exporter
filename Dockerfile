@@ -1,6 +1,6 @@
 FROM golang:1.19-alpine
 
-ENV LIBRDKAFKA_VERSION 1.9.2
+ENV LIBRDKAFKA_VERSION 2.3.0
 
 RUN apk add --no-cache wget make g++ openssl-dev autoconf automake libtool curl librdkafka-dev
 
