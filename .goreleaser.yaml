@@ -12,6 +12,8 @@ builds:
 - id: arm
   ldflags:
   - -extldflags=-static
+  flags:
+  - -tags musl
   env:
   - CGO_ENABLED=1
   - CC=/home/runner/work/osxcross/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc
