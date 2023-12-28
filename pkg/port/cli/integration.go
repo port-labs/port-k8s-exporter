@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
+	"k8s.io/klog/v2"
 )
 
 func parseIntegration(i *port.Integration) *port.Integration {
@@ -43,6 +44,7 @@ func (c *PortClient) GetIntegration(stateKey string) (*port.Integration, error) 
 	resp, err := c.Client.R().
 		SetResult(&pb).
 		Get(fmt.Sprintf("v1/integration/%s", stateKey))
+	klog.Infof("Integration: %v", pb)
 	if err != nil {
 		return nil, err
 	}
