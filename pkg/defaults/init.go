@@ -1,7 +1,6 @@
 package defaults
 
 import (
-	"fmt"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/integration"
@@ -32,7 +31,7 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config)
 	if err != nil {
 		log.Println(err)
 	}
-	fmt.Println(path)
+	klog.Infof(path)
 
 	if err != nil {
 		klog.Infof("Could not get integration with state key %s, error: %s", applicationConfig.StateKey, err.Error())
