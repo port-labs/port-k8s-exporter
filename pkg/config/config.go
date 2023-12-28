@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/joho/godotenv"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
+	"k8s.io/klog/v2"
 	"strings"
 )
 
@@ -57,8 +58,10 @@ func NewConfiguration() (*port.Config, error) {
 	c, err := GetConfigFile(ApplicationConfig.ConfigFilePath)
 	var fileNotFoundError *FileNotFoundError
 	if errors.As(err, &fileNotFoundError) {
+		klog.Infof("Config file not found, using defaults")
 		return overrides, nil
 	}
+	klog.Infof("Config file found")
 	v, err := json.Marshal(overrides)
 	if err != nil {
 		return nil, fmt.Errorf("failed loading configuration: %w", err)
