@@ -49,6 +49,7 @@ jobs:
           mkdir ../../musl-cross
           wget -P ~ https://musl.cc/aarch64-linux-musl-cross.tgz
           tar -xvf ~/aarch64-linux-musl-cross.tgz -C ../../musl-cross
+          ls assets
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v3
