@@ -28,8 +28,8 @@ func (c *PortClient) CreateIntegration(i *port.Integration) (*port.Integration, 
 	resp, err := c.Client.R().
 		SetBody(parseIntegration(i)).
 		SetResult(&pb).
-		SetQueryParam("upsert", "true").
 		Post("v1/integration")
+	klog.Infof("Creating integration: %v", resp)
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +44,7 @@ func (c *PortClient) GetIntegration(stateKey string) (*port.Integration, error) 
 	resp, err := c.Client.R().
 		SetResult(&pb).
 		Get(fmt.Sprintf("v1/integration/%s", stateKey))
-	klog.Infof("Integration: %v", pb)
+	klog.Infof("Integration: %v", resp)
 	if err != nil {
 		return nil, err
 	}
