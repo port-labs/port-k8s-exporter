@@ -1,6 +1,6 @@
-FROM gcr.io/distroless/static-debian11
+FROM alpine
 
-COPY assets /usr/bin
+COPY assets/ /usr/bin
 
 USER nonroot:nonroot
 
