@@ -47,6 +47,7 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config)
 		// Handle a deprecated case where resources are provided in config file
 		return integration.CreateIntegration(portClient, applicationConfig.StateKey, applicationConfig.EventListenerType, defaultIntegrationConfig)
 	} else {
+		klog.Infof("integration : %v", existingIntegration)
 		klog.Infof("Integration with state key %s already exists, patching it", applicationConfig.StateKey)
 		integrationPatch := &port.Integration{
 			EventListener: getEventListenerConfig(applicationConfig.EventListenerType),
