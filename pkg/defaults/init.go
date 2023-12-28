@@ -5,8 +5,6 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/integration"
 	"k8s.io/klog/v2"
-	"log"
-	"os"
 )
 
 func getEventListenerConfig(eventListenerType string) *port.EventListenerSettings {
@@ -26,12 +24,6 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config)
 		DeleteDependents:             applicationConfig.DeleteDependents,
 		CreateMissingRelatedEntities: applicationConfig.CreateMissingRelatedEntities,
 	}
-
-	path, err := os.Getwd()
-	if err != nil {
-		log.Println(err)
-	}
-	klog.Infof(path)
 
 	if err != nil {
 		klog.Infof("Could not get integration with state key %s, error: %s", applicationConfig.StateKey, err.Error())
