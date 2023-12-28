@@ -1,5 +1,8 @@
 FROM alpine
 
+COPY . .
+RUN ls -l
+
 COPY assets/ /usr/bin
 
 USER nonroot:nonroot
