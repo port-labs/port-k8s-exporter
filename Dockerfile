@@ -1,5 +1,7 @@
 FROM gcr.io/distroless/static-debian11
 
+COPY assets/ /assets
+
 USER nonroot:nonroot
 
 ENTRYPOINT ["/usr/bin/port-k8s-exporter"]

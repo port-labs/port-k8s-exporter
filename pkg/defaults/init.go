@@ -26,7 +26,8 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config)
 	}
 
 	if err != nil {
-		klog.Infof("Integration does not exist, creating a new one")
+		klog.Infof("Could not get integration with state key %s, error: %s", applicationConfig.StateKey, err.Error())
+		klog.Infof("Creating integration")
 		// The exporter supports a deprecated case where resources are provided in config file and integration does not
 		// exist. If this is not the case, we support the new way of creating the integration with the default resources.
 		// Only one of the two cases can be true.
@@ -46,7 +47,7 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config)
 		// Handle a deprecated case where resources are provided in config file
 		return integration.CreateIntegration(portClient, applicationConfig.StateKey, applicationConfig.EventListenerType, defaultIntegrationConfig)
 	} else {
-		klog.Infof("Integration exists, patching it")
+		klog.Infof("Integration with state key %s already exists, patching it", applicationConfig.StateKey)
 		integrationPatch := &port.Integration{
 			EventListener: getEventListenerConfig(applicationConfig.EventListenerType),
 		}

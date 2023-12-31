@@ -27,7 +27,6 @@ func (c *PortClient) CreateIntegration(i *port.Integration) (*port.Integration, 
 	resp, err := c.Client.R().
 		SetBody(parseIntegration(i)).
 		SetResult(&pb).
-		SetQueryParam("upsert", "true").
 		Post("v1/integration")
 	if err != nil {
 		return nil, err
