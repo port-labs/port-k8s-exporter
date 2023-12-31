@@ -1,0 +1,345 @@
+[
+  {
+    "identifier": "workload_overview_dashboard",
+    "icon": "Apps",
+    "title": "Workload Overview Dashboard",
+    "widgets": [
+      {
+        "type": "dashboard-widget",
+        "layout": [
+          {
+            "height": 433,
+            "columns": [
+              {
+                "id": "explanation",
+                "size": 6
+              },
+              {
+                "id": "workload-health",
+                "size": 6
+              }
+            ]
+          },
+          {
+            "height": 400,
+            "columns": [
+              {
+                "id": "one-replica",
+                "size": 6
+              },
+              {
+                "id": "workloads-namespaces",
+                "size": 6
+              }
+            ]
+          }
+        ],
+        "widgets": [
+          {
+            "id": "explanation",
+            "title": "Port Dashboards",
+            "icon": "port",
+            "markdown": "[Dashboards](https://docs.getport.io/customize-pages-dashboards-and-plugins/page/dashboard-page) enable you to visualize the data from your catalog. Dashboards contain various widgets that display the data in different ways, such as pie charts, number charts, iframes, and more. You can create pages and dashboards for specific processes and expose them to the relevant people using [page permissions](https://docs.getport.io/customize-pages-dashboards-and-plugins/page/page-permissions).\n\nThis dashboard contains visualizations based on your \"Workload\" catalog. You can edit this dashboard and create new ones. Here are some additional ideas for dashboards\n- [SVP engineering dashboard](https://demo.getport.io/dashboard_svp_engineering)\n- [Security dashboard](https://demo.getport.io/dashboard_security)\n- [SRE dashboard](https://demo.getport.io/dashboard_sre)",
+            "type": "markdown"
+          },
+          {
+            "id": "workload-health",
+            "icon": "PieChart",
+            "type": "entities-pie-chart",
+            "description": "According to the \"Workload Health\" indication",
+            "title": "Deployment status",
+            "dataset": {
+              "combinator": "and",
+              "rules": [
+                {
+                  "operator": "=",
+                  "value": "workload",
+                  "property": "$blueprint"
+                }
+              ]
+            },
+            "property": "property#isHealthy"
+          },
+          {
+            "id": "one-replica",
+            "type": "table-entities-explorer",
+            "displayMode": "widget",
+            "title": "Workloads with one replica",
+            "description": "",
+            "icon": "Table",
+            "dataset": {
+              "combinator": "and",
+              "rules": [
+                {
+                  "operator": "=",
+                  "value": "workload",
+                  "property": "$blueprint"
+                }
+              ]
+            },
+            "blueprintConfig": {
+              "workload": {
+                "groupSettings": {
+                  "groupBy": []
+                },
+                "sortSettings": {
+                  "sortBy": []
+                },
+                "filterSettings": {
+                  "filterBy": {
+                    "combinator": "and",
+                    "rules": []
+                  }
+                },
+                "propertiesSettings": {
+                  "hidden": [
+                    "$identifier",
+                    "containers",
+                    "creationTimestamp",
+                    "hasLatest",
+                    "hasLimits",
+                    "hasPrivileged",
+                    "isHealthy",
+                    "kind",
+                    "labels",
+                    "replicas",
+                    "strategy",
+                    "strategyConfig",
+                    "Cluster",
+                    "namespace",
+                    "highAvailability",
+                    "configuration",
+                    "highAvalabilityB",
+                    "highAvalabilityS",
+                    "highAvalabilityG",
+                    "notPrivileged",
+                    "notDefaultNamespace",
+                    "rolloutStrategy",
+                    "imageTag",
+                    "Namespace"
+                  ],
+                  "order": []
+                }
+              }
+            }
+          },
+          {
+            "id": "workloads-namespaces",
+            "icon": "PieChart",
+            "type": "entities-pie-chart",
+            "description": "",
+            "title": "Workloads per namespace",
+            "dataset": {
+              "combinator": "and",
+              "rules": [
+                {
+                  "operator": "=",
+                  "value": "workload",
+                  "property": "$blueprint"
+                }
+              ]
+            },
+            "property": "mirror-property#namespace"
+          }
+        ]
+      }
+    ],
+    "section": "software_catalog",
+    "type": "dashboard"
+  },
+  {
+    "identifier": "availability_scorecard_dashboard",
+    "icon": "Scorecards",
+    "title": "Availability Scorecard Dashboard",
+    "widgets": [
+      {
+        "type": "dashboard-widget",
+        "layout": [
+          {
+            "height": 405,
+            "columns": [
+              {
+                "id": "explanation",
+                "size": 6
+              },
+              {
+                "id": "levels-summary",
+                "size": 6
+              }
+            ]
+          },
+          {
+            "height": 600,
+            "columns": [
+              {
+                "id": "workloads-by-level",
+                "size": 12
+              }
+            ]
+          },
+          {
+            "height": 422,
+            "columns": [
+              {
+                "id": "one-replica-pie-chart",
+                "size": 4
+              },
+              {
+                "id": "two-replicas-pie-chart",
+                "size": 4
+              },
+              {
+                "id": "three-replicas-pie-chart",
+                "size": 4
+              }
+            ]
+          }
+        ],
+        "widgets": [
+          {
+            "id": "levels-summary",
+            "type": "entities-pie-chart",
+            "property": "scorecard#highAvailability",
+            "title": "Levels summary",
+            "dataset": {
+              "combinator": "and",
+              "rules": [
+                {
+                  "property": "$blueprint",
+                  "operator": "=",
+                  "value": "workload"
+                }
+              ]
+            }
+          },
+          {
+            "id": "workloads-by-level",
+            "type": "table-entities-explorer",
+            "title": "Workloads by level",
+            "icon": "Users",
+            "blueprintConfig": {
+              "workload": {
+                "groupSettings": {
+                  "groupBy": [
+                    "highAvailability"
+                  ]
+                },
+                "sortSettings": {
+                  "sortBy": []
+                },
+                "filterSettings": {
+                  "filterBy": {
+                    "combinator": "and",
+                    "rules": []
+                  }
+                },
+                "propertiesSettings": {
+                  "hidden": [
+                    "$identifier",
+                    "$updatedAt",
+                    "$createdAt",
+                    "availableReplicas",
+                    "containers",
+                    "creationTimestamp",
+                    "hasLatest",
+                    "hasLimits",
+                    "hasPrivileged",
+                    "isHealthy",
+                    "kind",
+                    "labels",
+                    "replicas",
+                    "strategy",
+                    "strategyConfig",
+                    "Cluster",
+                    "namespace",
+                    "configuration",
+                    "Namespace",
+                    "notPrivileged",
+                    "notDefaultNamespace",
+                    "rolloutStrategy",
+                    "imageTag"
+                  ],
+                  "order": []
+                }
+              }
+            },
+            "displayMode": "widget",
+            "dataset": {
+              "combinator": "and",
+              "rules": [
+                {
+                  "property": "$blueprint",
+                  "operator": "=",
+                  "value": "workload"
+                }
+              ]
+            }
+          },
+          {
+            "id": "one-replica-pie-chart",
+            "type": "entities-pie-chart",
+            "property": "scorecard-rule#highAvailability#highAvalabilityB",
+            "title": "\"Wanted Replicas\" >= 1",
+            "icon": "Star",
+            "dataset": {
+              "combinator": "and",
+              "rules": [
+                {
+                  "operator": "=",
+                  "value": "workload",
+                  "property": "$blueprint"
+                }
+              ]
+            }
+          },
+          {
+            "id": "two-replicas-pie-chart",
+            "type": "entities-pie-chart",
+            "property": "scorecard-rule#highAvailability#highAvalabilityS",
+            "title": "\"Wanted Replicas\" >= 2",
+            "icon": "Star",
+            "dataset": {
+              "combinator": "and",
+              "rules": [
+                {
+                  "operator": "=",
+                  "value": "workload",
+                  "property": "$blueprint"
+                }
+              ]
+            },
+            "description": "Rule description"
+          },
+          {
+            "id": "three-replicas-pie-chart",
+            "type": "entities-pie-chart",
+            "property": "scorecard-rule#highAvailability#highAvalabilityG",
+            "title": "\"Wanted Replicas\" >= 3",
+            "icon": "Star",
+            "dataset": {
+              "combinator": "and",
+              "rules": [
+                {
+                  "operator": "=",
+                  "value": "workload",
+                  "property": "$blueprint"
+                }
+              ]
+            },
+            "description": "Rule description"
+          },
+          {
+            "id": "explanation",
+            "title": "Scorecard dashboard",
+            "description": "",
+            "icon": "port",
+            "markdown": "[Scorecards](https://docs.getport.io/promote-scorecards/) are a way for you and your team to define and measure standards in different categories, such as service maturity, production readiness, quality, productivity, and more. Scorecards contain [rules](https://docs.getport.io/promote-scorecards/#rule-elements) that determine its overall score (such as bronze, silver, and gold).\n\nThis dashboard is based on the \"High Availability\" scorecard we automatically created for your workloads. It contains the following rules:\n- Wanted Replicas >=1 (Bronze rule) \n- Wanted Replicas >=2 (Silver rule)\n- Wanted Replicas >=3 (Gold rule)",
+            "type": "markdown"
+          }
+        ]
+      }
+    ],
+    "section": "software_catalog",
+    "type": "dashboard"
+  }
+]
