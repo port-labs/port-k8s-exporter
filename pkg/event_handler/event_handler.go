@@ -25,7 +25,7 @@ func Start(eventListener IListener, initControllerHandler func() (IStoppableRsyn
 		if controllerHandler != nil {
 			controllerHandler.Stop()
 		}
-		controllerHandler.Stop()
+
 		newController, resyncErr := initControllerHandler()
 		controllerHandler = newController
 
