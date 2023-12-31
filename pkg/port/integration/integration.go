@@ -57,8 +57,6 @@ func DeleteIntegration(portClient *cli.PortClient, stateKey string) error {
 }
 
 func PatchIntegration(portClient *cli.PortClient, stateKey string, integration *port.Integration) error {
-	// Fixing an incorrect app type caused from previous versions (kubernetes -> K8S EXPORTER)
-	integration.InstallationAppType = "K8S EXPORTER"
 	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
 	if err != nil {
 		return fmt.Errorf("error authenticating with Port: %v", err)
