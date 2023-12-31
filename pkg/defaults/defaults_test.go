@@ -8,6 +8,7 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/port/blueprint"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/integration"
+	"github.com/port-labs/port-k8s-exporter/pkg/port/page"
 	_ "github.com/port-labs/port-k8s-exporter/test_utils"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -19,11 +20,19 @@ type Fixture struct {
 	stateKey   string
 }
 
-func checkBlueprintsDoesNotExist(f *Fixture, blueprints []string) {
+func checkResourcesDoesNotExist(f *Fixture, blueprints []string, pages []string) {
 	for _, bp := range blueprints {
 		_, err := blueprint.GetBlueprint(f.portClient, bp)
 		if err != nil {
 			_ = blueprint.DeleteBlueprint(f.portClient, bp)
+		}
+		assert.NotNil(f.t, err)
+	}
+
+	for _, p := range pages {
+		_, err := page.GetPage(f.portClient, p)
+		if err != nil {
+			_ = page.DeletePage(f.portClient, p)
 		}
 		assert.NotNil(f.t, err)
 	}
@@ -64,6 +73,8 @@ func deleteDefaultResources(portClient *cli.PortClient, stateKey string) {
 	_ = blueprint.DeleteBlueprint(portClient, "workload")
 	_ = blueprint.DeleteBlueprint(portClient, "namespace")
 	_ = blueprint.DeleteBlueprint(portClient, "cluster")
+	_ = page.DeletePage(portClient, "workload_overview_dashboard")
+	_ = page.DeletePage(portClient, "availability_scorecard_dashboard")
 }
 
 func Test_InitIntegration_InitDefaults(t *testing.T) {
@@ -86,6 +97,12 @@ func Test_InitIntegration_InitDefaults(t *testing.T) {
 
 	_, err = blueprint.GetBlueprint(f.portClient, "cluster")
 	assert.Nil(t, err)
+
+	_, err = page.GetPage(f.portClient, "workload_overview_dashboard")
+	assert.Nil(t, err)
+
+	_, err = page.GetPage(f.portClient, "availability_scorecard_dashboard")
+	assert.Nil(t, err)
 }
 
 func Test_InitIntegration_InitDefaults_CreateDefaultResources_False(t *testing.T) {
@@ -100,10 +117,10 @@ func Test_InitIntegration_InitDefaults_CreateDefaultResources_False(t *testing.T
 	_, err := integration.GetIntegration(f.portClient, f.stateKey)
 	assert.Nil(t, err)
 
-	checkBlueprintsDoesNotExist(f, []string{"workload", "namespace", "cluster"})
+	checkResourcesDoesNotExist(f, []string{"workload", "namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"})
 }
 
-func Test_InitIntegration_FailingInitDefaults(t *testing.T) {
+func Test_InitIntegration_BlueprintExists(t *testing.T) {
 	f := NewFixture(t)
 	if _, err := blueprint.NewBlueprint(f.portClient, port.Blueprint{
 		Identifier: "workload",
@@ -122,10 +139,57 @@ func Test_InitIntegration_FailingInitDefaults(t *testing.T) {
 	assert.Nil(t, e)
 
 	i, err := integration.GetIntegration(f.portClient, f.stateKey)
-	assert.True(t, nil == i.Config.Resources)
+	assert.Nil(t, i.Config.Resources)
 	assert.Nil(t, err)
 
-	checkBlueprintsDoesNotExist(f, []string{"namespace", "cluster"})
+	_, err = blueprint.GetBlueprint(f.portClient, "workload")
+	assert.Nil(t, err)
+
+	checkResourcesDoesNotExist(f, []string{"namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"})
+}
+
+func Test_InitIntegration_PageExists(t *testing.T) {
+	f := NewFixture(t)
+	if err := page.CreatePage(f.portClient, port.Page{
+		Identifier: "workload_overview_dashboard",
+		Title:      "Workload Overview Dashboard",
+	}); err != nil {
+		t.Errorf("Error creating Port page: %s", err.Error())
+	}
+	e := InitIntegration(f.portClient, &port.Config{
+		StateKey:               f.stateKey,
+		EventListenerType:      "POLLING",
+		CreateDefaultResources: true,
+	})
+	assert.Nil(t, e)
+
+	i, err := integration.GetIntegration(f.portClient, f.stateKey)
+	assert.Nil(t, i.Config.Resources)
+	assert.Nil(t, err)
+
+	_, err = page.GetPage(f.portClient, "workload_overview_dashboard")
+	assert.Nil(t, err)
+
+	checkResourcesDoesNotExist(f, []string{"workload", "namespace", "cluster"}, []string{"availability_scorecard_dashboard"})
+}
+
+func Test_InitIntegration_ExistingIntegration(t *testing.T) {
+	f := NewFixture(t)
+	err := integration.CreateIntegration(f.portClient, f.stateKey, "", nil)
+	if err != nil {
+		t.Errorf("Error creating Port integration: %s", err.Error())
+	}
+	e := InitIntegration(f.portClient, &port.Config{
+		StateKey:               f.stateKey,
+		EventListenerType:      "POLLING",
+		CreateDefaultResources: true,
+	})
+	assert.Nil(t, e)
+
+	_, err = integration.GetIntegration(f.portClient, f.stateKey)
+	assert.Nil(t, err)
+
+	checkResourcesDoesNotExist(f, []string{"workload", "namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"})
 }
 
 func Test_InitIntegration_DeprecatedResourcesConfiguration(t *testing.T) {
@@ -165,7 +229,7 @@ func Test_InitIntegration_DeprecatedResourcesConfiguration(t *testing.T) {
 	assert.Equal(t, expectedResources, i.Config.Resources)
 	assert.Nil(t, err)
 
-	checkBlueprintsDoesNotExist(f, []string{"workload", "namespace", "cluster"})
+	checkResourcesDoesNotExist(f, []string{"workload", "namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"})
 }
 
 func Test_InitIntegration_DeprecatedResourcesConfiguration_ExistingIntegration_EmptyConfiguration(t *testing.T) {
@@ -186,5 +250,5 @@ func Test_InitIntegration_DeprecatedResourcesConfiguration_ExistingIntegration_E
 	assert.Nil(t, err)
 	assert.Equal(t, "KAFKA", i.EventListener.Type)
 
-	checkBlueprintsDoesNotExist(f, []string{"workload", "namespace", "cluster"})
+	checkResourcesDoesNotExist(f, []string{"workload", "namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"})
 }
