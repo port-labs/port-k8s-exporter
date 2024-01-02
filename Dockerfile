@@ -3,7 +3,7 @@ FROM alpine
 COPY assets/ /assets
 
 #USER nonroot:nonroot
-RUN apk add gcompat
+RUN if apk --print-arch | grep -q amd; then apk add gcompat; fi
 
 ENTRYPOINT ["/usr/bin/port-k8s-exporter"]
 
