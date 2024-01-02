@@ -1,4 +1,4 @@
-FROM gcr.io/distroless/static-debian11
+FROM alpine
 
 COPY assets/ /assets
 
