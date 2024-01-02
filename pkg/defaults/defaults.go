@@ -144,7 +144,9 @@ func validateResourcesErrors(createdBlueprints []string, createdPages []string, 
 func validateResourcesDoesNotExist(portClient *cli.PortClient, defaults *Defaults, config *port.Config) *AbortDefaultCreationError {
 	var errors []error
 	if _, err := integration.GetIntegration(portClient, config.StateKey); err == nil {
-
+		return &AbortDefaultCreationError{Errors: []error{
+			fmt.Errorf("integration with state key %s already exists", config.StateKey),
+		}}
 	}
 
 	for _, bp := range defaults.Blueprints {
