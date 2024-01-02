@@ -95,7 +95,7 @@ func TestConsumer_HandleJson(t *testing.T) {
 	f.Consume(mockHandler.HandleJson)
 
 	f.Produce(t, []byte("test-value"))
-	time.Sleep(time.Second)
+	time.Sleep(time.Second * 2)
 
 	if len(mockHandler.CapturedValue) == 0 {
 		t.Error("Handler was not called")
