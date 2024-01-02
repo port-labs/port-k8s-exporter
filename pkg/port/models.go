@@ -108,6 +108,15 @@ type (
 		Relations             map[string]Relation                     `json:"relations,omitempty"`
 	}
 
+	Page struct {
+		Identifier string      `json:"identifier"`
+		Blueprint  string      `json:"blueprint,omitempty"`
+		Title      string      `json:"title,omitempty"`
+		Icon       string      `json:"icon,omitempty"`
+		Widgets    interface{} `json:"widgets,omitempty"`
+		Type       string      `json:"type,omitempty"`
+	}
+
 	Action struct {
 		ID               string            `json:"id,omitempty"`
 		Identifier       string            `json:"identifier,omitempty"`
@@ -165,6 +174,7 @@ type ResponseBody struct {
 	KafkaCredentials OrgKafkaCredentials `json:"credentials"`
 	OrgDetails       OrgDetails          `json:"organization"`
 	Scorecard        Scorecard           `json:"scorecard"`
+	Pages            Page                `json:"pages"`
 }
 
 type EntityMapping struct {

@@ -7,6 +7,7 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/port/blueprint"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/integration"
+	"github.com/port-labs/port-k8s-exporter/pkg/port/page"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/scorecards"
 	"gopkg.in/yaml.v3"
 	"k8s.io/klog/v2"
@@ -23,10 +24,12 @@ type Defaults struct {
 	Blueprints []port.Blueprint
 	Scorecards []ScorecardDefault
 	AppConfig  *port.IntegrationAppConfig
+	Pages      []port.Page
 }
 
 var BlueprintsAsset = "assets/defaults/blueprints.json"
 var ScorecardsAsset = "assets/defaults/scorecards.json"
+var PagesAsset = "assets/defaults/pages.json"
 var AppConfigAsset = "assets/defaults/appConfig.yaml"
 
 func getDefaults() (*Defaults, error) {
@@ -63,10 +66,22 @@ func getDefaults() (*Defaults, error) {
 		}
 	}
 
+	var pages []port.Page
+	file, err = os.ReadFile(PagesAsset)
+	if err != nil {
+		klog.Infof("No default pages found. Skipping...")
+	} else {
+		err = yaml.Unmarshal(file, &pages)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return &Defaults{
 		Blueprints: bp,
 		Scorecards: sc,
 		AppConfig:  appConfig,
+		Pages:      pages,
 	}, nil
 }
 
@@ -108,6 +123,7 @@ func deconstructBlueprintsToCreationSteps(rawBlueprints []port.Blueprint) ([]por
 
 type AbortDefaultCreationError struct {
 	BlueprintsToRollback []string
+	PagesToRollback      []string
 	Errors               []error
 }
 
@@ -115,29 +131,54 @@ func (e *AbortDefaultCreationError) Error() string {
 	return "AbortDefaultCreationError"
 }
 
-func validateBlueprintErrors(createdBlueprints []string, blueprintErrors []error) *AbortDefaultCreationError {
-	if len(blueprintErrors) > 0 {
-		for _, err := range blueprintErrors {
+func validateResourcesErrors(createdBlueprints []string, createdPages []string, resourceErrors []error) *AbortDefaultCreationError {
+	if len(resourceErrors) > 0 {
+		for _, err := range resourceErrors {
 			klog.Infof("Failed to create resources: %v.", err.Error())
 		}
-		return &AbortDefaultCreationError{BlueprintsToRollback: createdBlueprints, Errors: blueprintErrors}
+		return &AbortDefaultCreationError{BlueprintsToRollback: createdBlueprints, PagesToRollback: createdPages, Errors: resourceErrors}
 	}
 	return nil
 }
 
-func createResources(portClient *cli.PortClient, defaults *Defaults, config *port.Config) *AbortDefaultCreationError {
+func validateResourcesDoesNotExist(portClient *cli.PortClient, defaults *Defaults, config *port.Config) *AbortDefaultCreationError {
+	var errors []error
 	if _, err := integration.GetIntegration(portClient, config.StateKey); err == nil {
 		return &AbortDefaultCreationError{Errors: []error{
 			fmt.Errorf("integration with state key %s already exists", config.StateKey),
 		}}
 	}
 
+	for _, bp := range defaults.Blueprints {
+		if _, err := blueprint.GetBlueprint(portClient, bp.Identifier); err == nil {
+			errors = append(errors, fmt.Errorf("blueprint with identifier %s already exists", bp.Identifier))
+		}
+	}
+
+	for _, p := range defaults.Pages {
+		if _, err := page.GetPage(portClient, p.Identifier); err == nil {
+			errors = append(errors, fmt.Errorf("page with identifier %s already exists", p.Identifier))
+		}
+	}
+
+	if errors != nil {
+		return &AbortDefaultCreationError{Errors: errors}
+	}
+	return nil
+}
+
+func createResources(portClient *cli.PortClient, defaults *Defaults, config *port.Config) *AbortDefaultCreationError {
+	if err := validateResourcesDoesNotExist(portClient, defaults, config); err != nil {
+		return err
+	}
+
 	bareBlueprints, patchStages := deconstructBlueprintsToCreationSteps(defaults.Blueprints)
 
 	waitGroup := sync.WaitGroup{}
 
-	var blueprintErrors []error
+	var resourceErrors []error
 	var createdBlueprints []string
+	var createdPages []string
 	mutex := sync.Mutex{}
 
 	for _, bp := range bareBlueprints {
@@ -148,7 +189,7 @@ func createResources(portClient *cli.PortClient, defaults *Defaults, config *por
 
 			mutex.Lock()
 			if err != nil {
-				blueprintErrors = append(blueprintErrors, err)
+				resourceErrors = append(resourceErrors, err)
 			} else {
 				createdBlueprints = append(createdBlueprints, result.Identifier)
 			}
@@ -157,7 +198,7 @@ func createResources(portClient *cli.PortClient, defaults *Defaults, config *por
 	}
 	waitGroup.Wait()
 
-	if err := validateBlueprintErrors(createdBlueprints, blueprintErrors); err != nil {
+	if err := validateResourcesErrors(createdBlueprints, createdPages, resourceErrors); err != nil {
 		return err
 	}
 
@@ -167,14 +208,14 @@ func createResources(portClient *cli.PortClient, defaults *Defaults, config *por
 			go func(bp port.Blueprint) {
 				defer waitGroup.Done()
 				if _, err := blueprint.PatchBlueprint(portClient, bp); err != nil {
-					blueprintErrors = append(blueprintErrors, err)
+					resourceErrors = append(resourceErrors, err)
 				}
 			}(bp)
 		}
 		waitGroup.Wait()
 	}
 
-	if err := validateBlueprintErrors(createdBlueprints, blueprintErrors); err != nil {
+	if err := validateResourcesErrors(createdBlueprints, createdPages, resourceErrors); err != nil {
 		return err
 	}
 
@@ -184,20 +225,37 @@ func createResources(portClient *cli.PortClient, defaults *Defaults, config *por
 			go func(blueprintIdentifier string, scorecard port.Scorecard) {
 				defer waitGroup.Done()
 				if err := scorecards.CreateScorecard(portClient, blueprintIdentifier, scorecard); err != nil {
-					blueprintErrors = append(blueprintErrors, err)
+					resourceErrors = append(resourceErrors, err)
 				}
 			}(blueprintScorecards.Blueprint, scorecard)
 		}
 	}
 	waitGroup.Wait()
 
-	if err := validateBlueprintErrors(createdBlueprints, blueprintErrors); err != nil {
+	if err := validateResourcesErrors(createdBlueprints, createdPages, resourceErrors); err != nil {
+		return err
+	}
+
+	for _, pageToCreate := range defaults.Pages {
+		waitGroup.Add(1)
+		go func(p port.Page) {
+			defer waitGroup.Done()
+			if err := page.CreatePage(portClient, p); err != nil {
+				resourceErrors = append(resourceErrors, err)
+			} else {
+				createdPages = append(createdPages, p.Identifier)
+			}
+		}(pageToCreate)
+	}
+	waitGroup.Wait()
+
+	if err := validateResourcesErrors(createdBlueprints, createdPages, resourceErrors); err != nil {
 		return err
 	}
 
 	if err := integration.CreateIntegration(portClient, config.StateKey, config.EventListenerType, defaults.AppConfig); err != nil {
 		klog.Infof("Failed to create resources: %v.", err.Error())
-		return &AbortDefaultCreationError{BlueprintsToRollback: createdBlueprints, Errors: []error{err}}
+		return &AbortDefaultCreationError{BlueprintsToRollback: createdBlueprints, PagesToRollback: createdPages, Errors: []error{err}}
 	}
 
 	return nil
@@ -222,6 +280,18 @@ func initializeDefaults(portClient *cli.PortClient, config *port.Config) error {
 			}(identifier)
 		}
 		rollbackWg.Wait()
+
+		for _, identifier := range err.PagesToRollback {
+			rollbackWg.Add(1)
+			go func(identifier string) {
+				defer rollbackWg.Done()
+				if err := page.DeletePage(portClient, identifier); err != nil {
+					klog.Warningf("Failed to rollback page %s creation: %v", identifier, err)
+				}
+			}(identifier)
+		}
+		rollbackWg.Wait()
+
 		return &ExceptionGroup{Message: err.Error(), Errors: err.Errors}
 	}
 
