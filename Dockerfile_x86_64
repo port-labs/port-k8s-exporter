@@ -3,7 +3,7 @@ FROM alpine
 COPY assets/ /assets
 
 #USER nonroot:nonroot
-RUN apk add gcompat
+#RUN apk add gcompat
 
 ENTRYPOINT ["/usr/bin/port-k8s-exporter"]
 
