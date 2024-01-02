@@ -3,7 +3,7 @@ FROM alpine
 COPY assets/ /assets
 
 #USER nonroot:nonroot
-RUN echo $(apk --print-arch)
+RUN echo "aaa"
 RUN if apk --print-arch | grep -q x86_64; then apk add gcompat; fi
 
 ENTRYPOINT ["/usr/bin/port-k8s-exporter"]
