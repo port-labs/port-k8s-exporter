@@ -2,7 +2,7 @@ FROM alpine
 
 COPY assets/ /assets
 
-USER nonroot:nonroot
+#USER nonroot:nonroot
 
 ENTRYPOINT ["/usr/bin/port-k8s-exporter"]
 
