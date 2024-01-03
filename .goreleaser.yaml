@@ -26,7 +26,8 @@ dockers:
 - image_templates:
   - "{{ .Env.REGISTRY }}/{{ .Env.IMAGE_NAME }}:{{ .Version }}-amd64"
   use: buildx
-  dockerfile: Dockerfile
+  dockerfile: Dockerfile.x86_64
+  goarch: amd64
   build_flag_templates:
   - "--label=org.opencontainers.image.created={{.Date}}"
   - "--label=org.opencontainers.image.title={{.ProjectName}}"
