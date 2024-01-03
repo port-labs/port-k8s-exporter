@@ -34,8 +34,6 @@ func initiateHandler(exporterConfig *port.Config, k8sClient *k8s.Client, portCli
 }
 
 func main() {
-	klog.InitFlags(nil)
-
 	k8sConfig := k8s.NewKubeConfig()
 	applicationConfig, err := config.NewConfiguration()
 	if err != nil {
@@ -81,5 +79,6 @@ func main() {
 }
 
 func init() {
+	klog.InitFlags(nil)
 	config.Init()
 }
