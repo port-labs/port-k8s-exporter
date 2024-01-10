@@ -221,7 +221,7 @@ func TestDeleteDeploymentSameOwner(t *testing.T) {
 	createItem := EventItem{Key: getKey(d, t), ActionType: CreateAction}
 	item := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
 
-	f := newFixture(t, "", "", fmt.Sprintf("statekey/%s", config.ApplicationConfig.StateKey)+"port-k8s-exporter", resource, objects)
+	f := newFixture(t, "", "", fmt.Sprintf("port-k8s-exporter/0.1 (statekey/%s)", config.ApplicationConfig.StateKey), resource, objects)
 	f.runControllerSyncHandler(createItem, false)
 
 	f.runControllerSyncHandler(item, false)

@@ -258,6 +258,11 @@ func checkIfOwnEntity(entity port.Entity, portClient *cli.PortClient) (*bool, er
 				Operator: "contains",
 				Value:    fmt.Sprintf("statekey/%s", config.ApplicationConfig.StateKey),
 			},
+			{
+				Property: "$blueprint",
+				Operator: "=",
+				Value:    entity.Blueprint,
+			},
 		},
 		Combinator: "and",
 	})
@@ -294,7 +299,7 @@ func (c *Controller) entityHandler(portEntity port.Entity, action EventActionTyp
 			}
 			klog.V(0).Infof("Successfully deleted entity '%s' of blueprint '%s'", portEntity.Identifier, portEntity.Blueprint)
 		} else {
-			klog.Warningf("trying to delete entity but didn't find it in port with k8s ownership", portEntity.Identifier, portEntity.Blueprint)
+			klog.Warningf("trying to delete entity but didn't find it in port with this exporter ownership, entity id: '%s', blueprint:'%s'", portEntity.Identifier, portEntity.Blueprint)
 		}
 
 	}
