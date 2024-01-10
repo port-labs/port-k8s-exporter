@@ -1,6 +1,8 @@
 package k8s
 
 import (
+	"context"
+	"fmt"
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
@@ -30,7 +32,7 @@ type fixture struct {
 	controller *Controller
 }
 
-func newFixture(t *testing.T, portClientId string, portClientSecret string, resource port.Resource, objects []runtime.Object) *fixture {
+func newFixture(t *testing.T, portClientId string, portClientSecret string, userAgent string, resource port.Resource, objects []runtime.Object) *fixture {
 	kubeclient := k8sfake.NewSimpleDynamicClient(runtime.NewScheme())
 
 	if portClientId == "" {
@@ -39,7 +41,11 @@ func newFixture(t *testing.T, portClientId string, portClientSecret string, reso
 	if portClientSecret == "" {
 		portClientSecret = config.ApplicationConfig.PortClientSecret
 	}
-	portClient, err := cli.New(config.ApplicationConfig.PortBaseURL, cli.WithHeader("User-Agent", "port-k8s-exporter/0.1"),
+	if userAgent == "" {
+		userAgent = "port-k8s-exporter/0.1"
+	}
+
+	portClient, err := cli.New(config.ApplicationConfig.PortBaseURL, cli.WithHeader("User-Agent", userAgent),
 		cli.WithClientID(portClientId), cli.WithClientSecret(portClientSecret))
 	if err != nil {
 		t.Errorf("Error building Port client: %s", err.Error())
@@ -173,7 +179,7 @@ func TestCreateDeployment(t *testing.T) {
 	})
 	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
 
-	f := newFixture(t, "", "", resource, objects)
+	f := newFixture(t, "", "", "", resource, objects)
 	f.runControllerSyncHandler(item, false)
 }
 
@@ -199,23 +205,52 @@ func TestUpdateDeployment(t *testing.T) {
 	})
 	item := EventItem{Key: getKey(d, t), ActionType: UpdateAction}
 
-	f := newFixture(t, "", "", resource, objects)
+	f := newFixture(t, "", "", "", resource, objects)
 	f.runControllerSyncHandler(item, false)
 }
 
-func TestDeleteDeployment(t *testing.T) {
+func TestDeleteDeploymentSameOwner(t *testing.T) {
 	d := newDeployment()
 	objects := []runtime.Object{newUnstructured(d)}
 	resource := newResource("", []port.EntityMapping{
 		{
-			Identifier: ".metadata.name",
+			Identifier: "\"entityWithSameOwner\"",
 			Blueprint:  "\"k8s-export-test-bp\"",
 		},
 	})
+	createItem := EventItem{Key: getKey(d, t), ActionType: CreateAction}
 	item := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
 
-	f := newFixture(t, "", "", resource, objects)
+	f := newFixture(t, "", "", fmt.Sprintf("port-k8s-exporter/0.1 (statekey/%s)", config.ApplicationConfig.StateKey), resource, objects)
+	f.runControllerSyncHandler(createItem, false)
+
 	f.runControllerSyncHandler(item, false)
+	_, err := f.controller.portClient.ReadEntity(context.Background(), "entityWithSameOwner", "k8s-export-test-bp")
+	if !strings.Contains(err.Error(), "was not found") {
+		t.Errorf("expected entity to be deleted")
+	}
+}
+
+func TestDeleteDeploymentDifferentOwner(t *testing.T) {
+	d := newDeployment()
+	objects := []runtime.Object{newUnstructured(d)}
+	resource := newResource("", []port.EntityMapping{
+		{
+			Identifier: "\"entityWithDifferentOwner\"",
+			Blueprint:  "\"k8s-export-test-bp\"",
+		},
+	})
+	createItem := EventItem{Key: getKey(d, t), ActionType: CreateAction}
+	item := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
+
+	f := newFixture(t, "", "", fmt.Sprintf("statekey/%s", "non_exist_statekey")+"port-k8s-exporter", resource, objects)
+	f.runControllerSyncHandler(createItem, false)
+
+	f.runControllerSyncHandler(item, false)
+	_, err := f.controller.portClient.ReadEntity(context.Background(), "entityWithDifferentOwner", "k8s-export-test-bp")
+	if err != nil && strings.Contains(err.Error(), "was not found") {
+		t.Errorf("expected entity to exist")
+	}
 }
 
 func TestSelectorQueryFilterDeployment(t *testing.T) {
@@ -229,7 +264,7 @@ func TestSelectorQueryFilterDeployment(t *testing.T) {
 	})
 	item := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
 
-	f := newFixture(t, "", "", resource, objects)
+	f := newFixture(t, "", "", "", resource, objects)
 	f.runControllerSyncHandler(item, false)
 }
 
@@ -244,7 +279,7 @@ func TestFailPortAuth(t *testing.T) {
 	})
 	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
 
-	f := newFixture(t, "wrongclientid", "wrongclientsecret", resource, objects)
+	f := newFixture(t, "wrongclientid", "wrongclientsecret", "", resource, objects)
 	f.runControllerSyncHandler(item, true)
 }
 
@@ -259,8 +294,8 @@ func TestFailDeletePortEntity(t *testing.T) {
 	})
 	item := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
 
-	f := newFixture(t, "", "", resource, objects)
-	f.runControllerSyncHandler(item, true)
+	f := newFixture(t, "", "", "", resource, objects)
+	f.runControllerSyncHandler(item, false)
 }
 
 func TestGetEntitiesSet(t *testing.T) {
@@ -276,6 +311,6 @@ func TestGetEntitiesSet(t *testing.T) {
 		"k8s-export-test-bp;port-k8s-exporter": nil,
 	}
 
-	f := newFixture(t, "", "", resource, objects)
+	f := newFixture(t, "", "", "", resource, objects)
 	f.runControllerGetEntitiesSet(expectedEntitiesSet, false)
 }
