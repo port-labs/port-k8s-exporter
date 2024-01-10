@@ -294,7 +294,7 @@ func (c *Controller) entityHandler(portEntity port.Entity, action EventActionTyp
 			}
 			klog.V(0).Infof("Successfully deleted entity '%s' of blueprint '%s'", portEntity.Identifier, portEntity.Blueprint)
 		} else {
-			klog.Warningf("trying to delete entity that has different owner id: '%s', blueprint: '%s' ", portEntity.Identifier, portEntity.Blueprint)
+			klog.Warningf("trying to delete entity but didn't find it in port with k8s ownership", portEntity.Identifier, portEntity.Blueprint)
 		}
 
 	}

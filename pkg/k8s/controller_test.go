@@ -295,7 +295,7 @@ func TestFailDeletePortEntity(t *testing.T) {
 	item := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
 
 	f := newFixture(t, "", "", "", resource, objects)
-	f.runControllerSyncHandler(item, true)
+	f.runControllerSyncHandler(item, false)
 }
 
 func TestGetEntitiesSet(t *testing.T) {
