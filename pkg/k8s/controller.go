@@ -248,11 +248,35 @@ func (c *Controller) entityHandler(portEntity port.Entity, action EventActionTyp
 		}
 		klog.V(0).Infof("Successfully upserted entity '%s' of blueprint '%s'", portEntity.Identifier, portEntity.Blueprint)
 	case DeleteAction:
-		err := c.portClient.DeleteEntity(context.Background(), portEntity.Identifier, portEntity.Blueprint, c.portClient.DeleteDependents)
+		portEntities, err := c.portClient.SearchEntities(context.Background(), port.SearchBody{
+			Rules: []port.Rule{
+				{
+					Property: "$datasource",
+					Operator: "contains",
+					Value:    "port-k8s-exporter",
+				},
+				{
+					Property: "$identifier",
+					Operator: "=",
+					Value:    portEntity.Identifier,
+				},
+			},
+			Combinator: "and",
+		})
 		if err != nil {
-			return fmt.Errorf("error deleting Port entity '%s' of blueprint '%s': %v", portEntity.Identifier, portEntity.Blueprint, err)
+			return fmt.Errorf("error searching Port entities: %v", err)
 		}
-		klog.V(0).Infof("Successfully deleted entity '%s' of blueprint '%s'", portEntity.Identifier, portEntity.Blueprint)
+
+		if len(portEntities) > 0 {
+			err := c.portClient.DeleteEntity(context.Background(), portEntity.Identifier, portEntity.Blueprint, c.portClient.DeleteDependents)
+			if err != nil {
+				return fmt.Errorf("error deleting Port entity '%s' of blueprint '%s': %v", portEntity.Identifier, portEntity.Blueprint, err)
+			}
+			klog.V(0).Infof("Successfully deleted entity '%s' of blueprint '%s'", portEntity.Identifier, portEntity.Blueprint)
+		} else {
+			return fmt.Errorf("trying to delete entity that has different owner id: '%s', blueprint: '%s' ", portEntity.Identifier, portEntity.Blueprint)
+		}
+
 	}
 
 	return nil
