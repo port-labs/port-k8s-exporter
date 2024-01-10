@@ -3,6 +3,7 @@ package k8s
 import (
 	"context"
 	"fmt"
+	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/jq"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
@@ -239,6 +240,39 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 	return entities, nil
 }
 
+func checkIfOwnEntity(entity port.Entity, portClient *cli.PortClient) (*bool, error) {
+	portEntities, err := portClient.SearchEntities(context.Background(), port.SearchBody{
+		Rules: []port.Rule{
+			{
+				Property: "$datasource",
+				Operator: "contains",
+				Value:    "port-k8s-exporter",
+			},
+			{
+				Property: "$identifier",
+				Operator: "=",
+				Value:    entity.Identifier,
+			},
+			{
+				Property: "$datasource",
+				Operator: "contains",
+				Value:    fmt.Sprintf("statekey/%s", config.ApplicationConfig.StateKey),
+			},
+		},
+		Combinator: "and",
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(portEntities) > 0 {
+		result := true
+		return &result, nil
+	}
+	result := false
+	return &result, nil
+}
+
 func (c *Controller) entityHandler(portEntity port.Entity, action EventActionType) error {
 	switch action {
 	case CreateAction, UpdateAction:
@@ -248,33 +282,19 @@ func (c *Controller) entityHandler(portEntity port.Entity, action EventActionTyp
 		}
 		klog.V(0).Infof("Successfully upserted entity '%s' of blueprint '%s'", portEntity.Identifier, portEntity.Blueprint)
 	case DeleteAction:
-		portEntities, err := c.portClient.SearchEntities(context.Background(), port.SearchBody{
-			Rules: []port.Rule{
-				{
-					Property: "$datasource",
-					Operator: "contains",
-					Value:    "port-k8s-exporter",
-				},
-				{
-					Property: "$identifier",
-					Operator: "=",
-					Value:    portEntity.Identifier,
-				},
-			},
-			Combinator: "and",
-		})
+		result, err := checkIfOwnEntity(portEntity, c.portClient)
 		if err != nil {
-			return fmt.Errorf("error searching Port entities: %v", err)
+			return fmt.Errorf("error checking if entity '%s' of blueprint '%s' is owned by this exporter: %v", portEntity.Identifier, portEntity.Blueprint, err)
 		}
 
-		if len(portEntities) > 0 {
+		if *result {
 			err := c.portClient.DeleteEntity(context.Background(), portEntity.Identifier, portEntity.Blueprint, c.portClient.DeleteDependents)
 			if err != nil {
 				return fmt.Errorf("error deleting Port entity '%s' of blueprint '%s': %v", portEntity.Identifier, portEntity.Blueprint, err)
 			}
 			klog.V(0).Infof("Successfully deleted entity '%s' of blueprint '%s'", portEntity.Identifier, portEntity.Blueprint)
 		} else {
-			return fmt.Errorf("trying to delete entity that has different owner id: '%s', blueprint: '%s' ", portEntity.Identifier, portEntity.Blueprint)
+			klog.Warningf("trying to delete entity that has different owner id: '%s', blueprint: '%s' ", portEntity.Identifier, portEntity.Blueprint)
 		}
 
 	}

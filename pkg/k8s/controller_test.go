@@ -1,6 +1,8 @@
 package k8s
 
 import (
+	"context"
+	"fmt"
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
@@ -207,21 +209,6 @@ func TestUpdateDeployment(t *testing.T) {
 	f.runControllerSyncHandler(item, false)
 }
 
-func TestDeleteDeploymentDifferentOwner(t *testing.T) {
-	d := newDeployment()
-	objects := []runtime.Object{newUnstructured(d)}
-	resource := newResource("", []port.EntityMapping{
-		{
-			Identifier: "\"entityWithDifferentOwner\"",
-			Blueprint:  "\"k8s-export-test-bp\"",
-		},
-	})
-	item := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
-
-	f := newFixture(t, "", "", "github", resource, objects)
-	f.runControllerSyncHandler(item, true)
-}
-
 func TestDeleteDeploymentSameOwner(t *testing.T) {
 	d := newDeployment()
 	objects := []runtime.Object{newUnstructured(d)}
@@ -234,10 +221,36 @@ func TestDeleteDeploymentSameOwner(t *testing.T) {
 	createItem := EventItem{Key: getKey(d, t), ActionType: CreateAction}
 	item := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
 
-	f := newFixture(t, "", "", "", resource, objects)
+	f := newFixture(t, "", "", fmt.Sprintf("statekey/%s", config.ApplicationConfig.StateKey)+"port-k8s-exporter", resource, objects)
 	f.runControllerSyncHandler(createItem, false)
 
 	f.runControllerSyncHandler(item, false)
+	_, err := f.controller.portClient.ReadEntity(context.Background(), "entityWithSameOwner", "k8s-export-test-bp")
+	if !strings.Contains(err.Error(), "was not found") {
+		t.Errorf("expected entity to be deleted")
+	}
+}
+
+func TestDeleteDeploymentDifferentOwner(t *testing.T) {
+	d := newDeployment()
+	objects := []runtime.Object{newUnstructured(d)}
+	resource := newResource("", []port.EntityMapping{
+		{
+			Identifier: "\"entityWithDifferentOwner\"",
+			Blueprint:  "\"k8s-export-test-bp\"",
+		},
+	})
+	createItem := EventItem{Key: getKey(d, t), ActionType: CreateAction}
+	item := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
+
+	f := newFixture(t, "", "", fmt.Sprintf("statekey/%s", "non_exist_statekey")+"port-k8s-exporter", resource, objects)
+	f.runControllerSyncHandler(createItem, false)
+
+	f.runControllerSyncHandler(item, false)
+	_, err := f.controller.portClient.ReadEntity(context.Background(), "entityWithDifferentOwner", "k8s-export-test-bp")
+	if err != nil && strings.Contains(err.Error(), "was not found") {
+		t.Errorf("expected entity to exist")
+	}
 }
 
 func TestSelectorQueryFilterDeployment(t *testing.T) {
