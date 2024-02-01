@@ -208,6 +208,7 @@ func Test_InitIntegration_DeprecatedResourcesConfiguration(t *testing.T) {
 							Identifier: "\"workload\"",
 							Title:      "\"Workload\"",
 							Blueprint:  "\"workload\"",
+							Icon:	   "\"Microservice\"",
 							Properties: map[string]string{
 								"namespace": "\"default\"",
 							},
