@@ -22,6 +22,7 @@ type (
 		Identifier string                 `json:"identifier,omitempty"`
 		Title      string                 `json:"title"`
 		Blueprint  string                 `json:"blueprint"`
+		Icon       string                 `json:"icon,omitempty"`
 		Team       interface{}            `json:"team,omitempty"`
 		Properties map[string]interface{} `json:"properties"`
 		Relations  map[string]interface{} `json:"relations"`
@@ -181,6 +182,7 @@ type EntityMapping struct {
 	Identifier string            `json:"identifier"`
 	Title      string            `json:"title"`
 	Blueprint  string            `json:"blueprint"`
+	Icon	   string            `json:"icon,omitempty"`
 	Team       string            `json:"team,omitempty"`
 	Properties map[string]string `json:"properties,omitempty"`
 	Relations  map[string]string `json:"relations,omitempty"`

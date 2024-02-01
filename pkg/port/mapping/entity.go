@@ -28,6 +28,12 @@ func NewEntity(obj interface{}, mapping port.EntityMapping) (*port.Entity, error
 			return &port.Entity{}, err
 		}
 	}
+	if mapping.Icon != "" {
+		entity.Icon, err = jq.ParseString(mapping.Icon, obj)
+		if err != nil {
+			return &port.Entity{}, err
+		}
+	}
 	entity.Properties, err = jq.ParseMapInterface(mapping.Properties, obj)
 	if err != nil {
 		return &port.Entity{}, err
