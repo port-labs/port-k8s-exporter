@@ -164,6 +164,7 @@ func TestCreateDeployment(t *testing.T) {
 		{
 			Identifier: ".metadata.name",
 			Blueprint:  "\"k8s-export-test-bp\"",
+			Icon: 		"\"AWS\"",
 			Team:       "\"Test\"",
 			Properties: map[string]string{
 				"text": "\"pod\"",
@@ -190,6 +191,7 @@ func TestUpdateDeployment(t *testing.T) {
 		{
 			Identifier: ".metadata.name",
 			Blueprint:  "\"k8s-export-test-bp\"",
+			Icon: 		"\"AWS\"",
 			Team:       "[\"Test\", \"Test2\"]",
 			Properties: map[string]string{
 				"text": "\"pod\"",
