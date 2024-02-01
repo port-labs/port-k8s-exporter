@@ -205,11 +205,11 @@ func Test_InitIntegration_DeprecatedResourcesConfiguration(t *testing.T) {
 				Entity: port.EntityMappings{
 					Mappings: []port.EntityMapping{
 						{
-							Identifier: "workload",
-							Title:      "Workload",
-							Blueprint:  "workload",
+							Identifier: "\"workload\"",
+							Title:      "\"Workload\"",
+							Blueprint:  "\"workload\"",
 							Properties: map[string]string{
-								"namespace": "default",
+								"namespace": "\"default\"",
 							},
 						},
 					},
