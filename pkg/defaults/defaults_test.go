@@ -202,7 +202,7 @@ func Test_InitIntegration_DeprecatedResourcesConfiguration(t *testing.T) {
 		{
 			Kind: "workload",
 			Port: port.Port{
-				Entity: port.EntityMappings{
+				Entity: port.EntityMa§ppings{
 					Mappings: []port.EntityMapping{
 						{
 							Identifier: "workload",
