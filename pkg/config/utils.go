@@ -3,10 +3,7 @@ package config
 import (
 	"flag"
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
-	"github.com/port-labs/port-k8s-exporter/pkg/port"
-	"gopkg.in/yaml.v2"
 	"k8s.io/utils/strings/slices"
-	"os"
 	"strings"
 )
 
@@ -36,27 +33,4 @@ func NewUInt(v *uint, key string, defaultValue uint, description string) {
 func NewBool(v *bool, key string, defaultValue bool, description string) {
 	value := goutils.GetBoolEnvOrDefault(prepareEnvKey(key), defaultValue)
 	flag.BoolVar(v, key, value, description)
-}
-
-type FileNotFoundError struct {
-	s string
-}
-
-func (e *FileNotFoundError) Error() string {
-	return e.s
-}
-
-func GetConfigFile(filepath string) (*port.Config, error) {
-	c := &port.Config{}
-	config, err := os.ReadFile(filepath)
-	if err != nil {
-		return c, &FileNotFoundError{err.Error()}
-	}
-
-	err = yaml.Unmarshal(config, c)
-	if err != nil {
-		return nil, err
-	}
-
-	return c, nil
 }

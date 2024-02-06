@@ -54,7 +54,7 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config)
 
 		// Handle a deprecated case where resources are provided in config file and integration exists from previous
 		//versions without a config
-		if existingIntegration.Config == nil {
+		if existingIntegration.Config == nil || !applicationConfig.UsePortUIConfig {
 			klog.Infof("Integration exists without a config, patching it with default config: %v", defaultIntegrationConfig)
 			integrationPatch.Config = defaultIntegrationConfig
 		}

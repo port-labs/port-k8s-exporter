@@ -1,13 +1,13 @@
 package config
 
 import (
-	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"github.com/joho/godotenv"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
+	"gopkg.in/yaml.v2"
 	"k8s.io/klog/v2"
+	"os"
 	"strings"
 )
 
@@ -37,6 +37,7 @@ func Init() {
 	NewString(&ApplicationConfig.PortClientId, "port-client-id", "", "Port client id. Required.")
 	NewString(&ApplicationConfig.PortClientSecret, "port-client-secret", "", "Port client secret. Required.")
 	NewBool(&ApplicationConfig.CreateDefaultResources, "create-default-resources", true, "Create default resources on installation. Optional.")
+	NewBool(&ApplicationConfig.UsePortUIConfig, "use-port-ui-config", true, "Use Port UI configuration after installation instead of the local config file. Optional.")
 
 	// Deprecated
 	NewBool(&ApplicationConfig.DeleteDependents, "delete-dependents", false, "Delete dependents. Optional.")
@@ -51,28 +52,24 @@ func NewConfiguration() (*port.Config, error) {
 		EventListenerType:            ApplicationConfig.EventListenerType,
 		CreateDefaultResources:       ApplicationConfig.CreateDefaultResources,
 		ResyncInterval:               ApplicationConfig.ResyncInterval,
+		UsePortUIConfig:              ApplicationConfig.UsePortUIConfig,
 		CreateMissingRelatedEntities: ApplicationConfig.CreateMissingRelatedEntities,
 		DeleteDependents:             ApplicationConfig.DeleteDependents,
 	}
 
-	c, err := GetConfigFile(ApplicationConfig.ConfigFilePath)
-	var fileNotFoundError *FileNotFoundError
-	if errors.As(err, &fileNotFoundError) {
+	v, err := os.ReadFile(ApplicationConfig.ConfigFilePath)
+	if err != nil {
+		v = []byte("{}")
 		klog.Infof("Config file not found, using defaults")
 		return overrides, nil
 	}
 	klog.Infof("Config file found")
-	v, err := json.Marshal(overrides)
+	err = yaml.Unmarshal(v, &overrides)
 	if err != nil {
 		return nil, fmt.Errorf("failed loading configuration: %w", err)
 	}
 
-	err = json.Unmarshal(v, &c)
-	if err != nil {
-		return nil, fmt.Errorf("failed loading configuration: %w", err)
-	}
+	overrides.StateKey = strings.ToLower(overrides.StateKey)
 
-	c.StateKey = strings.ToLower(c.StateKey)
-
-	return c, nil
+	return overrides, nil
 }

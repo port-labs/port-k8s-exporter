@@ -182,7 +182,7 @@ type EntityMapping struct {
 	Identifier string            `json:"identifier"`
 	Title      string            `json:"title"`
 	Blueprint  string            `json:"blueprint"`
-	Icon	   string            `json:"icon,omitempty"`
+	Icon       string            `json:"icon,omitempty"`
 	Team       string            `json:"team,omitempty"`
 	Properties map[string]string `json:"properties,omitempty"`
 	Relations  map[string]string `json:"relations,omitempty"`
@@ -227,14 +227,15 @@ type IntegrationAppConfig struct {
 }
 
 type Config struct {
-	ResyncInterval         uint
-	StateKey               string
-	EventListenerType      string
-	CreateDefaultResources bool
+	ResyncInterval         uint   `yaml:"resyncInterval,omitempty" json:"resyncInterval,omitempty"`
+	StateKey               string `yaml:"stateKey,omitempty" json:"stateKey,omitempty"`
+	EventListenerType      string `yaml:"eventListenerType,omitempty" json:"eventListenerType,omitempty"`
+	CreateDefaultResources bool   `yaml:"createDefaultResources,omitempty" json:"createDefaultResources,omitempty"`
+	UsePortUIConfig        bool   `yaml:"usePortUIConfig,omitempty" json:"usePortUIConfig,omitempty"`
 	// Deprecated: use IntegrationAppConfig instead. Used for updating the Port integration config on startup.
-	Resources []Resource `json:"resources,omitempty"`
+	Resources []Resource `yaml:"resources,omitempty" json:"resources,omitempty"`
 	// Deprecated: use IntegrationAppConfig instead. Used for updating the Port integration config on startup.
-	DeleteDependents bool `json:"deleteDependents,omitempty"`
+	DeleteDependents bool `yaml:"deleteDependents,omitempty" json:"deleteDependents,omitempty"`
 	// Deprecated: use IntegrationAppConfig instead. Used for updating the Port integration config on startup.
-	CreateMissingRelatedEntities bool `json:"createMissingRelatedEntities,omitempty"`
+	CreateMissingRelatedEntities bool `yaml:"createMissingRelatedEntities,omitempty" json:"createMissingRelatedEntities,omitempty"`
 }
