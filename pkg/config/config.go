@@ -47,7 +47,7 @@ func Init() {
 }
 
 func NewConfiguration() (*port.Config, error) {
-	overrides := &port.Config{
+	config := &port.Config{
 		StateKey:                        ApplicationConfig.StateKey,
 		EventListenerType:               ApplicationConfig.EventListenerType,
 		CreateDefaultResources:          ApplicationConfig.CreateDefaultResources,
@@ -61,15 +61,15 @@ func NewConfiguration() (*port.Config, error) {
 	if err != nil {
 		v = []byte("{}")
 		klog.Infof("Config file not found, using defaults")
-		return overrides, nil
+		return config, nil
 	}
 	klog.Infof("Config file found")
-	err = yaml.Unmarshal(v, &overrides)
+	err = yaml.Unmarshal(v, &config)
 	if err != nil {
 		return nil, fmt.Errorf("failed loading configuration: %w", err)
 	}
 
-	overrides.StateKey = strings.ToLower(overrides.StateKey)
+	config.StateKey = strings.ToLower(config.StateKey)
 
-	return overrides, nil
+	return config, nil
 }

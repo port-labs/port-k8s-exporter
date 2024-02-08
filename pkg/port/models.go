@@ -227,15 +227,13 @@ type IntegrationAppConfig struct {
 }
 
 type Config struct {
-	ResyncInterval                  uint   `yaml:"resyncInterval,omitempty" json:"resyncInterval,omitempty"`
-	StateKey                        string `yaml:"stateKey,omitempty" json:"stateKey,omitempty"`
-	EventListenerType               string `yaml:"eventListenerType,omitempty" json:"eventListenerType,omitempty"`
-	CreateDefaultResources          bool   `yaml:"createDefaultResources,omitempty" json:"createDefaultResources,omitempty"`
-	OverwriteConfigurationOnRestart bool   `yaml:"overwriteConfigurationOnRestart,omitempty" json:"overwriteConfigurationOnRestart,omitempty"`
-	// Deprecated: use IntegrationAppConfig instead. Used for updating the Port integration config on startup.
-	Resources []Resource `yaml:"resources,omitempty" json:"resources,omitempty"`
-	// Deprecated: use IntegrationAppConfig instead. Used for updating the Port integration config on startup.
-	DeleteDependents bool `yaml:"deleteDependents,omitempty" json:"deleteDependents,omitempty"`
-	// Deprecated: use IntegrationAppConfig instead. Used for updating the Port integration config on startup.
-	CreateMissingRelatedEntities bool `yaml:"createMissingRelatedEntities,omitempty" json:"createMissingRelatedEntities,omitempty"`
+	ResyncInterval                  uint   `yaml:"resyncInterval,omitempty"`
+	StateKey                        string `yaml:"stateKey,omitempty"`
+	EventListenerType               string `yaml:"eventListenerType,omitempty"`
+	CreateDefaultResources          bool   `yaml:"createDefaultResources,omitempty"`
+	OverwriteConfigurationOnRestart bool   `yaml:"overwriteConfigurationOnRestart,omitempty"`
+	// These Configurations are used only for setting up the Integration on installation or when using OverwriteConfigurationOnRestart flag.
+	Resources                    []Resource `yaml:"resources,omitempty"`
+	DeleteDependents             bool       `yaml:"deleteDependents,omitempty"`
+	CreateMissingRelatedEntities bool       `yaml:"createMissingRelatedEntities,omitempty"`
 }
