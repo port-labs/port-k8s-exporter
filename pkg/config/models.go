@@ -13,18 +13,17 @@ type KafkaConfiguration struct {
 }
 
 type ApplicationConfiguration struct {
-	ConfigFilePath         string
-	StateKey               string
-	ResyncInterval         uint
-	PortBaseURL            string
-	PortClientId           string
-	PortClientSecret       string
-	EventListenerType      string
-	CreateDefaultResources bool
-	// Deprecated: use IntegrationAppConfig instead. Used for updating the Port integration config on startup.
-	Resources []port.Resource
-	// Deprecated: use IntegrationAppConfig instead. Used for updating the Port integration config on startup.
-	DeleteDependents bool `json:"deleteDependents,omitempty"`
-	// Deprecated: use IntegrationAppConfig instead. Used for updating the Port integration config on startup.
+	ConfigFilePath                  string
+	StateKey                        string
+	ResyncInterval                  uint
+	PortBaseURL                     string
+	PortClientId                    string
+	PortClientSecret                string
+	EventListenerType               string
+	CreateDefaultResources          bool
+	OverwriteConfigurationOnRestart bool
+	// These Configurations are used only for setting up the Integration on installation or when using OverwriteConfigurationOnRestart flag.
+	Resources                    []port.Resource
+	DeleteDependents             bool `json:"deleteDependents,omitempty"`
 	CreateMissingRelatedEntities bool `json:"createMissingRelatedEntities,omitempty"`
 }

@@ -144,6 +144,7 @@ func validateResourcesErrors(createdBlueprints []string, createdPages []string, 
 func validateResourcesDoesNotExist(portClient *cli.PortClient, defaults *Defaults, config *port.Config) *AbortDefaultCreationError {
 	var errors []error
 	if _, err := integration.GetIntegration(portClient, config.StateKey); err == nil {
+		klog.Warningf("Integration with state key %s already exists", config.StateKey)
 		return &AbortDefaultCreationError{Errors: []error{
 			fmt.Errorf("integration with state key %s already exists", config.StateKey),
 		}}
@@ -151,12 +152,14 @@ func validateResourcesDoesNotExist(portClient *cli.PortClient, defaults *Default
 
 	for _, bp := range defaults.Blueprints {
 		if _, err := blueprint.GetBlueprint(portClient, bp.Identifier); err == nil {
+			klog.Warningf("Blueprint with identifier %s already exists", bp.Identifier)
 			errors = append(errors, fmt.Errorf("blueprint with identifier %s already exists", bp.Identifier))
 		}
 	}
 
 	for _, p := range defaults.Pages {
 		if _, err := page.GetPage(portClient, p.Identifier); err == nil {
+			klog.Warningf("Page with identifier %s already exists", p.Identifier)
 			errors = append(errors, fmt.Errorf("page with identifier %s already exists", p.Identifier))
 		}
 	}
@@ -169,6 +172,7 @@ func validateResourcesDoesNotExist(portClient *cli.PortClient, defaults *Default
 
 func createResources(portClient *cli.PortClient, defaults *Defaults, config *port.Config) *AbortDefaultCreationError {
 	if err := validateResourcesDoesNotExist(portClient, defaults, config); err != nil {
+		klog.Warningf("Failed to create resources: %v.", err.Errors)
 		return err
 	}
 
@@ -189,8 +193,10 @@ func createResources(portClient *cli.PortClient, defaults *Defaults, config *por
 
 			mutex.Lock()
 			if err != nil {
+				klog.Warningf("Failed to create blueprint %s: %v", bp.Identifier, err.Error())
 				resourceErrors = append(resourceErrors, err)
 			} else {
+				klog.Infof("Created blueprint %s", result.Identifier)
 				createdBlueprints = append(createdBlueprints, result.Identifier)
 			}
 			mutex.Unlock()
@@ -208,6 +214,7 @@ func createResources(portClient *cli.PortClient, defaults *Defaults, config *por
 			go func(bp port.Blueprint) {
 				defer waitGroup.Done()
 				if _, err := blueprint.PatchBlueprint(portClient, bp); err != nil {
+					klog.Warningf("Failed to patch blueprint %s: %v", bp.Identifier, err.Error())
 					resourceErrors = append(resourceErrors, err)
 				}
 			}(bp)
@@ -225,6 +232,7 @@ func createResources(portClient *cli.PortClient, defaults *Defaults, config *por
 			go func(blueprintIdentifier string, scorecard port.Scorecard) {
 				defer waitGroup.Done()
 				if err := scorecards.CreateScorecard(portClient, blueprintIdentifier, scorecard); err != nil {
+					klog.Warningf("Failed to create scorecard for blueprint %s: %v", blueprintIdentifier, err.Error())
 					resourceErrors = append(resourceErrors, err)
 				}
 			}(blueprintScorecards.Blueprint, scorecard)
@@ -241,8 +249,10 @@ func createResources(portClient *cli.PortClient, defaults *Defaults, config *por
 		go func(p port.Page) {
 			defer waitGroup.Done()
 			if err := page.CreatePage(portClient, p); err != nil {
+				klog.Warningf("Failed to create page %s: %v", p.Identifier, err.Error())
 				resourceErrors = append(resourceErrors, err)
 			} else {
+				klog.Infof("Created page %s", p.Identifier)
 				createdPages = append(createdPages, p.Identifier)
 			}
 		}(pageToCreate)
@@ -254,7 +264,7 @@ func createResources(portClient *cli.PortClient, defaults *Defaults, config *por
 	}
 
 	if err := integration.CreateIntegration(portClient, config.StateKey, config.EventListenerType, defaults.AppConfig); err != nil {
-		klog.Infof("Failed to create resources: %v.", err.Error())
+		klog.Warningf("Failed to create integration with default configuration. state key %s: %v", config.StateKey, err.Error())
 		return &AbortDefaultCreationError{BlueprintsToRollback: createdBlueprints, PagesToRollback: createdPages, Errors: []error{err}}
 	}
 

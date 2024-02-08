@@ -1,13 +1,13 @@
 package config
 
 import (
-	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"github.com/joho/godotenv"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
+	"gopkg.in/yaml.v2"
 	"k8s.io/klog/v2"
+	"os"
 	"strings"
 )
 
@@ -37,6 +37,7 @@ func Init() {
 	NewString(&ApplicationConfig.PortClientId, "port-client-id", "", "Port client id. Required.")
 	NewString(&ApplicationConfig.PortClientSecret, "port-client-secret", "", "Port client secret. Required.")
 	NewBool(&ApplicationConfig.CreateDefaultResources, "create-default-resources", true, "Create default resources on installation. Optional.")
+	NewBool(&ApplicationConfig.OverwriteConfigurationOnRestart, "overwrite-configuration-on-restart", false, "Overwrite the configuration in port on restarting the exporter. Optional.")
 
 	// Deprecated
 	NewBool(&ApplicationConfig.DeleteDependents, "delete-dependents", false, "Delete dependents. Optional.")
@@ -46,33 +47,29 @@ func Init() {
 }
 
 func NewConfiguration() (*port.Config, error) {
-	overrides := &port.Config{
-		StateKey:                     ApplicationConfig.StateKey,
-		EventListenerType:            ApplicationConfig.EventListenerType,
-		CreateDefaultResources:       ApplicationConfig.CreateDefaultResources,
-		ResyncInterval:               ApplicationConfig.ResyncInterval,
-		CreateMissingRelatedEntities: ApplicationConfig.CreateMissingRelatedEntities,
-		DeleteDependents:             ApplicationConfig.DeleteDependents,
+	config := &port.Config{
+		StateKey:                        ApplicationConfig.StateKey,
+		EventListenerType:               ApplicationConfig.EventListenerType,
+		CreateDefaultResources:          ApplicationConfig.CreateDefaultResources,
+		ResyncInterval:                  ApplicationConfig.ResyncInterval,
+		OverwriteConfigurationOnRestart: ApplicationConfig.OverwriteConfigurationOnRestart,
+		CreateMissingRelatedEntities:    ApplicationConfig.CreateMissingRelatedEntities,
+		DeleteDependents:                ApplicationConfig.DeleteDependents,
 	}
 
-	c, err := GetConfigFile(ApplicationConfig.ConfigFilePath)
-	var fileNotFoundError *FileNotFoundError
-	if errors.As(err, &fileNotFoundError) {
+	v, err := os.ReadFile(ApplicationConfig.ConfigFilePath)
+	if err != nil {
+		v = []byte("{}")
 		klog.Infof("Config file not found, using defaults")
-		return overrides, nil
+		return config, nil
 	}
 	klog.Infof("Config file found")
-	v, err := json.Marshal(overrides)
+	err = yaml.Unmarshal(v, &config)
 	if err != nil {
 		return nil, fmt.Errorf("failed loading configuration: %w", err)
 	}
 
-	err = json.Unmarshal(v, &c)
-	if err != nil {
-		return nil, fmt.Errorf("failed loading configuration: %w", err)
-	}
+	config.StateKey = strings.ToLower(config.StateKey)
 
-	c.StateKey = strings.ToLower(c.StateKey)
-
-	return c, nil
+	return config, nil
 }
