@@ -256,7 +256,7 @@ func Test_InitIntegration_LocalResourcesConfiguration_ExistingIntegration_EmptyC
 
 func Test_InitIntegration_LocalResourcesConfiguration_ExistingIntegration_WithConfiguration_WithOverwriteConfigurationOnRestartFlag(t *testing.T) {
 	f := NewFixture(t)
-	expectedResources := &port.IntegrationAppConfig{
+	expectedConfig := &port.IntegrationAppConfig{
 		Resources: []port.Resource{
 			{
 				Kind: "workload",
@@ -278,16 +278,16 @@ func Test_InitIntegration_LocalResourcesConfiguration_ExistingIntegration_WithCo
 			},
 		},
 	}
-	err := integration.CreateIntegration(f.portClient, f.stateKey, "POLLING", expectedResources)
+	err := integration.CreateIntegration(f.portClient, f.stateKey, "POLLING", expectedConfig)
 	if err != nil {
 		t.Errorf("Error creating Port integration: %s", err.Error())
 	}
 
-	expectedResources.Resources[0].Kind = "namespace"
+	expectedConfig.Resources[0].Kind = "namespace"
 	e := InitIntegration(f.portClient, &port.Config{
 		StateKey:                        f.stateKey,
 		EventListenerType:               "KAFKA",
-		Resources:                       expectedResources.Resources,
+		Resources:                       expectedConfig.Resources,
 		CreateDefaultResources:          true,
 		OverwriteConfigurationOnRestart: true,
 	})
@@ -295,7 +295,7 @@ func Test_InitIntegration_LocalResourcesConfiguration_ExistingIntegration_WithCo
 
 	i, err := integration.GetIntegration(f.portClient, f.stateKey)
 	assert.Nil(t, err)
-	assert.Equal(t, expectedResources, i.Config.Resources)
+	assert.Equal(t, expectedConfig.Resources, i.Config.Resources)
 
 	checkResourcesDoesNotExist(f, []string{"workload", "namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"})
 }
