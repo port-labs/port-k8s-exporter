@@ -37,7 +37,7 @@ func Init() {
 	NewString(&ApplicationConfig.PortClientId, "port-client-id", "", "Port client id. Required.")
 	NewString(&ApplicationConfig.PortClientSecret, "port-client-secret", "", "Port client secret. Required.")
 	NewBool(&ApplicationConfig.CreateDefaultResources, "create-default-resources", true, "Create default resources on installation. Optional.")
-	NewBool(&ApplicationConfig.OverwriteConfigurationOnRestart, "overwrite-configuration-on-restart", true, "Overwrite the configuration in port on restarting the exporter. Optional.")
+	NewBool(&ApplicationConfig.OverwriteConfigurationOnRestart, "overwrite-configuration-on-restart", false, "Overwrite the configuration in port on restarting the exporter. Optional.")
 
 	// Deprecated
 	NewBool(&ApplicationConfig.DeleteDependents, "delete-dependents", false, "Delete dependents. Optional.")
