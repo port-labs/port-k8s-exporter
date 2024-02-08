@@ -37,7 +37,7 @@ func Init() {
 	NewString(&ApplicationConfig.PortClientId, "port-client-id", "", "Port client id. Required.")
 	NewString(&ApplicationConfig.PortClientSecret, "port-client-secret", "", "Port client secret. Required.")
 	NewBool(&ApplicationConfig.CreateDefaultResources, "create-default-resources", true, "Create default resources on installation. Optional.")
-	NewBool(&ApplicationConfig.UsePortUIConfig, "use-port-ui-config", true, "Use Port UI configuration after installation instead of the local config file. Optional.")
+	NewBool(&ApplicationConfig.OverwriteConfigurationOnRestart, "overwrite-configuration-on-restart", true, "Overwrite the configuration in port on restarting the exporter. Optional.")
 
 	// Deprecated
 	NewBool(&ApplicationConfig.DeleteDependents, "delete-dependents", false, "Delete dependents. Optional.")
@@ -48,13 +48,13 @@ func Init() {
 
 func NewConfiguration() (*port.Config, error) {
 	overrides := &port.Config{
-		StateKey:                     ApplicationConfig.StateKey,
-		EventListenerType:            ApplicationConfig.EventListenerType,
-		CreateDefaultResources:       ApplicationConfig.CreateDefaultResources,
-		ResyncInterval:               ApplicationConfig.ResyncInterval,
-		UsePortUIConfig:              ApplicationConfig.UsePortUIConfig,
-		CreateMissingRelatedEntities: ApplicationConfig.CreateMissingRelatedEntities,
-		DeleteDependents:             ApplicationConfig.DeleteDependents,
+		StateKey:                        ApplicationConfig.StateKey,
+		EventListenerType:               ApplicationConfig.EventListenerType,
+		CreateDefaultResources:          ApplicationConfig.CreateDefaultResources,
+		ResyncInterval:                  ApplicationConfig.ResyncInterval,
+		OverwriteConfigurationOnRestart: ApplicationConfig.OverwriteConfigurationOnRestart,
+		CreateMissingRelatedEntities:    ApplicationConfig.CreateMissingRelatedEntities,
+		DeleteDependents:                ApplicationConfig.DeleteDependents,
 	}
 
 	v, err := os.ReadFile(ApplicationConfig.ConfigFilePath)

@@ -227,11 +227,11 @@ type IntegrationAppConfig struct {
 }
 
 type Config struct {
-	ResyncInterval         uint   `yaml:"resyncInterval,omitempty" json:"resyncInterval,omitempty"`
-	StateKey               string `yaml:"stateKey,omitempty" json:"stateKey,omitempty"`
-	EventListenerType      string `yaml:"eventListenerType,omitempty" json:"eventListenerType,omitempty"`
-	CreateDefaultResources bool   `yaml:"createDefaultResources,omitempty" json:"createDefaultResources,omitempty"`
-	UsePortUIConfig        bool   `yaml:"usePortUIConfig,omitempty" json:"usePortUIConfig,omitempty"`
+	ResyncInterval                  uint   `yaml:"resyncInterval,omitempty" json:"resyncInterval,omitempty"`
+	StateKey                        string `yaml:"stateKey,omitempty" json:"stateKey,omitempty"`
+	EventListenerType               string `yaml:"eventListenerType,omitempty" json:"eventListenerType,omitempty"`
+	CreateDefaultResources          bool   `yaml:"createDefaultResources,omitempty" json:"createDefaultResources,omitempty"`
+	OverwriteConfigurationOnRestart bool   `yaml:"overwriteConfigurationOnRestart,omitempty" json:"overwriteConfigurationOnRestart,omitempty"`
 	// Deprecated: use IntegrationAppConfig instead. Used for updating the Port integration config on startup.
 	Resources []Resource `yaml:"resources,omitempty" json:"resources,omitempty"`
 	// Deprecated: use IntegrationAppConfig instead. Used for updating the Port integration config on startup.

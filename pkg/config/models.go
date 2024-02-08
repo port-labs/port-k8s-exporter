@@ -13,15 +13,15 @@ type KafkaConfiguration struct {
 }
 
 type ApplicationConfiguration struct {
-	ConfigFilePath         string
-	StateKey               string
-	ResyncInterval         uint
-	PortBaseURL            string
-	PortClientId           string
-	PortClientSecret       string
-	EventListenerType      string
-	CreateDefaultResources bool
-	UsePortUIConfig        bool
+	ConfigFilePath                  string
+	StateKey                        string
+	ResyncInterval                  uint
+	PortBaseURL                     string
+	PortClientId                    string
+	PortClientSecret                string
+	EventListenerType               string
+	CreateDefaultResources          bool
+	OverwriteConfigurationOnRestart bool
 	// Deprecated: use IntegrationAppConfig instead. Used for updating the Port integration config on startup.
 	Resources []port.Resource
 	// Deprecated: use IntegrationAppConfig instead. Used for updating the Port integration config on startup.
