@@ -63,6 +63,13 @@
           "default": [],
           "description": "The containers for each pod instance of the Workload"
         },
+        "images": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Images",
+          "type": "array"
+        },
         "creationTimestamp": {
           "type": "string",
           "title": "Created",
