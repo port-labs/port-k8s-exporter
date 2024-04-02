@@ -221,9 +221,9 @@ type AggregatedResource struct {
 }
 
 type IntegrationAppConfig struct {
-	DeleteDependents             bool       `json:"deleteDependents,omitempty"`
-	CreateMissingRelatedEntities bool       `json:"createMissingRelatedEntities,omitempty"`
-	Resources                    []Resource `json:"resources,omitempty"`
+	DeleteDependents             bool       `json:"deleteDependents,omitempty" yaml:"deleteDependents,omitempty"`
+	CreateMissingRelatedEntities bool       `json:"createMissingRelatedEntities,omitempty" yaml:"createMissingRelatedEntities,omitempty"`
+	Resources                    []Resource `json:"resources,omitempty" yaml:"resources,omitempty"`
 }
 
 type Config struct {
