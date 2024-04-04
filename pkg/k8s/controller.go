@@ -3,6 +3,8 @@ package k8s
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/jq"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
@@ -12,7 +14,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
-	"time"
 
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"

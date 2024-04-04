@@ -23,7 +23,8 @@ type ApplicationConfiguration struct {
 	CreateDefaultResources          bool
 	OverwriteConfigurationOnRestart bool
 	// These Configurations are used only for setting up the Integration on installation or when using OverwriteConfigurationOnRestart flag.
-	Resources                    []port.Resource
-	DeleteDependents             bool `json:"deleteDependents,omitempty"`
-	CreateMissingRelatedEntities bool `json:"createMissingRelatedEntities,omitempty"`
+	Resources                         []port.Resource
+	DeleteDependents                  bool   `json:"deleteDependents,omitempty"`
+	CreateMissingRelatedEntities      bool   `json:"createMissingRelatedEntities,omitempty"`
+	DiscoverResourceDefinitionPattern string `json:"discoverResourceDefinitionPattern,omitempty"` // Supports both XRD(crossplane) and CRD
 }

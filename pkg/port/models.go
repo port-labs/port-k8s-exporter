@@ -38,7 +38,7 @@ type (
 		UpdatedAt           *time.Time             `json:"updatedAt,omitempty"`
 	}
 
-	BlueprintProperty struct {
+	Property struct {
 		Type        string            `json:"type,omitempty"`
 		Title       string            `json:"title,omitempty"`
 		Identifier  string            `json:"identifier,omitempty"`
@@ -78,14 +78,20 @@ type (
 		Type            string      `json:"type,omitempty"`
 	}
 
-	BlueprintSchema struct {
-		Properties map[string]BlueprintProperty `json:"properties"`
-		Required   []string                     `json:"required,omitempty"`
+	Schema struct {
+		Properties map[string]Property `json:"properties"`
+		Required   []string            `json:"required,omitempty"`
 	}
 
 	InvocationMethod struct {
-		Type string `json:"type,omitempty"`
-		Url  string `json:"url,omitempty"`
+		Type                 string `json:"type,omitempty"`
+		Url                  string `json:"url,omitempty"`
+		Organization         string `json:"org,omitempty"`
+		Repository           string `json:"repo,omitempty"`
+		Workflow             string `json:"workflow,omitempty"`
+		OmitUserInputs       bool   `json:"omitUserInputs,omitempty"`
+		OmitPayload          bool   `json:"omitPayload,omitempty"`
+		ReportWorkflowStatus bool   `json:"reportWorkflowStatus,omitempty"`
 	}
 
 	ChangelogDestination struct {
@@ -93,7 +99,7 @@ type (
 		Url  string `json:"url,omitempty"`
 	}
 
-	ActionUserInputs = BlueprintSchema
+	ActionUserInputs = Schema
 
 	Blueprint struct {
 		Meta
@@ -101,7 +107,7 @@ type (
 		Title                 string                                  `json:"title,omitempty"`
 		Icon                  string                                  `json:"icon"`
 		Description           string                                  `json:"description"`
-		Schema                BlueprintSchema                         `json:"schema"`
+		Schema                Schema                                  `json:"schema"`
 		CalculationProperties map[string]BlueprintCalculationProperty `json:"calculationProperties,omitempty"`
 		AggregationProperties map[string]BlueprintAggregationProperty `json:"aggregationProperties,omitempty"`
 		MirrorProperties      map[string]BlueprintMirrorProperty      `json:"mirrorProperties,omitempty"`
@@ -221,9 +227,10 @@ type AggregatedResource struct {
 }
 
 type IntegrationAppConfig struct {
-	DeleteDependents             bool       `json:"deleteDependents,omitempty"`
-	CreateMissingRelatedEntities bool       `json:"createMissingRelatedEntities,omitempty"`
-	Resources                    []Resource `json:"resources,omitempty"`
+	DeleteDependents                  bool       `json:"deleteDependents,omitempty"`
+	CreateMissingRelatedEntities      bool       `json:"createMissingRelatedEntities,omitempty"`
+	Resources                         []Resource `json:"resources,omitempty"`
+	DiscoverResourceDefinitionPattern string     `json:"discoverResourceDefinitionPattern,omitempty"`
 }
 
 type Config struct {
@@ -233,7 +240,8 @@ type Config struct {
 	CreateDefaultResources          bool   `yaml:"createDefaultResources,omitempty"`
 	OverwriteConfigurationOnRestart bool   `yaml:"overwriteConfigurationOnRestart,omitempty"`
 	// These Configurations are used only for setting up the Integration on installation or when using OverwriteConfigurationOnRestart flag.
-	Resources                    []Resource `yaml:"resources,omitempty"`
-	DeleteDependents             bool       `yaml:"deleteDependents,omitempty"`
-	CreateMissingRelatedEntities bool       `yaml:"createMissingRelatedEntities,omitempty"`
+	Resources                         []Resource `yaml:"resources,omitempty"`
+	DiscoverResourceDefinitionPattern string     `yaml:"discoverResourceDefinitionPattern,omitempty"`
+	DeleteDependents                  bool       `yaml:"deleteDependents,omitempty"`
+	CreateMissingRelatedEntities      bool       `yaml:"createMissingRelatedEntities,omitempty"`
 }

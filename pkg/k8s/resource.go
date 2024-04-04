@@ -1,9 +1,10 @@
 package k8s
 
 import (
+	"strings"
+
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/restmapper"
-	"strings"
 )
 
 func GetGVRFromResource(discoveryMapper *restmapper.DeferredDiscoveryRESTMapper, resource string) (schema.GroupVersionResource, error) {
