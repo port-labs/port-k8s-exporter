@@ -21,12 +21,12 @@ func CreateAction(portClient *PortClient, blueprintIdentifier string, action por
 	return &pb.Action, nil
 }
 
-func PatchAction(portClient *PortClient, blueprintIdentifier string, action port.Action) (*port.Action, error) {
+func UpdateAction(portClient *PortClient, blueprintIdentifier string, action port.Action) (*port.Action, error) {
 	pb := &port.ResponseBody{}
 	resp, err := portClient.Client.R().
 		SetResult(&pb).
 		SetBody(action).
-		Patch(fmt.Sprintf("v1/blueprints/blueprints/%s/actions/%s", blueprintIdentifier, action.Identifier))
+		Put(fmt.Sprintf("v1/blueprints/%s/actions/%s", blueprintIdentifier, action.Identifier))
 	if err != nil {
 		return nil, err
 	}

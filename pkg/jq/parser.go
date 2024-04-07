@@ -2,11 +2,13 @@ package jq
 
 import (
 	"fmt"
-	"github.com/itchyny/gojq"
-	"k8s.io/klog/v2"
 	"os"
 	"strings"
 	"sync"
+
+	"github.com/itchyny/gojq"
+	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
+	"k8s.io/klog/v2"
 )
 
 var mutex = &sync.Mutex{}
@@ -90,7 +92,12 @@ func ParseMapInterface(jqQueries map[string]string, obj interface{}) (map[string
 			return nil, err
 		}
 
-		mapInterface[key] = queryRes
+		if key != "*" {
+			mapInterface[key] = queryRes
+		} else {
+			mapInterface = goutils.MergeMaps(mapInterface, queryRes.(map[string]interface{}))
+		}
+
 	}
 
 	return mapInterface, nil

@@ -4,16 +4,12 @@ import (
 	"context"
 	"time"
 
-	"regexp"
-
+	"github.com/port-labs/port-k8s-exporter/pkg/crd"
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
 	"github.com/port-labs/port-k8s-exporter/pkg/k8s"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
-	"github.com/port-labs/port-k8s-exporter/pkg/port/blueprint"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"github.com/port-labs/port-k8s-exporter/pkg/signal"
-	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/klog/v2"
@@ -31,28 +27,7 @@ func NewControllersHandler(exporterConfig *port.Config, portConfig *port.Integra
 	resync := time.Minute * time.Duration(exporterConfig.ResyncInterval)
 	informersFactory := dynamicinformer.NewDynamicSharedInformerFactory(k8sClient.DynamicClient, resync)
 
-	if portConfig.DiscoverResourceDefinitionPattern != "" {
-		klog.Infof("Discovering CRDs/XRDs with pattern: %s", portConfig.DiscoverResourceDefinitionPattern)
-
-		crds, err := k8sClient.ApiExtensionClient.CustomResourceDefinitions().List(context.Background(), metav1.ListOptions{})
-
-		crdsMatchedPattern := make([]v1.CustomResourceDefinition, 0)
-		for _, crd := range crds.Items {
-			match, err := regexp.MatchString(portConfig.DiscoverResourceDefinitionPattern, crd.ObjectMeta.Name)
-			if err != nil {
-				klog.Errorf("Error matching CRD name: %s", err.Error())
-				continue
-			}
-			if match {
-				crdsMatchedPattern = append(crdsMatchedPattern, crd)
-			}
-		}
-		if err != nil {
-			klog.Errorf("Error listing CRDs: %s", err.Error())
-		}
-
-		blueprint.CreateSchemasFromCRD(portClient, crdsMatchedPattern)
-	}
+	matchedCrds := crd.AutodiscoverCRDsToActions(exporterConfig, portConfig, k8sClient, portClient)
 
 	aggResources := make(map[string][]port.KindConfig)
 	for _, resource := range portConfig.Resources {
@@ -64,7 +39,7 @@ func NewControllersHandler(exporterConfig *port.Config, portConfig *port.Integra
 		}
 	}
 
-	controllers := make([]*k8s.Controller, 0, len(portConfig.Resources))
+	controllers := make([]*k8s.Controller, 0, len(portConfig.Resources)+len(matchedCrds))
 
 	for kind, kindConfigs := range aggResources {
 		var gvr schema.GroupVersionResource
