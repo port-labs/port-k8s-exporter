@@ -18,7 +18,6 @@ import (
 )
 
 const (
-	KindXRD = "CompositeResourceDefinition"
 	KindCRD = "CustomResourceDefinition"
 )
 
