@@ -2,8 +2,8 @@ package goutils
 
 import "encoding/json"
 
-func MergeMaps(ms ...map[string]interface{}) map[string]interface{} {
-	res := map[string]interface{}{}
+func MergeMaps[T interface{}](ms ...map[string]T) map[string]T {
+	res := map[string]T{}
 	for _, m := range ms {
 		for k, v := range m {
 			res[k] = v

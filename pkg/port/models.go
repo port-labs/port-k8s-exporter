@@ -52,6 +52,21 @@ type (
 		EnumColors  map[string]string `json:"enumColors,omitempty"`
 	}
 
+	ActionProperty struct {
+		Type        string            `json:"type,omitempty"`
+		Title       string            `json:"title,omitempty"`
+		Identifier  string            `json:"identifier,omitempty"`
+		Default     any               `json:"default,omitempty"`
+		Icon        string            `json:"icon,omitempty"`
+		Format      string            `json:"format,omitempty"`
+		Description string            `json:"description,omitempty"`
+		Blueprint   string            `json:"blueprint,omitempty"`
+		Pattern     string            `json:"pattern,omitempty"`
+		Enum        []string          `json:"enum,omitempty"`
+		EnumColors  map[string]string `json:"enumColors,omitempty"`
+		Visible     *bool             `json:"visible,omitempty"`
+	}
+
 	BlueprintMirrorProperty struct {
 		Identifier string `json:"identifier,omitempty"`
 		Title      string `json:"title,omitempty"`
@@ -99,7 +114,10 @@ type (
 		Url  string `json:"url,omitempty"`
 	}
 
-	ActionUserInputs = Schema
+	ActionUserInputs struct {
+		Properties map[string]ActionProperty `json:"properties"`
+		Required   []string                  `json:"required,omitempty"`
+	}
 
 	Blueprint struct {
 		Meta
@@ -227,10 +245,10 @@ type AggregatedResource struct {
 }
 
 type IntegrationAppConfig struct {
-	DeleteDependents                  bool       `json:"deleteDependents,omitempty"`
-	CreateMissingRelatedEntities      bool       `json:"createMissingRelatedEntities,omitempty"`
-	Resources                         []Resource `json:"resources,omitempty"`
-	DiscoverResourceDefinitionPattern string     `json:"discoverResourceDefinitionPattern,omitempty"`
+	DeleteDependents             bool       `json:"deleteDependents,omitempty"`
+	CreateMissingRelatedEntities bool       `json:"createMissingRelatedEntities,omitempty"`
+	Resources                    []Resource `json:"resources,omitempty"`
+	CRDSToDiscover               string     `json:"crdsToDiscover,omitempty"`
 }
 
 type Config struct {
@@ -240,8 +258,8 @@ type Config struct {
 	CreateDefaultResources          bool   `yaml:"createDefaultResources,omitempty"`
 	OverwriteConfigurationOnRestart bool   `yaml:"overwriteConfigurationOnRestart,omitempty"`
 	// These Configurations are used only for setting up the Integration on installation or when using OverwriteConfigurationOnRestart flag.
-	Resources                         []Resource `yaml:"resources,omitempty"`
-	DiscoverResourceDefinitionPattern string     `yaml:"discoverResourceDefinitionPattern,omitempty"`
-	DeleteDependents                  bool       `yaml:"deleteDependents,omitempty"`
-	CreateMissingRelatedEntities      bool       `yaml:"createMissingRelatedEntities,omitempty"`
+	Resources                    []Resource `yaml:"resources,omitempty"`
+	CRDSToDiscover               string     `yaml:"crdsToDiscover,omitempty"`
+	DeleteDependents             bool       `yaml:"deleteDependents,omitempty"`
+	CreateMissingRelatedEntities bool       `yaml:"createMissingRelatedEntities,omitempty"`
 }

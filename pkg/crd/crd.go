@@ -21,7 +21,7 @@ const (
 	KindCRD = "CustomResourceDefinition"
 )
 
-var ignoreCrossplaneXRDFields = []string{
+var invisibleFields = []string{
 	"writeConnectionSecretToRef",
 	"publishConnectionDetailsTo",
 	"resourceRefs",
@@ -67,12 +67,12 @@ func CreateKindConfigFromCRD(crd v1.CustomResourceDefinition) port.Resource {
 func AutodiscoverCRDsToActions(exporterConfig *port.Config, portConfig *port.IntegrationAppConfig, k8sClient *k8s.Client, portClient *cli.PortClient) []v1.CustomResourceDefinition {
 	crdsMatchedPattern := make([]v1.CustomResourceDefinition, 0)
 
-	if portConfig.DiscoverResourceDefinitionPattern == "" {
+	if portConfig.CRDSToDiscover == "" {
 		klog.Info("Discovering CRDs is disabled")
 		return crdsMatchedPattern
 	}
 
-	klog.Infof("Discovering CRDs/XRDs with pattern: %s", portConfig.DiscoverResourceDefinitionPattern)
+	klog.Infof("Discovering CRDs/XRDs with pattern: %s", portConfig.CRDSToDiscover)
 	crds, err := k8sClient.ApiExtensionClient.CustomResourceDefinitions().List(context.Background(), metav1.ListOptions{})
 
 	for _, crd := range crds.Items {
@@ -83,7 +83,7 @@ func AutodiscoverCRDsToActions(exporterConfig *port.Config, portConfig *port.Int
 			continue
 		}
 
-		match, err := jq.ParseBool(portConfig.DiscoverResourceDefinitionPattern, mapCrd)
+		match, err := jq.ParseBool(portConfig.CRDSToDiscover, mapCrd)
 
 		if err != nil {
 			klog.Errorf("Error running jq on crd CRD: %s", err.Error())
@@ -99,7 +99,7 @@ func AutodiscoverCRDsToActions(exporterConfig *port.Config, portConfig *port.Int
 	}
 
 	for _, crd := range crdsMatchedPattern {
-		crtAct, dltAct, bp, err := ConvertToPortSchema(crd)
+		actions, bp, err := ConvertToPortSchema(crd)
 		if err != nil {
 			klog.Errorf("Error converting CRD to Port schemas: %s", err.Error())
 			continue
@@ -110,14 +110,11 @@ func AutodiscoverCRDsToActions(exporterConfig *port.Config, portConfig *port.Int
 			klog.Errorf("Error creating blueprint: %s", err.Error())
 		}
 
-		_, err = blueprint.NewBlueprintAction(portClient, bp.Identifier, *crtAct)
-		if err != nil {
-			klog.Errorf("Error creating blueprint action: %s", err.Error())
-		}
-
-		_, err = blueprint.NewBlueprintAction(portClient, bp.Identifier, *dltAct)
-		if err != nil {
-			klog.Errorf("Error creating blueprint action: %s", err.Error())
+		for _, act := range actions {
+			_, err = blueprint.NewBlueprintAction(portClient, bp.Identifier, act)
+			if err != nil {
+				klog.Errorf("Error creating blueprint action: %s", err.Error())
+			}
 		}
 	}
 
@@ -128,10 +125,79 @@ func AutodiscoverCRDsToActions(exporterConfig *port.Config, portConfig *port.Int
 	return crdsMatchedPattern
 }
 
-func ConvertToPortSchema(crd v1.CustomResourceDefinition) (*port.Action, *port.Action, *port.Blueprint, error) {
+func BuildCreateAction(crd v1.CustomResourceDefinition, as *port.ActionUserInputs, apiVersionProperty, kindProperty, nameProperty port.ActionProperty, invocation port.InvocationMethod, bp port.Blueprint) port.Action {
+	createActionProperties := goutils.MergeMaps(
+		as.Properties,
+		map[string]port.ActionProperty{"apiVersion": apiVersionProperty, "kind": kindProperty, "name": nameProperty},
+	)
+
+	crtAct := port.Action{
+		Identifier: "create_" + crd.Spec.Names.Singular,
+		Title:      "Create " + crd.Spec.Names.Singular,
+		UserInputs: port.ActionUserInputs{
+			Properties: createActionProperties,
+			Required:   append(as.Required, "name"),
+		},
+		Trigger:          "CREATE",
+		InvocationMethod: &invocation,
+	}
+
+	return crtAct
+}
+
+func BuildUpdateAction(crd v1.CustomResourceDefinition, as *port.ActionUserInputs, apiVersionProperty, kindProperty port.ActionProperty, invocation port.InvocationMethod, bp port.Blueprint) port.Action {
+	for k, v := range as.Properties {
+		updatedStruct := v
+
+		defaultMap := make(map[string]string)
+		defaultMap["jqQuery"] = ".entity.properties." + k
+		updatedStruct.Default = defaultMap
+
+		as.Properties[k] = updatedStruct
+	}
+
+	updateProperties := goutils.MergeMaps(
+		as.Properties,
+		map[string]port.ActionProperty{"apiVersion": apiVersionProperty, "kind": kindProperty},
+	)
+
+	uptAct := port.Action{
+		Identifier: "update_" + crd.Spec.Names.Singular,
+		Title:      "Update " + crd.Spec.Names.Singular,
+		UserInputs: port.ActionUserInputs{
+			Properties: updateProperties,
+			Required:   as.Required,
+		},
+		Trigger:          "DAY-2",
+		InvocationMethod: &invocation,
+	}
+
+	return uptAct
+}
+
+func BuildDeleteAction(crd v1.CustomResourceDefinition, apiVersionProperty, kindProperty port.ActionProperty, invocation port.InvocationMethod) port.Action {
+	dltAct := port.Action{
+		Identifier: "delete_" + crd.Spec.Names.Singular,
+		Title:      "Delete " + crd.Spec.Names.Singular,
+		Trigger:    "DELETE",
+		UserInputs: port.ActionUserInputs{
+			Properties: map[string]port.ActionProperty{
+				"apiVersion": apiVersionProperty,
+				"kind":       kindProperty,
+			},
+		},
+		InvocationMethod: &invocation,
+	}
+
+	return dltAct
+}
+
+func ConvertToPortSchema(crd v1.CustomResourceDefinition) ([]port.Action, *port.Blueprint, error) {
 	latestCRDVersion := crd.Spec.Versions[0]
 	bs := &port.Schema{}
 	as := &port.ActionUserInputs{}
+	notVisible := new(bool) // Using a pointer to bool to avoid the omitempty of false values
+	*notVisible = false
 
 	var spec v1.JSONSchemaProps
 
@@ -142,32 +208,29 @@ func ConvertToPortSchema(crd v1.CustomResourceDefinition) (*port.Action, *port.A
 		spec = *latestCRDVersion.Schema.OpenAPIV3Schema
 	}
 
+	// Convert integer types to number as Port does not yet support integers
 	for i, v := range spec.Properties {
 		if v.Type == "integer" {
 			v.Type = "number"
 			v.Format = ""
 			spec.Properties[i] = v
 		}
-
-		if slices.Contains(ignoreCrossplaneXRDFields, i) {
-			delete(spec.Properties, i)
-		}
 	}
 
 	bytes, err := json.Marshal(&spec)
 
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("error marshaling schema: %v", err)
+		return nil, nil, fmt.Errorf("error marshaling schema: %v", err)
 	}
 
 	err = json.Unmarshal(bytes, &bs)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("error unmarshaling schema into blueprint schema: %v", err)
+		return nil, nil, fmt.Errorf("error unmarshaling schema into blueprint schema: %v", err)
 	}
 
 	err = json.Unmarshal(bytes, &as)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("error unmarshaling schema into action schema: %v", err)
+		return nil, nil, fmt.Errorf("error unmarshaling schema into action schema: %v", err)
 	}
 
 	bp := port.Blueprint{
@@ -176,39 +239,46 @@ func ConvertToPortSchema(crd v1.CustomResourceDefinition) (*port.Action, *port.A
 		Schema:     *bs,
 	}
 
-	crtAct := port.Action{
-		Identifier: "create_" + crd.Spec.Names.Singular,
-		Title:      "Create " + crd.Spec.Names.Singular,
-		UserInputs: *as,
-		Trigger:    "CREATE",
-		InvocationMethod: &port.InvocationMethod{
-			Type:                 "GITHUB",
-			Organization:         "org_goes_here",
-			Repository:           "repo_goes_here",
-			Workflow:             "workflow_goes_here.yml",
-			OmitPayload:          false,
-			OmitUserInputs:       true,
-			ReportWorkflowStatus: true,
-		},
+	// Hide fields that are not commonly needed by default, with this approach we can still let the platform engineer show them afterwards if needed
+	for k, v := range as.Properties {
+		if slices.Contains(invisibleFields, k) {
+			v.Visible = notVisible
+			as.Properties[k] = v
+		}
 	}
 
-	dltAct := port.Action{
-		Identifier: "delete_" + crd.Spec.Names.Singular,
-		Title:      "Delete " + crd.Spec.Names.Singular,
-		Trigger:    "DELETE",
-		UserInputs: port.ActionUserInputs{
-			Properties: map[string]port.Property{},
-		},
-		InvocationMethod: &port.InvocationMethod{
-			Type:                 "GITHUB",
-			Organization:         "org_goes_here",
-			Repository:           "repo_goes_here",
-			Workflow:             "workflow_goes_here.yml",
-			OmitPayload:          false,
-			OmitUserInputs:       true,
-			ReportWorkflowStatus: true,
-		},
+	apiVersionProperty := port.ActionProperty{
+		Type:    "string",
+		Visible: notVisible,
+		Default: crd.Spec.Group + "/" + crd.Spec.Versions[0].Name,
 	}
 
-	return &crtAct, &dltAct, &bp, nil
+	kindProperty := port.ActionProperty{
+		Type:    "string",
+		Visible: notVisible,
+		Default: crd.Spec.Names.Kind,
+	}
+
+	nameProperty := port.ActionProperty{
+		Type:  "string",
+		Title: crd.Spec.Names.Singular + " Name",
+	}
+
+	invocation := port.InvocationMethod{
+		Type:                 "GITHUB",
+		Organization:         "danielsinai",
+		Repository:           "control-plane-demo",
+		Workflow:             "sync-control-plane-direct.yml",
+		OmitPayload:          false,
+		OmitUserInputs:       true,
+		ReportWorkflowStatus: true,
+	}
+
+	actions := []port.Action{
+		BuildCreateAction(crd, as, apiVersionProperty, kindProperty, nameProperty, invocation, bp),
+		BuildUpdateAction(crd, as, apiVersionProperty, kindProperty, invocation, bp),
+		BuildDeleteAction(crd, apiVersionProperty, kindProperty, invocation),
+	}
+
+	return actions, &bp, nil
 }
