@@ -40,7 +40,7 @@ func Init() {
 	NewBool(&ApplicationConfig.CreateDefaultResources, "create-default-resources", true, "Create default resources on installation. Optional.")
 	NewBool(&ApplicationConfig.OverwriteConfigurationOnRestart, "overwrite-configuration-on-restart", false, "Overwrite the configuration in port on restarting the exporter. Optional.")
 	NewString(&ApplicationConfig.CRDsToDiscover, "crds-to-discover", "", "Resource definitions autodiscovery, supports both XRDs(Crossplane) and CRDs. Optional.")
-	NewBool(&ApplicationConfig.OverwriteCRDActions, "overwrite-crds-action-patterns", false, "Resource definitions autodiscovery, supports both XRDs(Crossplane) and CRDs. Optional.")
+	NewBool(&ApplicationConfig.OverwriteCRDsActions, "overwrite-crds-actions", false, "Resource definitions autodiscovery, supports both XRDs(Crossplane) and CRDs. Optional.")
 
 	// Deprecated
 	NewBool(&ApplicationConfig.DeleteDependents, "delete-dependents", false, "Delete dependents. Optional.")

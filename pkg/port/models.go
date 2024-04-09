@@ -249,7 +249,7 @@ type IntegrationAppConfig struct {
 	CreateMissingRelatedEntities bool       `json:"createMissingRelatedEntities,omitempty"`
 	Resources                    []Resource `json:"resources,omitempty"`
 	CRDSToDiscover               string     `json:"crdsToDiscover,omitempty"`
-	OverwriteCRDActions          bool       `json:"overwriteCRDsAction,omitempty"`
+	OverwriteCRDsActions         bool       `json:"overwriteCrdsActions,omitempty"`
 }
 
 type Config struct {
@@ -261,7 +261,7 @@ type Config struct {
 	// These Configurations are used only for setting up the Integration on installation or when using OverwriteConfigurationOnRestart flag.
 	Resources                    []Resource `yaml:"resources,omitempty"`
 	CRDSToDiscover               string     `yaml:"crdsToDiscover,omitempty"`
-	OverwriteCRDActions          bool       `yaml:"overwriteCRDsAction,omitempty"`
+	OverwriteCRDsActions         bool       `yaml:"overwriteCrdsActions,omitempty"`
 	DeleteDependents             bool       `yaml:"deleteDependents,omitempty"`
 	CreateMissingRelatedEntities bool       `yaml:"createMissingRelatedEntities,omitempty"`
 }

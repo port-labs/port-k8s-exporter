@@ -27,5 +27,5 @@ type ApplicationConfiguration struct {
 	DeleteDependents             bool   `json:"deleteDependents,omitempty"`
 	CreateMissingRelatedEntities bool   `json:"createMissingRelatedEntities,omitempty"`
 	CRDsToDiscover               string `json:"crdsToDiscover,omitempty"`
-	OverwriteCRDActions          bool   `json:"overwriteCRDsAction,omitempty"`
+	OverwriteCRDsActions         bool   `json:"overwriteCrdsActions,omitempty"`
 }

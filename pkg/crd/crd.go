@@ -141,13 +141,13 @@ func AutodiscoverCRDsToActions(exporterConfig *port.Config, portConfig *port.Int
 			_, err = blueprint.NewBlueprintAction(portClient, bp.Identifier, act)
 			if err != nil {
 				if strings.Contains(err.Error(), "taken") {
-					if portConfig.OverwriteCRDActions == true {
+					if portConfig.OverwriteCRDsActions == true {
 						_, err = blueprint.UpdateBlueprintAction(portClient, bp.Identifier, act)
 						if err != nil {
 							klog.Errorf("Error updating blueprint action: %s", err.Error())
 						}
 					} else {
-						klog.Infof("Action already exists, if you wish to overwrite it, delete it first or provide the configuration overwriteCRDActions: true, in the exporter configuration and resync")
+						klog.Infof("Action already exists, if you wish to overwrite it, delete it first or provide the configuration overwriteCrdsActions: true, in the exporter configuration and resync")
 					}
 				} else {
 					klog.Errorf("Error creating blueprint action: %s", err.Error())
