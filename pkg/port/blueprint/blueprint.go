@@ -3,15 +3,12 @@ package blueprint
 import (
 	"context"
 	"fmt"
-	"strings"
-
-	"k8s.io/klog/v2"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 )
 
-func NewBlueprint(portClient *cli.PortClient, blueprint port.Blueprint, upsert bool) (*port.Blueprint, error) {
+func NewBlueprint(portClient *cli.PortClient, blueprint port.Blueprint) (*port.Blueprint, error) {
 	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
 
 	if err != nil {
@@ -20,12 +17,6 @@ func NewBlueprint(portClient *cli.PortClient, blueprint port.Blueprint, upsert b
 
 	bp, err := cli.CreateBlueprint(portClient, blueprint)
 	if err != nil {
-		if upsert {
-			if strings.Contains(err.Error(), "taken") {
-				klog.Infof("Blueprint already exists, patching blueprint")
-				return PatchBlueprint(portClient, blueprint)
-			}
-		}
 		return nil, fmt.Errorf("error creating blueprint: %v", err)
 	}
 	return bp, nil
@@ -39,6 +30,18 @@ func NewBlueprintAction(portClient *cli.PortClient, blueprintIdentifier string, 
 	act, err := cli.CreateAction(portClient, blueprintIdentifier, action)
 	if err != nil {
 		return nil, fmt.Errorf("error creating blueprint action: %v", err)
+	}
+	return act, nil
+}
+
+func UpdateBlueprintAction(portClient *cli.PortClient, blueprintIdentifier string, action port.Action) (*port.Action, error) {
+	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
+	if err != nil {
+		return nil, fmt.Errorf("error authenticating with Port: %v", err)
+	}
+	act, err := cli.UpdateAction(portClient, blueprintIdentifier, action)
+	if err != nil {
+		return nil, fmt.Errorf("error updating blueprint action: %v", err)
 	}
 	return act, nil
 }

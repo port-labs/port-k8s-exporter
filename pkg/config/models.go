@@ -26,5 +26,6 @@ type ApplicationConfiguration struct {
 	Resources                    []port.Resource
 	DeleteDependents             bool   `json:"deleteDependents,omitempty"`
 	CreateMissingRelatedEntities bool   `json:"createMissingRelatedEntities,omitempty"`
-	CRDsToDiscover               string `json:"crdsToDiscover,omitempty"` // Supports both XRD(crossplane) and CRD
+	CRDsToDiscover               string `json:"crdsToDiscover,omitempty"`
+	OverwriteCRDActions          bool   `json:"overwriteCRDsAction,omitempty"`
 }

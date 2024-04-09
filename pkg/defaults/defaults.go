@@ -190,7 +190,7 @@ func createResources(portClient *cli.PortClient, defaults *Defaults, config *por
 		waitGroup.Add(1)
 		go func(bp port.Blueprint) {
 			defer waitGroup.Done()
-			result, err := blueprint.NewBlueprint(portClient, bp, false)
+			result, err := blueprint.NewBlueprint(portClient, bp)
 
 			mutex.Lock()
 			if err != nil {

@@ -129,7 +129,7 @@ func Test_InitIntegration_BlueprintExists(t *testing.T) {
 		Schema: port.Schema{
 			Properties: map[string]port.Property{},
 		},
-	}, false); err != nil {
+	}); err != nil {
 		t.Errorf("Error creating Port blueprint: %s", err.Error())
 	}
 	e := InitIntegration(f.portClient, &port.Config{
