@@ -3,6 +3,8 @@ package k8s
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/jq"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
@@ -12,7 +14,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
-	"time"
 
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -184,7 +185,7 @@ func (c *Controller) objectHandler(obj interface{}, item EventItem) error {
 
 	errors := make([]error, 0)
 	for _, kindConfig := range c.resource.KindConfigs {
-		portEntities, err := c.getObjectEntities(obj, kindConfig.Selector, kindConfig.Port.Entity.Mappings)
+		portEntities, err := c.getObjectEntities(obj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
 		if err != nil {
 			utilruntime.HandleError(fmt.Errorf("error getting entities for object key '%s': %v", item.Key, err))
 			continue
@@ -205,7 +206,7 @@ func (c *Controller) objectHandler(obj interface{}, item EventItem) error {
 	return nil
 }
 
-func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, mappings []port.EntityMapping) ([]port.Entity, error) {
+func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, mappings []port.EntityMapping, itemsToParse string) ([]port.Entity, error) {
 	unstructuredObj, ok := obj.(*unstructured.Unstructured)
 	if !ok {
 		return nil, fmt.Errorf("error casting to unstructured")
@@ -229,12 +230,28 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 
 	entities := make([]port.Entity, 0, len(mappings))
 	for _, entityMapping := range mappings {
-		var portEntity *port.Entity
-		portEntity, err = mapping.NewEntity(structuredObj, entityMapping)
-		if err != nil {
-			return nil, fmt.Errorf("invalid entity mapping '%#v': %v", entityMapping, err)
+		if itemsToParse != "" {
+			items, parseItemsError := jq.ParseArray(itemsToParse, structuredObj)
+			if parseItemsError != nil {
+				return nil, parseItemsError
+			} else {
+				for _, item := range items {
+					var portEntity *port.Entity
+					portEntity, err = mapping.NewEntity(item, entityMapping)
+					if err != nil {
+						return nil, fmt.Errorf("invalid entity mapping '%#v': %v", entityMapping, err)
+					}
+					entities = append(entities, *portEntity)
+				}
+			}
+		} else {
+			var portEntity *port.Entity
+			portEntity, err = mapping.NewEntity(structuredObj, entityMapping)
+			if err != nil {
+				return nil, fmt.Errorf("invalid entity mapping '%#v': %v", entityMapping, err)
+			}
+			entities = append(entities, *portEntity)
 		}
-		entities = append(entities, *portEntity)
 	}
 
 	return entities, nil
@@ -323,7 +340,7 @@ func (c *Controller) GetEntitiesSet() (map[string]interface{}, error) {
 					Blueprint:  m.Blueprint,
 				})
 			}
-			entities, err := c.getObjectEntities(obj, kindConfig.Selector, mappings)
+			entities, err := c.getObjectEntities(obj, kindConfig.Selector, mappings, kindConfig.Port.ItemsToParse)
 			if err != nil {
 				return nil, fmt.Errorf("error getting entities of object: %v", err)
 			}

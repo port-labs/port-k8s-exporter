@@ -193,7 +193,8 @@ type EntityMappings struct {
 }
 
 type Port struct {
-	Entity EntityMappings `json:"entity"`
+	Entity       EntityMappings `json:"entity"`
+	ItemsToParse string         `json:"ItemsToParse"`
 }
 
 type Selector struct {
