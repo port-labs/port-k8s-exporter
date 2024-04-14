@@ -206,6 +206,32 @@ func (c *Controller) objectHandler(obj interface{}, item EventItem) error {
 	return nil
 }
 
+func isPassSelector(obj interface{}, selector port.Selector) (bool, error) {
+	if selector.Query == "" {
+		return true, nil
+	}
+
+	selectorResult, err := jq.ParseBool(selector.Query, obj)
+	if err != nil {
+		return false, fmt.Errorf("invalid selector query '%s': %v", selector.Query, err)
+	}
+
+	return selectorResult, err
+}
+
+func mapEntities(obj interface{}, mappings []port.EntityMapping) ([]port.Entity, error) {
+	entities := make([]port.Entity, 0, len(mappings))
+	for _, entityMapping := range mappings {
+		portEntity, err := mapping.NewEntity(obj, entityMapping)
+		if err != nil {
+			return nil, fmt.Errorf("invalid entity mapping '%#v': %v", entityMapping, err)
+		}
+		entities = append(entities, *portEntity)
+	}
+
+	return entities, nil
+}
+
 func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, mappings []port.EntityMapping, itemsToParse string) ([]port.Entity, error) {
 	unstructuredObj, ok := obj.(*unstructured.Unstructured)
 	if !ok {
@@ -217,40 +243,49 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 		return nil, fmt.Errorf("error converting from unstructured: %v", err)
 	}
 
-	var selectorResult = true
-	if selector.Query != "" {
-		selectorResult, err = jq.ParseBool(selector.Query, structuredObj)
-		if err != nil {
-			return nil, fmt.Errorf("invalid selector query '%s': %v", selector.Query, err)
-		}
-	}
-	if !selectorResult {
-		return nil, nil
-	}
-
 	entities := make([]port.Entity, 0, len(mappings))
-	for _, entityMapping := range mappings {
-		if itemsToParse != "" {
-			items, parseItemsError := jq.ParseArray(itemsToParse, structuredObj)
-			if parseItemsError != nil {
-				return nil, parseItemsError
-			} else {
-				for _, item := range items {
-					var portEntity *port.Entity
-					portEntity, err = mapping.NewEntity(item, entityMapping)
+	if itemsToParse != "" {
+		items, parseItemsError := jq.ParseArray(itemsToParse, structuredObj)
+		if parseItemsError != nil {
+			return nil, parseItemsError
+		} else {
+			editedObject, ok := structuredObj.(map[string]interface{})
+			if !ok {
+				return nil, fmt.Errorf("error parsing object '%#v'", structuredObj)
+			}
+
+			for _, item := range items {
+				editedObject["item"] = item
+				selectorResult, err := isPassSelector(editedObject, selector)
+
+				if err != nil {
+					return nil, err
+				}
+
+				if selectorResult {
+					currentEntities, err := mapEntities(editedObject, mappings)
 					if err != nil {
-						return nil, fmt.Errorf("invalid entity mapping '%#v': %v", entityMapping, err)
+						return nil, err
 					}
-					entities = append(entities, *portEntity)
+
+					entities = append(entities, currentEntities...)
 				}
 			}
-		} else {
-			var portEntity *port.Entity
-			portEntity, err = mapping.NewEntity(structuredObj, entityMapping)
+		}
+	} else {
+		selectorResult, err := isPassSelector(structuredObj, selector)
+
+		if err != nil {
+			return nil, err
+		}
+
+		if selectorResult {
+			currentEntities, err := mapEntities(structuredObj, mappings)
 			if err != nil {
-				return nil, fmt.Errorf("invalid entity mapping '%#v': %v", entityMapping, err)
+				return nil, err
 			}
-			entities = append(entities, *portEntity)
+
+			entities = append(entities, currentEntities...)
 		}
 	}
 
