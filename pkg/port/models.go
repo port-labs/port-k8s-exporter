@@ -20,7 +20,7 @@ type (
 	Entity struct {
 		Meta
 		Identifier string                 `json:"identifier,omitempty"`
-		Title      string                 `json:"title"`
+		Title      string                 `json:"title,omitempty"`
 		Blueprint  string                 `json:"blueprint"`
 		Icon       string                 `json:"icon,omitempty"`
 		Team       interface{}            `json:"team,omitempty"`
@@ -245,9 +245,9 @@ type AggregatedResource struct {
 }
 
 type IntegrationAppConfig struct {
-	DeleteDependents             bool       `json:"deleteDependents,omitempty"`
-	CreateMissingRelatedEntities bool       `json:"createMissingRelatedEntities,omitempty"`
-	Resources                    []Resource `json:"resources,omitempty"`
+	DeleteDependents             bool       `json:"deleteDependents,omitempty" yaml:"deleteDependents,omitempty"`
+	CreateMissingRelatedEntities bool       `json:"createMissingRelatedEntities,omitempty" yaml:"createMissingRelatedEntities,omitempty"`
+	Resources                    []Resource `json:"resources,omitempty" yaml:"resources,omitempty"`
 	CRDSToDiscover               string     `json:"crdsToDiscover,omitempty"`
 	OverwriteCRDsActions         bool       `json:"overwriteCrdsActions,omitempty"`
 }
