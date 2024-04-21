@@ -1,9 +1,10 @@
 package consumer
 
 import (
-	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"testing"
 	"time"
+
+	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 )
