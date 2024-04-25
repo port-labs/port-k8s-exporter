@@ -3,7 +3,7 @@ module github.com/port-labs/port-k8s-exporter
 go 1.21
 
 require (
-	github.com/confluentinc/confluent-kafka-go/v2 v2.2.0
+	github.com/confluentinc/confluent-kafka-go/v2 v2.3.0
 	github.com/go-resty/resty/v2 v2.7.0
 	github.com/google/uuid v1.3.0
 	github.com/itchyny/gojq v0.12.9
