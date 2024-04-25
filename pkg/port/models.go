@@ -20,7 +20,7 @@ type (
 	Entity struct {
 		Meta
 		Identifier string                 `json:"identifier,omitempty"`
-		Title      string                 `json:"title"`
+		Title      string                 `json:"title,omitempty"`
 		Blueprint  string                 `json:"blueprint"`
 		Icon       string                 `json:"icon,omitempty"`
 		Team       interface{}            `json:"team,omitempty"`
