@@ -194,7 +194,7 @@ type EntityMappings struct {
 
 type Port struct {
 	Entity       EntityMappings `json:"entity"`
-	ItemsToParse string         `json:"ItemsToParse"`
+	ItemsToParse string         `json:"itemsToParse"`
 }
 
 type Selector struct {

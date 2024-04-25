@@ -248,28 +248,27 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 		items, parseItemsError := jq.ParseArray(itemsToParse, structuredObj)
 		if parseItemsError != nil {
 			return nil, parseItemsError
-		} else {
-			editedObject, ok := structuredObj.(map[string]interface{})
-			if !ok {
-				return nil, fmt.Errorf("error parsing object '%#v'", structuredObj)
+		}
+		editedObject, ok := structuredObj.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("error parsing object '%#v'", structuredObj)
+		}
+
+		for _, item := range items {
+			editedObject["item"] = item
+			selectorResult, err := isPassSelector(editedObject, selector)
+
+			if err != nil {
+				return nil, err
 			}
 
-			for _, item := range items {
-				editedObject["item"] = item
-				selectorResult, err := isPassSelector(editedObject, selector)
-
+			if selectorResult {
+				currentEntities, err := mapEntities(editedObject, mappings)
 				if err != nil {
 					return nil, err
 				}
 
-				if selectorResult {
-					currentEntities, err := mapEntities(editedObject, mappings)
-					if err != nil {
-						return nil, err
-					}
-
-					entities = append(entities, currentEntities...)
-				}
+				entities = append(entities, currentEntities...)
 			}
 		}
 	} else {
