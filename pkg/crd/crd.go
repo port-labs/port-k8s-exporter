@@ -278,18 +278,10 @@ func convertToPortSchema(crd v1.CustomResourceDefinition) ([]port.Action, *port.
 	return actions, &bp, nil
 }
 
-func AutodiscoverCRDsToActions(exporterConfig *port.Config, portConfig *port.IntegrationAppConfig, k8sClient *k8s.Client, portClient *cli.PortClient) {
-	crdsMatchedPattern := make([]v1.CustomResourceDefinition, 0)
+func findMatchingCRDs(crds []v1.CustomResourceDefinition, pattern string) []v1.CustomResourceDefinition {
+	matchedCRDs := make([]v1.CustomResourceDefinition, 0)
 
-	if portConfig.CRDSToDiscover == "" {
-		klog.Info("Discovering CRDs is disabled")
-		return
-	}
-
-	klog.Infof("Discovering CRDs/XRDs with pattern: %s", portConfig.CRDSToDiscover)
-	crds, err := k8sClient.ApiExtensionClient.CustomResourceDefinitions().List(context.Background(), metav1.ListOptions{})
-
-	for _, crd := range crds.Items {
+	for _, crd := range crds {
 		mapCrd, err := goutils.StructToMap(crd)
 
 		if err != nil {
@@ -297,22 +289,24 @@ func AutodiscoverCRDsToActions(exporterConfig *port.Config, portConfig *port.Int
 			continue
 		}
 
-		match, err := jq.ParseBool(portConfig.CRDSToDiscover, mapCrd)
+		match, err := jq.ParseBool(pattern, mapCrd)
 
 		if err != nil {
 			klog.Errorf("Error running jq on crd CRD: %s", err.Error())
 			continue
 		}
 		if match {
-			crdsMatchedPattern = append(crdsMatchedPattern, crd)
+			matchedCRDs = append(matchedCRDs, crd)
 		}
 	}
 
-	if err != nil {
-		klog.Errorf("Error listing CRDs: %s", err.Error())
-	}
+	return matchedCRDs
+}
 
-	for _, crd := range crdsMatchedPattern {
+func handleMatchingCRD(crds []v1.CustomResourceDefinition, pattern string, portConfig *port.IntegrationAppConfig, portClient *cli.PortClient) {
+	matchedCRDs := findMatchingCRDs(crds, pattern)
+
+	for _, crd := range matchedCRDs {
 		actions, bp, err := convertToPortSchema(crd)
 		if err != nil {
 			klog.Errorf("Error converting CRD to Port schemas: %s", err.Error())
@@ -351,10 +345,21 @@ func AutodiscoverCRDsToActions(exporterConfig *port.Config, portConfig *port.Int
 			}
 		}
 	}
+}
 
-	for _, crd := range crdsMatchedPattern {
-		portConfig.Resources = append(portConfig.Resources, createKindConfigFromCRD(crd))
+func AutodiscoverCRDsToActions(exporterConfig *port.Config, portConfig *port.IntegrationAppConfig, k8sClient *k8s.Client, portClient *cli.PortClient) {
+	if portConfig.CRDSToDiscover == "" {
+		klog.Info("Discovering CRDs is disabled")
+		return
 	}
 
-	return
+	klog.Infof("Discovering CRDs/XRDs with pattern: %s", portConfig.CRDSToDiscover)
+	crds, err := k8sClient.ApiExtensionClient.CustomResourceDefinitions().List(context.Background(), metav1.ListOptions{})
+
+	if err != nil {
+		klog.Errorf("Error listing CRDs: %s", err.Error())
+		return
+	}
+
+	handleMatchingCRD(crds.Items, portConfig.CRDSToDiscover, portConfig, portClient)
 }
