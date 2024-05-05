@@ -86,6 +86,8 @@ func Test_InitIntegration_InitDefaults(t *testing.T) {
 
 	_, err = page.GetPage(f.portClient, "availability_scorecard_dashboard")
 	assert.Nil(t, err)
+
+	testUtils.CheckResourcesDoesNotExist(f.portClient, f.t, []string{"workload", "namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"})
 }
 
 func Test_InitIntegration_InitDefaults_CreateDefaultResources_False(t *testing.T) {
