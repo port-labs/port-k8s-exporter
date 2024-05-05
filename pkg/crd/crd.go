@@ -249,8 +249,9 @@ func convertToPortSchema(crd v1.CustomResourceDefinition) ([]port.Action, *port.
 	}
 
 	nameProperty := port.ActionProperty{
-		Type:  "string",
-		Title: crd.Spec.Names.Singular + " Name",
+		Type:    "string",
+		Title:   crd.Spec.Names.Singular + " Name",
+		Pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$",
 	}
 
 	namespaceProperty := port.ActionProperty{
