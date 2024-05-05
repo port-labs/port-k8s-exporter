@@ -304,10 +304,11 @@ func findMatchingCRDs(crds []v1.CustomResourceDefinition, pattern string) []v1.C
 	return matchedCRDs
 }
 
-func handleMatchingCRD(crds []v1.CustomResourceDefinition, pattern string, portConfig *port.IntegrationAppConfig, portClient *cli.PortClient) {
-	matchedCRDs := findMatchingCRDs(crds, pattern)
+func handleMatchingCRD(crds []v1.CustomResourceDefinition, portConfig *port.IntegrationAppConfig, portClient *cli.PortClient) {
+	matchedCRDs := findMatchingCRDs(crds, portConfig.CRDSToDiscover)
 
 	for _, crd := range matchedCRDs {
+		portConfig.Resources = append(portConfig.Resources, createKindConfigFromCRD(crd))
 		actions, bp, err := convertToPortSchema(crd)
 		if err != nil {
 			klog.Errorf("Error converting CRD to Port schemas: %s", err.Error())
@@ -362,5 +363,5 @@ func AutodiscoverCRDsToActions(portConfig *port.IntegrationAppConfig, apiExtensi
 		return
 	}
 
-	handleMatchingCRD(crds.Items, portConfig.CRDSToDiscover, portConfig, portClient)
+	handleMatchingCRD(crds.Items, portConfig, portClient)
 }
