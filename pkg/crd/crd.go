@@ -8,12 +8,12 @@ import (
 
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
 	"github.com/port-labs/port-k8s-exporter/pkg/jq"
-	"github.com/port-labs/port-k8s-exporter/pkg/k8s"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/blueprint"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"golang.org/x/exp/slices"
 	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	apiextensions "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/typed/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 )
@@ -69,7 +69,7 @@ func createKindConfigFromCRD(crd v1.CustomResourceDefinition) port.Resource {
 }
 
 func isCRDNamespacedScoped(crd v1.CustomResourceDefinition) bool {
-	return crd.Spec.Scope == "Namespaced"
+	return crd.Spec.Scope == v1.NamespaceScoped
 }
 
 func getDescriptionFromCRD(crd v1.CustomResourceDefinition) string {
@@ -347,14 +347,14 @@ func handleMatchingCRD(crds []v1.CustomResourceDefinition, pattern string, portC
 	}
 }
 
-func AutodiscoverCRDsToActions(exporterConfig *port.Config, portConfig *port.IntegrationAppConfig, k8sClient *k8s.Client, portClient *cli.PortClient) {
+func AutodiscoverCRDsToActions(portConfig *port.IntegrationAppConfig, apiExtensionsClient apiextensions.ApiextensionsV1Interface, portClient *cli.PortClient) {
 	if portConfig.CRDSToDiscover == "" {
 		klog.Info("Discovering CRDs is disabled")
 		return
 	}
 
 	klog.Infof("Discovering CRDs/XRDs with pattern: %s", portConfig.CRDSToDiscover)
-	crds, err := k8sClient.ApiExtensionClient.CustomResourceDefinitions().List(context.Background(), metav1.ListOptions{})
+	crds, err := apiExtensionsClient.CustomResourceDefinitions().List(context.Background(), metav1.ListOptions{})
 
 	if err != nil {
 		klog.Errorf("Error listing CRDs: %s", err.Error())

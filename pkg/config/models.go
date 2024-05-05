@@ -24,8 +24,6 @@ type ApplicationConfiguration struct {
 	OverwriteConfigurationOnRestart bool
 	// These Configurations are used only for setting up the Integration on installation or when using OverwriteConfigurationOnRestart flag.
 	Resources                    []port.Resource
-	DeleteDependents             bool   `json:"deleteDependents,omitempty"`
-	CreateMissingRelatedEntities bool   `json:"createMissingRelatedEntities,omitempty"`
-	CRDsToDiscover               string `json:"crdsToDiscover,omitempty"`
-	OverwriteCRDsActions         bool   `json:"overwriteCrdsActions,omitempty"`
+	DeleteDependents             bool `json:"deleteDependents,omitempty"`
+	CreateMissingRelatedEntities bool `json:"createMissingRelatedEntities,omitempty"`
 }

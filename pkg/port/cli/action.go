@@ -40,7 +40,7 @@ func GetAction(portClient *PortClient, blueprintIdentifier string, actionIdentif
 	pb := &port.ResponseBody{}
 	resp, err := portClient.Client.R().
 		SetResult(&pb).
-		Patch(fmt.Sprintf("v1/blueprints/blueprints/%s/actions/%s", blueprintIdentifier, actionIdentifier))
+		Get(fmt.Sprintf("v1/blueprints/%s/actions/%s", blueprintIdentifier, actionIdentifier))
 	if err != nil {
 		return nil, err
 	}
