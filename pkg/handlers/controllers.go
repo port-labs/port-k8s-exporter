@@ -27,7 +27,7 @@ func NewControllersHandler(exporterConfig *port.Config, portConfig *port.Integra
 	resync := time.Minute * time.Duration(exporterConfig.ResyncInterval)
 	informersFactory := dynamicinformer.NewDynamicSharedInformerFactory(k8sClient.DynamicClient, resync)
 
-	matchedCrds := crd.AutodiscoverCRDsToActions(exporterConfig, portConfig, k8sClient, portClient)
+	crd.AutodiscoverCRDsToActions(exporterConfig, portConfig, k8sClient, portClient)
 
 	aggResources := make(map[string][]port.KindConfig)
 	for _, resource := range portConfig.Resources {
@@ -39,7 +39,7 @@ func NewControllersHandler(exporterConfig *port.Config, portConfig *port.Integra
 		}
 	}
 
-	controllers := make([]*k8s.Controller, 0, len(portConfig.Resources)+len(matchedCrds))
+	controllers := make([]*k8s.Controller, 0, len(portConfig.Resources))
 
 	for kind, kindConfigs := range aggResources {
 		var gvr schema.GroupVersionResource

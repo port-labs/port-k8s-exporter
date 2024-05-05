@@ -73,7 +73,7 @@ func IsCRDNamespacedScoped(crd v1.CustomResourceDefinition) bool {
 }
 
 func GetDescriptionFromCRD(crd v1.CustomResourceDefinition) string {
-	return fmt.Sprintf("This action was automatically generated from a Custom Resource Definition (CRD) in the cluster. It allows you to create, update, and delete %s resources. To complete the setup, got to [Autodiscovery Guide](https://docs.getport.io)", crd.Spec.Names.Singular)
+	return fmt.Sprintf("This action was automatically generated from a Custom Resource Definition (CRD) in the cluster. It allows you to create, update, and delete %s resources. To complete the setup, go to [Autodiscovery Guide](https://docs.getport.io)", crd.Spec.Names.Singular)
 }
 func GetIconFromCRD(crd v1.CustomResourceDefinition) string {
 	if len(crd.ObjectMeta.OwnerReferences) > 0 && crd.ObjectMeta.OwnerReferences[0].Kind == "CompositeResourceDefinition" {
@@ -82,12 +82,12 @@ func GetIconFromCRD(crd v1.CustomResourceDefinition) string {
 	return K8SIcon
 }
 
-func AutodiscoverCRDsToActions(exporterConfig *port.Config, portConfig *port.IntegrationAppConfig, k8sClient *k8s.Client, portClient *cli.PortClient) []v1.CustomResourceDefinition {
+func AutodiscoverCRDsToActions(exporterConfig *port.Config, portConfig *port.IntegrationAppConfig, k8sClient *k8s.Client, portClient *cli.PortClient) {
 	crdsMatchedPattern := make([]v1.CustomResourceDefinition, 0)
 
 	if portConfig.CRDSToDiscover == "" {
 		klog.Info("Discovering CRDs is disabled")
-		return crdsMatchedPattern
+		return
 	}
 
 	klog.Infof("Discovering CRDs/XRDs with pattern: %s", portConfig.CRDSToDiscover)
@@ -160,7 +160,7 @@ func AutodiscoverCRDsToActions(exporterConfig *port.Config, portConfig *port.Int
 		portConfig.Resources = append(portConfig.Resources, CreateKindConfigFromCRD(crd))
 	}
 
-	return crdsMatchedPattern
+	return
 }
 
 func BuildCreateAction(crd v1.CustomResourceDefinition, as *port.ActionUserInputs, apiVersionProperty port.ActionProperty, kindProperty port.ActionProperty, nameProperty port.ActionProperty, namespaceProperty port.ActionProperty, invocation port.InvocationMethod) port.Action {
@@ -344,7 +344,7 @@ func ConvertToPortSchema(crd v1.CustomResourceDefinition) ([]port.Action, *port.
 		Type:                 "GITHUB",
 		Organization:         "<fill-organization-name>",
 		Repository:           "<fill-repository-name>",
-		Workflow:             "sync-control-plane-(direct/gitops).yml",
+		Workflow:             "sync-control-plane-direct.yml",
 		OmitPayload:          false,
 		OmitUserInputs:       true,
 		ReportWorkflowStatus: true,
