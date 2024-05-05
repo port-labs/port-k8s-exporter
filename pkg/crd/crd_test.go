@@ -144,6 +144,30 @@ func checkBlueprintAndActionsProperties(t *testing.T, f *Fixture, namespaced boo
 		if createAction == nil {
 			t.Errorf("Create action not found")
 		}
+		if *createAction.UserInputs.Properties["apiVersion"].Visible != false {
+			t.Errorf("apiVersion should not be visible")
+		}
+		if *createAction.UserInputs.Properties["kind"].Visible != false {
+			t.Errorf("kind should not be visible")
+		}
+		if createAction.UserInputs.Properties["stringProperty"].Type != "string" {
+			t.Errorf("stringProperty type is not string")
+		}
+		if createAction.UserInputs.Properties["intProperty"].Type != "number" {
+			t.Errorf("intProperty type is not number")
+		}
+		if createAction.UserInputs.Properties["boolProperty"].Type != "boolean" {
+			t.Errorf("boolProperty type is not boolean")
+		}
+		if namespaced {
+			if createAction.UserInputs.Properties["namespace"].Type != "string" {
+				t.Errorf("namespace type is not string")
+			}
+		} else {
+			if _, ok := createAction.UserInputs.Properties["namespace"]; ok {
+				t.Errorf("namespace should not be present")
+			}
+		}
 	})
 
 	updateAction, err := cli.GetAction(f.portClient, "testkind", "update_testkind")
@@ -154,6 +178,30 @@ func checkBlueprintAndActionsProperties(t *testing.T, f *Fixture, namespaced boo
 		if updateAction == nil {
 			t.Errorf("Update action not found")
 		}
+		if *updateAction.UserInputs.Properties["apiVersion"].Visible != false {
+			t.Errorf("apiVersion should not be visible")
+		}
+		if *updateAction.UserInputs.Properties["kind"].Visible != false {
+			t.Errorf("kind should not be visible")
+		}
+		if updateAction.UserInputs.Properties["stringProperty"].Type != "string" {
+			t.Errorf("stringProperty type is not string")
+		}
+		if updateAction.UserInputs.Properties["intProperty"].Type != "number" {
+			t.Errorf("intProperty type is not number")
+		}
+		if updateAction.UserInputs.Properties["boolProperty"].Type != "boolean" {
+			t.Errorf("boolProperty type is not boolean")
+		}
+		if namespaced {
+			if updateAction.UserInputs.Properties["namespace"].Type != "string" {
+				t.Errorf("namespace type is not string")
+			}
+		} else {
+			if _, ok := updateAction.UserInputs.Properties["namespace"]; ok {
+				t.Errorf("namespace should not be present")
+			}
+		}
 	})
 
 	deleteAction, err := cli.GetAction(f.portClient, "testkind", "delete_testkind")
@@ -163,6 +211,21 @@ func checkBlueprintAndActionsProperties(t *testing.T, f *Fixture, namespaced boo
 	t.Run("Check delete action", func(t *testing.T) {
 		if deleteAction == nil {
 			t.Errorf("Delete action not found")
+		}
+		if *deleteAction.UserInputs.Properties["apiVersion"].Visible != false {
+			t.Errorf("apiVersion should not be visible")
+		}
+		if *deleteAction.UserInputs.Properties["kind"].Visible != false {
+			t.Errorf("kind should not be visible")
+		}
+		if namespaced {
+			if deleteAction.UserInputs.Properties["namespace"].Type != "string" {
+				t.Errorf("namespace type is not string")
+			}
+		} else {
+			if _, ok := deleteAction.UserInputs.Properties["namespace"]; ok {
+				t.Errorf("namespace should not be present")
+			}
 		}
 	})
 }
