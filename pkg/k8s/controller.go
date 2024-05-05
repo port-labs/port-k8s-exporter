@@ -244,42 +244,40 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 	}
 
 	entities := make([]port.Entity, 0, len(mappings))
-	if itemsToParse != "" {
+	objectsToMap := make([]interface{}, 0)
+
+	if (itemsToParse == "") {
+		objectsToMap = append(objectsToMap, structuredObj)
+	} else {
 		items, parseItemsError := jq.ParseArray(itemsToParse, structuredObj)
 		if parseItemsError != nil {
 			return nil, parseItemsError
 		}
-		editedObject, ok := structuredObj.(map[string]interface{})
+
+		mappedObject, ok := structuredObj.(map[string]interface{})
 		if !ok {
 			return nil, fmt.Errorf("error parsing object '%#v'", structuredObj)
 		}
 
 		for _, item := range items {
-			editedObject["item"] = item
-			selectorResult, err := isPassSelector(editedObject, selector)
-
-			if err != nil {
-				return nil, err
+			copiedObject := make(map[string]interface{})
+			for key, value := range mappedObject {
+				copiedObject[key] = value
 			}
-
-			if selectorResult {
-				currentEntities, err := mapEntities(editedObject, mappings)
-				if err != nil {
-					return nil, err
-				}
-
-				entities = append(entities, currentEntities...)
-			}
+			copiedObject["item"] = item
+			objectsToMap = append(objectsToMap, copiedObject)
 		}
-	} else {
-		selectorResult, err := isPassSelector(structuredObj, selector)
+	}
+	
+	for _, objectToMap := range objectsToMap {
+		selectorResult, err := isPassSelector(objectToMap, selector)
 
 		if err != nil {
 			return nil, err
 		}
 
 		if selectorResult {
-			currentEntities, err := mapEntities(structuredObj, mappings)
+			currentEntities, err := mapEntities(objectToMap, mappings)
 			if err != nil {
 				return nil, err
 			}

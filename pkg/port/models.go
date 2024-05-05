@@ -179,22 +179,22 @@ type ResponseBody struct {
 }
 
 type EntityMapping struct {
-	Identifier string            `json:"identifier"`
-	Title      string            `json:"title"`
-	Blueprint  string            `json:"blueprint"`
-	Icon       string            `json:"icon,omitempty"`
-	Team       string            `json:"team,omitempty"`
-	Properties map[string]string `json:"properties,omitempty"`
-	Relations  map[string]string `json:"relations,omitempty"`
+	Identifier string            `json:"identifier" yaml:"identifier"`
+	Title      string            `json:"title" yaml:"title"`
+	Blueprint  string            `json:"blueprint" yaml:"blueprint"`
+	Icon       string            `json:"icon,omitempty" yaml:"icon,omitempty"`
+	Team       string            `json:"team,omitempty" yaml:"team,omitempty"`
+	Properties map[string]string `json:"properties,omitempty" yaml:"properties,omitempty"`
+	Relations  map[string]string `json:"relations,omitempty" yaml:"relations,omitempty"`
 }
 
 type EntityMappings struct {
-	Mappings []EntityMapping `json:"mappings"`
+	Mappings []EntityMapping `json:"mappings" yaml:"mappings"`
 }
 
 type Port struct {
-	Entity       EntityMappings `json:"entity"`
-	ItemsToParse string         `json:"itemsToParse"`
+	Entity       EntityMappings `json:"entity" yaml:"entity"`
+	ItemsToParse string         `json:"itemsToParse" yaml:"itemsToParse"`
 }
 
 type Selector struct {
@@ -202,9 +202,9 @@ type Selector struct {
 }
 
 type Resource struct {
-	Kind     string   `json:"kind"`
-	Selector Selector `json:"selector,omitempty"`
-	Port     Port     `json:"port"`
+	Kind     string   `json:"kind" yaml:"kind"`
+	Selector Selector `json:"selector,omitempty" yaml:"selector,omitempty"`
+	Port     Port     `json:"port" yaml:"port"`
 }
 
 type EventListenerSettings struct {
