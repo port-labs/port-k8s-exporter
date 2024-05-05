@@ -237,7 +237,7 @@ func TestCRD_crd_autoDiscoverCRDsToActionsClusterScoped(t *testing.T) {
 
 	checkBlueprintAndActionsProperties(t, f, false)
 
-	testUtils.CheckResourcesDoesNotExist(f.portClient, t, []string{"testkind"}, []string{})
+	testUtils.CheckResourcesExist(f.portClient, t, []string{"testkind"}, []string{})
 }
 
 func TestCRD_crd_autoDiscoverCRDsToActionsNamespaced(t *testing.T) {
@@ -247,5 +247,5 @@ func TestCRD_crd_autoDiscoverCRDsToActionsNamespaced(t *testing.T) {
 
 	checkBlueprintAndActionsProperties(t, f, true)
 
-	testUtils.CheckResourcesDoesNotExist(f.portClient, t, []string{"testkind"}, []string{})
+	testUtils.CheckResourcesExist(f.portClient, t, []string{"testkind"}, []string{})
 }

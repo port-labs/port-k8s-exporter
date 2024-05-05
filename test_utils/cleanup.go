@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func CheckResourcesDoesNotExist(portClient *cli.PortClient, t *testing.T, blueprints []string, pages []string) {
+func CheckResourcesExist(portClient *cli.PortClient, t *testing.T, blueprints []string, pages []string) {
 	for _, bp := range blueprints {
 		_, err := blueprint.GetBlueprint(portClient, bp)
 		if err == nil {
@@ -24,5 +24,23 @@ func CheckResourcesDoesNotExist(portClient *cli.PortClient, t *testing.T, bluepr
 			_ = page.DeletePage(portClient, p)
 		}
 		assert.Nil(t, err)
+	}
+}
+
+func CheckResourcesDoesNotExist(portClient *cli.PortClient, t *testing.T, blueprints []string, pages []string) {
+	for _, bp := range blueprints {
+		_, err := blueprint.GetBlueprint(portClient, bp)
+		if err != nil {
+			_ = blueprint.DeleteBlueprint(portClient, bp)
+		}
+		assert.NotNil(t, err)
+	}
+
+	for _, p := range pages {
+		_, err := page.GetPage(portClient, p)
+		if err != nil {
+			_ = page.DeletePage(portClient, p)
+		}
+		assert.NotNil(t, err)
 	}
 }
