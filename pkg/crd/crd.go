@@ -73,7 +73,7 @@ func isCRDNamespacedScoped(crd v1.CustomResourceDefinition) bool {
 }
 
 func getDescriptionFromCRD(crd v1.CustomResourceDefinition) string {
-	return fmt.Sprintf("This action was automatically generated from a Custom Resource Definition (CRD) in the cluster. It allows you to create, update, and delete %s resources. To complete the setup, follow [this guide](https://docs.getport.io/guides-and-tutorials/let-developers-consume-k8s-api-extensions)", crd.Spec.Names.Singular)
+	return fmt.Sprintf("This action automatically generated from a Custom Resource Definition (CRD) in the cluster. And allows you to create, update, and delete %s resources. To complete the setup of this action, follow [this guide](https://docs.getport.io/guides-and-tutorials/visualize-and-deploy-cloud-resources-by-leveraging-k8s-crd)", crd.Spec.Names.Singular)
 }
 func getIconFromCRD(crd v1.CustomResourceDefinition) string {
 	if len(crd.ObjectMeta.OwnerReferences) > 0 && crd.ObjectMeta.OwnerReferences[0].Kind == "CompositeResourceDefinition" {
