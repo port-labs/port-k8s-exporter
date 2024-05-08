@@ -25,7 +25,7 @@ func deleteDefaultResources(portClient *cli.PortClient) {
 	_ = blueprint.DeleteBlueprint(portClient, "testkind")
 }
 
-func newFixture(t *testing.T, portClientId string, portClientSecret string, userAgent string, namespaced bool) *Fixture {
+func newFixture(t *testing.T, portClientId string, portClientSecret string, userAgent string, namespaced bool, crdsDiscoveryPattern string) *Fixture {
 	apiExtensionsFakeClient := fakeapiextensionsv1.FakeApiextensionsV1{Fake: &clienttesting.Fake{}}
 
 	apiExtensionsFakeClient.AddReactor("list", "customresourcedefinitions", func(action clienttesting.Action) (handled bool, ret runtime.Object, err error) {
@@ -101,7 +101,7 @@ func newFixture(t *testing.T, portClientId string, portClientSecret string, user
 		portClient:         portClient,
 		apiextensionClient: &apiExtensionsFakeClient,
 		portConfig: &port.IntegrationAppConfig{
-			CRDSToDiscover: "true",
+			CRDSToDiscover: crdsDiscoveryPattern,
 		},
 	}
 }
@@ -231,7 +231,7 @@ func checkBlueprintAndActionsProperties(t *testing.T, f *Fixture, namespaced boo
 }
 
 func TestCRD_crd_autoDiscoverCRDsToActionsClusterScoped(t *testing.T) {
-	f := newFixture(t, "", "", "", false)
+	f := newFixture(t, "", "", "", false, "true")
 
 	AutodiscoverCRDsToActions(f.portConfig, f.apiextensionClient, f.portClient)
 
@@ -241,11 +241,19 @@ func TestCRD_crd_autoDiscoverCRDsToActionsClusterScoped(t *testing.T) {
 }
 
 func TestCRD_crd_autoDiscoverCRDsToActionsNamespaced(t *testing.T) {
-	f := newFixture(t, "", "", "", true)
+	f := newFixture(t, "", "", "", true, "true")
 
 	AutodiscoverCRDsToActions(f.portConfig, f.apiextensionClient, f.portClient)
 
 	checkBlueprintAndActionsProperties(t, f, true)
 
 	testUtils.CheckResourcesExistence(true, f.portClient, t, []string{"testkind"}, []string{})
+}
+
+func TestCRD_crd_autoDiscoverCRDsToActionsNoCRDs(t *testing.T) {
+	f := newFixture(t, "", "", "", false, "false")
+
+	AutodiscoverCRDsToActions(f.portConfig, f.apiextensionClient, f.portClient)
+
+	testUtils.CheckResourcesExistence(false, f.portClient, t, []string{"testkind"}, []string{})
 }
