@@ -3,6 +3,11 @@ package k8s
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"strings"
+	"testing"
+	"time"
+
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
@@ -11,10 +16,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	k8sfake "k8s.io/client-go/dynamic/fake"
-	"reflect"
-	"strings"
-	"testing"
-	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"

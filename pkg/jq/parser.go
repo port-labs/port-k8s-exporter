@@ -68,7 +68,7 @@ func ParseString(jqQuery string, obj interface{}) (string, error) {
 
 	str, ok := queryRes.(string)
 	if !ok {
-		return "", fmt.Errorf("failed to parse string: %#v", queryRes)
+		return "", fmt.Errorf("failed to parse string with jq '%#v': %#v", jqQuery, queryRes)
 	}
 
 	return strings.Trim(str, "\""), nil
@@ -81,6 +81,21 @@ func ParseInterface(jqQuery string, obj interface{}) (interface{}, error) {
 	}
 
 	return queryRes, nil
+}
+
+func ParseArray(jqQuery string, obj interface{}) ([]interface{}, error) {
+	queryRes, err := runJQQuery(jqQuery, obj)
+
+	if err != nil {
+		return nil, err
+	}
+
+	items, ok := queryRes.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("failed to parse array with jq '%#v': %#v", jqQuery, queryRes)
+	}
+
+	return items, nil
 }
 
 func ParseMapInterface(jqQueries map[string]string, obj interface{}) (map[string]interface{}, error) {
