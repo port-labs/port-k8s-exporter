@@ -73,7 +73,7 @@ func isCRDNamespacedScoped(crd v1.CustomResourceDefinition) bool {
 }
 
 func getDescriptionFromCRD(crd v1.CustomResourceDefinition) string {
-	return fmt.Sprintf("This action automatically generated from a Custom Resource Definition (CRD) in the cluster. And allows you to create, update, and delete %s resources. To complete the setup of this action, follow [this guide](https://docs.getport.io/guides-and-tutorials/manage-resources-using-k8s-crds)", crd.Spec.Names.Singular)
+	return fmt.Sprintf("This action automatically generated from a Custom Resource Definition (CRD) in the cluster. Allows you to create, update, and delete %s resources. To complete the setup of this action, follow [this guide](https://docs.getport.io/guides-and-tutorials/manage-resources-using-k8s-crds)", crd.Spec.Names.Singular)
 }
 func getIconFromCRD(crd v1.CustomResourceDefinition) string {
 	if len(crd.ObjectMeta.OwnerReferences) > 0 && crd.ObjectMeta.OwnerReferences[0].Kind == "CompositeResourceDefinition" {
@@ -304,7 +304,7 @@ func findMatchingCRDs(crds []v1.CustomResourceDefinition, pattern string) []v1.C
 	return matchedCRDs
 }
 
-func handleMatchingCRD(crds []v1.CustomResourceDefinition, portConfig *port.IntegrationAppConfig, portClient *cli.PortClient) {
+func handleCRD(crds []v1.CustomResourceDefinition, portConfig *port.IntegrationAppConfig, portClient *cli.PortClient) {
 	matchedCRDs := findMatchingCRDs(crds, portConfig.CRDSToDiscover)
 
 	for _, crd := range matchedCRDs {
@@ -363,5 +363,5 @@ func AutodiscoverCRDsToActions(portConfig *port.IntegrationAppConfig, apiExtensi
 		return
 	}
 
-	handleMatchingCRD(crds.Items, portConfig, portClient)
+	handleCRD(crds.Items, portConfig, portClient)
 }

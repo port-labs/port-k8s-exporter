@@ -9,13 +9,17 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func CheckResourcesExist(portClient *cli.PortClient, t *testing.T, blueprints []string, pages []string) {
+func CheckResourcesExistence(shouldExist bool, portClient *cli.PortClient, t *testing.T, blueprints []string, pages []string) {
 	for _, bp := range blueprints {
 		_, err := blueprint.GetBlueprint(portClient, bp)
 		if err == nil {
 			_ = blueprint.DeleteBlueprint(portClient, bp)
 		}
-		assert.Nil(t, err)
+		if shouldExist {
+			assert.Nil(t, err)
+		} else {
+			assert.NotNil(t, err)
+		}
 	}
 
 	for _, p := range pages {
@@ -23,24 +27,10 @@ func CheckResourcesExist(portClient *cli.PortClient, t *testing.T, blueprints []
 		if err == nil {
 			_ = page.DeletePage(portClient, p)
 		}
-		assert.Nil(t, err)
-	}
-}
-
-func CheckResourcesDoesNotExist(portClient *cli.PortClient, t *testing.T, blueprints []string, pages []string) {
-	for _, bp := range blueprints {
-		_, err := blueprint.GetBlueprint(portClient, bp)
-		if err != nil {
-			_ = blueprint.DeleteBlueprint(portClient, bp)
+		if shouldExist {
+			assert.Nil(t, err)
+		} else {
+			assert.NotNil(t, err)
 		}
-		assert.NotNil(t, err)
-	}
-
-	for _, p := range pages {
-		_, err := page.GetPage(portClient, p)
-		if err != nil {
-			_ = page.DeletePage(portClient, p)
-		}
-		assert.NotNil(t, err)
 	}
 }
