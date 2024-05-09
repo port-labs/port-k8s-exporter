@@ -100,7 +100,7 @@ func Test_InitIntegration_InitDefaults_CreateDefaultResources_False(t *testing.T
 	_, err := integration.GetIntegration(f.portClient, f.stateKey)
 	assert.Nil(t, err)
 
-	testUtils.CheckResourcesExistence(false, f, []string{"workload", "namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"})
+	testUtils.CheckResourcesExistence(false, f.portClient, f.t, []string{"workload", "namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"})
 }
 
 func Test_InitIntegration_BlueprintExists(t *testing.T) {
