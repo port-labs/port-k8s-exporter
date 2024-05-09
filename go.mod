@@ -7,7 +7,7 @@ toolchain go1.22.2
 require (
 	github.com/confluentinc/confluent-kafka-go/v2 v2.2.0
 	github.com/go-resty/resty/v2 v2.7.0
-	github.com/google/uuid v1.3.0
+	github.com/google/uuid v1.6.0
 	github.com/itchyny/gojq v0.12.9
 	github.com/joho/godotenv v1.5.1
 	github.com/stretchr/testify v1.8.4
