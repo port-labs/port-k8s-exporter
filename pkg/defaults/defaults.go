@@ -3,6 +3,9 @@ package defaults
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"sync"
+
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/blueprint"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
@@ -11,8 +14,6 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/port/scorecards"
 	"gopkg.in/yaml.v3"
 	"k8s.io/klog/v2"
-	"os"
-	"sync"
 )
 
 type ScorecardDefault struct {

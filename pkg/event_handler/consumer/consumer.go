@@ -1,12 +1,13 @@
 package consumer
 
 import (
-	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
-	"github.com/port-labs/port-k8s-exporter/pkg/config"
-	"k8s.io/klog/v2"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
+	"github.com/port-labs/port-k8s-exporter/pkg/config"
+	"k8s.io/klog/v2"
 )
 
 type IConsume interface {
@@ -90,7 +91,7 @@ func (c *Consumer) Consume(topic string, handler JsonHandler, readyChan chan boo
 
 			handler(e.Value)
 			if _, err := c.client.Commit(); err != nil {
-				klog.Error("Error committing offset: %s", err.Error())
+				klog.Errorf("Error committing offset: %s", err.Error())
 			}
 		case kafka.Error:
 			klog.Infof("%% Error: %v\n", e)

@@ -1,6 +1,7 @@
 package k8s
 
 import (
+	apiextensions "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/typed/apiextensions/v1"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
@@ -9,9 +10,10 @@ import (
 )
 
 type Client struct {
-	DiscoveryClient *discovery.DiscoveryClient
-	DynamicClient   dynamic.Interface
-	DiscoveryMapper *restmapper.DeferredDiscoveryRESTMapper
+	DiscoveryClient    *discovery.DiscoveryClient
+	DynamicClient      dynamic.Interface
+	DiscoveryMapper    *restmapper.DeferredDiscoveryRESTMapper
+	ApiExtensionClient *apiextensions.ApiextensionsV1Client
 }
 
 func NewClient(config *rest.Config) (*Client, error) {
@@ -26,10 +28,12 @@ func NewClient(config *rest.Config) (*Client, error) {
 		return nil, err
 	}
 
+	apiextensionsClient, err := apiextensions.NewForConfig(config)
+
 	cacheClient := memory.NewMemCacheClient(discoveryClient)
 	cacheClient.Invalidate()
 
 	discoveryMapper := restmapper.NewDeferredDiscoveryRESTMapper(cacheClient)
 
-	return &Client{discoveryClient, dynamicClient, discoveryMapper}, nil
+	return &Client{discoveryClient, dynamicClient, discoveryMapper, apiextensionsClient}, nil
 }
