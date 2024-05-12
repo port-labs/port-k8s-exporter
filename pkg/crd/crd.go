@@ -201,6 +201,12 @@ func convertToPortSchema(crd v1.CustomResourceDefinition) ([]port.Action, *port.
 			v.Format = ""
 			spec.Properties[i] = v
 		}
+		if v.Type == "" {
+			if v.AnyOf != nil && len(v.AnyOf) > 0 {
+				v.Type = v.AnyOf[0].Type
+			}
+			spec.Properties[i] = v
+		}
 	}
 
 	bytes, err := json.Marshal(&spec)
@@ -217,15 +223,21 @@ func convertToPortSchema(crd v1.CustomResourceDefinition) ([]port.Action, *port.
 	// Make nested schemas shallow with __ separator
 	handleNestedSchema(&spec, "", &spec)
 
+	// Convert anyof types to the first type in the list, as Port does not yet support multiple types
+	for i, v := range spec.Properties {
+		if v.Type == "" {
+			if v.AnyOf != nil && len(v.AnyOf) > 0 {
+				v.Type = v.AnyOf[0].Type
+			}
+			spec.Properties[i] = v
+		}
+	}
 	// Convert integer types to number as Port does not yet support integers
 	for i, v := range spec.Properties {
 		if v.Type == "integer" {
 			v.Type = "number"
 			v.Format = ""
 			spec.Properties[i] = v
-		}
-		if v.Type == nil {
-			v.Type = "string"
 		}
 	}
 	bytesNested, err := json.Marshal(&spec)
