@@ -82,34 +82,38 @@ func getIconFromCRD(crd v1.CustomResourceDefinition) string {
 	return K8SIcon
 }
 
-func buildCreateAction(crd v1.CustomResourceDefinition, as *port.ActionUserInputs, apiVersionProperty port.ActionProperty, kindProperty port.ActionProperty, nameProperty port.ActionProperty, namespaceProperty port.ActionProperty, invocation port.InvocationMethod) port.Action {
+func buildCreateAction(crd v1.CustomResourceDefinition, as *port.ActionUserInputs, nameProperty port.ActionProperty, namespaceProperty port.ActionProperty, invocation port.InvocationMethod) port.Action {
 	createActionProperties := goutils.MergeMaps(
 		as.Properties,
-		map[string]port.ActionProperty{"apiVersion": apiVersionProperty, "kind": kindProperty, "name": nameProperty},
+		map[string]port.ActionProperty{"name": nameProperty},
 	)
 
 	crtAct := port.Action{
 		Identifier: "create_" + crd.Spec.Names.Singular,
 		Title:      "Create " + strings.Title(crd.Spec.Names.Singular),
 		Icon:       getIconFromCRD(crd),
-		UserInputs: port.ActionUserInputs{
-			Properties: createActionProperties,
-			Required:   append(as.Required, "name"),
+		Trigger: &port.Trigger{
+			Type:                "self-service",
+			Operation:           "CREATE",
+			BlueprintIdentifier: crd.Spec.Names.Singular,
+			UserInputs: &port.ActionUserInputs{
+				Properties: createActionProperties,
+				Required:   append(as.Required, "name"),
+			},
 		},
 		Description:      getDescriptionFromCRD(crd),
-		Trigger:          "CREATE",
 		InvocationMethod: &invocation,
 	}
 
 	if isCRDNamespacedScoped(crd) {
-		crtAct.UserInputs.Properties["namespace"] = namespaceProperty
-		crtAct.UserInputs.Required = append(crtAct.UserInputs.Required, "namespace")
+		crtAct.Trigger.UserInputs.Properties["namespace"] = namespaceProperty
+		crtAct.Trigger.UserInputs.Required = append(crtAct.Trigger.UserInputs.Required, "namespace")
 	}
 
 	return crtAct
 }
 
-func buildUpdateAction(crd v1.CustomResourceDefinition, as *port.ActionUserInputs, apiVersionProperty port.ActionProperty, kindProperty port.ActionProperty, namespaceProperty port.ActionProperty, invocation port.InvocationMethod) port.Action {
+func buildUpdateAction(crd v1.CustomResourceDefinition, as *port.ActionUserInputs, namespaceProperty port.ActionProperty, invocation port.InvocationMethod) port.Action {
 	if isCRDNamespacedScoped(crd) {
 		as.Properties["namespace"] = namespaceProperty
 		as.Required = append(as.Required, "namespace")
@@ -125,40 +129,41 @@ func buildUpdateAction(crd v1.CustomResourceDefinition, as *port.ActionUserInput
 		as.Properties[k] = updatedStruct
 	}
 
-	updateProperties := goutils.MergeMaps(
-		as.Properties,
-		map[string]port.ActionProperty{"apiVersion": apiVersionProperty, "kind": kindProperty},
-	)
-
 	updtAct := port.Action{
 		Identifier:  "update_" + crd.Spec.Names.Singular,
 		Title:       "Update " + strings.Title(crd.Spec.Names.Singular),
 		Icon:        getIconFromCRD(crd),
 		Description: getDescriptionFromCRD(crd),
-		UserInputs: port.ActionUserInputs{
-			Properties: updateProperties,
-			Required:   as.Required,
+		Trigger: &port.Trigger{
+			Type:                "self-service",
+			Operation:           "DAY-2",
+			BlueprintIdentifier: crd.Spec.Names.Singular,
+			UserInputs: &port.ActionUserInputs{
+				Properties: as.Properties,
+				Required:   as.Required,
+			},
 		},
-		Trigger:          "DAY-2",
 		InvocationMethod: &invocation,
 	}
 
 	return updtAct
 }
 
-func buildDeleteAction(crd v1.CustomResourceDefinition, apiVersionProperty port.ActionProperty, kindProperty port.ActionProperty, namespaceProperty port.ActionProperty, invocation port.InvocationMethod) port.Action {
+func buildDeleteAction(crd v1.CustomResourceDefinition, namespaceProperty port.ActionProperty, invocation port.InvocationMethod) port.Action {
 	dltAct := port.Action{
 		Identifier:  "delete_" + crd.Spec.Names.Singular,
 		Title:       "Delete " + strings.Title(crd.Spec.Names.Singular),
 		Icon:        getIconFromCRD(crd),
 		Description: getDescriptionFromCRD(crd),
-		Trigger:     "DELETE",
-		UserInputs: port.ActionUserInputs{
-			Properties: map[string]port.ActionProperty{
-				"apiVersion": apiVersionProperty,
-				"kind":       kindProperty,
+		Trigger: &port.Trigger{
+			Type:                "self-service",
+			BlueprintIdentifier: crd.Spec.Names.Singular,
+			UserInputs: &port.ActionUserInputs{
+				Properties: map[string]port.ActionProperty{},
 			},
+			Operation: "DELETE",
 		},
+
 		InvocationMethod: &invocation,
 	}
 
@@ -166,8 +171,8 @@ func buildDeleteAction(crd v1.CustomResourceDefinition, apiVersionProperty port.
 		visible := new(bool) // Using a pointer to bool to avoid the omitempty of false values
 		*visible = false
 		namespaceProperty.Visible = visible
-		dltAct.UserInputs.Properties["namespace"] = namespaceProperty
-		dltAct.UserInputs.Required = append(dltAct.UserInputs.Required, "namespace")
+		dltAct.Trigger.UserInputs.Properties["namespace"] = namespaceProperty
+		dltAct.Trigger.UserInputs.Required = append(dltAct.Trigger.UserInputs.Required, "namespace")
 	}
 
 	return dltAct
@@ -199,17 +204,37 @@ func convertToPortSchema(crd v1.CustomResourceDefinition) ([]port.Action, *port.
 	}
 
 	bytes, err := json.Marshal(&spec)
-
 	if err != nil {
 		return nil, nil, fmt.Errorf("error marshaling schema: %v", err)
 	}
 
 	err = json.Unmarshal(bytes, &bs)
+
 	if err != nil {
 		return nil, nil, fmt.Errorf("error unmarshaling schema into blueprint schema: %v", err)
 	}
 
-	err = json.Unmarshal(bytes, &as)
+	// Make nested schemas shallow with __ separator
+	handleNestedSchema(&spec, "", &spec)
+
+	// Convert integer types to number as Port does not yet support integers
+	for i, v := range spec.Properties {
+		if v.Type == "integer" {
+			v.Type = "number"
+			v.Format = ""
+			spec.Properties[i] = v
+		}
+		if v.Type == nil {
+			v.Type = "string"
+		}
+	}
+	bytesNested, err := json.Marshal(&spec)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error marshaling schema: %v", err)
+	}
+
+	err = json.Unmarshal(bytesNested, &as)
+
 	if err != nil {
 		return nil, nil, fmt.Errorf("error unmarshaling schema into action schema: %v", err)
 	}
@@ -236,18 +261,6 @@ func convertToPortSchema(crd v1.CustomResourceDefinition) ([]port.Action, *port.
 		}
 	}
 
-	apiVersionProperty := port.ActionProperty{
-		Type:    "string",
-		Visible: notVisible,
-		Default: crd.Spec.Group + "/" + crd.Spec.Versions[0].Name,
-	}
-
-	kindProperty := port.ActionProperty{
-		Type:    "string",
-		Visible: notVisible,
-		Default: crd.Spec.Names.Kind,
-	}
-
 	nameProperty := port.ActionProperty{
 		Type:    "string",
 		Title:   crd.Spec.Names.Singular + " Name",
@@ -265,15 +278,28 @@ func convertToPortSchema(crd v1.CustomResourceDefinition) ([]port.Action, *port.
 		Organization:         "<fill-organization-name>",
 		Repository:           "<fill-repository-name>",
 		Workflow:             "sync-control-plane-direct.yml",
-		OmitPayload:          false,
-		OmitUserInputs:       true,
 		ReportWorkflowStatus: true,
+		WorkflowInputs: map[string]interface{}{
+			"operation":      "{{.trigger.operation}}",
+			"triggeringUser": "{{ .trigger.by.user.email }}",
+			"runId":          "{{ .run.id }}",
+			"manifest": map[string]interface{}{
+				"apiVersion": crd.Spec.Group + "/" + crd.Spec.Versions[0].Name,
+				"kind":       crd.Spec.Names.Kind,
+				"metadata": map[string]interface{}{
+					"{{if (.entity | has(\"identifier\")) then \"name\" else null end}}":     "{{.entity.\"identifier\"}}",
+					"{{if (.inputs | has(\"name\")) then \"name\" else null end}}":           "{{.inputs.\"name\"}}",
+					"{{if (.inputs | has(\"namespace\")) then \"namespace\" else null end}}": "{{.inputs.\"namespace\"}}",
+				},
+				"spec": "{{ .inputs as $inputs | $inputs | keys | reduce .[] as $key ({}; if ($key | test(\"__\")) then ($key | split(\"__\")) as $parts | reduce range(0; $parts | length - 1) as $idx (.; .[$parts[$idx]] |= if $idx == ($parts | length - 2) then . + { ($parts[$idx + 1]): ($inputs | getpath([$key])) } else .[$parts[$idx]] // {} end) | del(.[$key]) else . + { ($key): ($inputs | .[$key]) } end) | del(.name) }}",
+			},
+		},
 	}
 
 	actions := []port.Action{
-		buildCreateAction(crd, as, apiVersionProperty, kindProperty, nameProperty, namespaceProperty, invocation),
-		buildUpdateAction(crd, as, apiVersionProperty, kindProperty, namespaceProperty, invocation),
-		buildDeleteAction(crd, apiVersionProperty, kindProperty, namespaceProperty, invocation),
+		buildCreateAction(crd, as, nameProperty, namespaceProperty, invocation),
+		buildUpdateAction(crd, as, namespaceProperty, invocation),
+		buildDeleteAction(crd, namespaceProperty, invocation),
 	}
 
 	return actions, &bp, nil
@@ -304,6 +330,31 @@ func findMatchingCRDs(crds []v1.CustomResourceDefinition, pattern string) []v1.C
 	return matchedCRDs
 }
 
+func handleNestedSchema(schema *v1.JSONSchemaProps, parent string, originalSchema *v1.JSONSchemaProps) {
+	for k, v := range schema.Properties {
+		var shallowedKey string
+		if parent == "" {
+			shallowedKey = k
+		} else {
+			shallowedKey = parent + "__" + k
+		}
+
+		if v.Type != "object" {
+			originalSchema.Properties[shallowedKey] = v
+			if slices.Contains(originalSchema.Required, strings.Split(shallowedKey, "__")[0]) {
+				originalSchema.Required = append(originalSchema.Required, shallowedKey)
+			}
+
+		} else {
+			handleNestedSchema(&v, shallowedKey, originalSchema)
+			delete(originalSchema.Properties, k)
+			if slices.Contains(originalSchema.Required, k) {
+				originalSchema.Required = append(originalSchema.Required[:slices.Index(originalSchema.Required, k)], originalSchema.Required[slices.Index(originalSchema.Required, k)+1:]...)
+			}
+		}
+	}
+}
+
 func handleCRD(crds []v1.CustomResourceDefinition, portConfig *port.IntegrationAppConfig, portClient *cli.PortClient) {
 	matchedCRDs := findMatchingCRDs(crds, portConfig.CRDSToDiscover)
 
@@ -330,11 +381,11 @@ func handleCRD(crds []v1.CustomResourceDefinition, portConfig *port.IntegrationA
 		}
 
 		for _, act := range actions {
-			_, err = blueprint.NewBlueprintAction(portClient, bp.Identifier, act)
+			_, err = cli.CreateAction(portClient, act)
 			if err != nil {
 				if strings.Contains(err.Error(), "taken") {
 					if portConfig.OverwriteCRDsActions == true {
-						_, err = blueprint.UpdateBlueprintAction(portClient, bp.Identifier, act)
+						_, err = cli.UpdateAction(portClient, act)
 						if err != nil {
 							klog.Errorf("Error updating blueprint action: %s", err.Error())
 						}
