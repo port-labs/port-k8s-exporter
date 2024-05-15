@@ -36,11 +36,11 @@ func UpdateAction(portClient *PortClient, action port.Action) (*port.Action, err
 	return &pb.Action, nil
 }
 
-func GetAction(portClient *PortClient, blueprintIdentifier string, actionIdentifier string) (*port.Action, error) {
+func GetAction(portClient *PortClient, actionIdentifier string) (*port.Action, error) {
 	pb := &port.ResponseBody{}
 	resp, err := portClient.Client.R().
 		SetResult(&pb).
-		Get(fmt.Sprintf("v1/blueprints/%s/actions/%s", blueprintIdentifier, actionIdentifier))
+		Get(fmt.Sprintf("v1/actions/%s", actionIdentifier))
 	if err != nil {
 		return nil, err
 	}
@@ -48,4 +48,18 @@ func GetAction(portClient *PortClient, blueprintIdentifier string, actionIdentif
 		return nil, fmt.Errorf("failed to get action, got: %s", resp.Body())
 	}
 	return &pb.Action, nil
+}
+
+func DeleteAction(portClient *PortClient, actionIdentifier string) error {
+	pb := &port.ResponseBody{}
+	resp, err := portClient.Client.R().
+		SetResult(&pb).
+		Delete(fmt.Sprintf("v1/actions/%s", actionIdentifier))
+	if err != nil {
+		return err
+	}
+	if !pb.OK {
+		return fmt.Errorf("failed to delete action, got: %s", resp.Body())
+	}
+	return nil
 }

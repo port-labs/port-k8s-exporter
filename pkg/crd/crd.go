@@ -349,7 +349,7 @@ func handleNestedSchema(schema *v1.JSONSchemaProps, parent string, originalSchem
 
 		if v.Type != "object" {
 			originalSchema.Properties[shallowedKey] = v
-			if slices.Contains(originalSchema.Required, strings.Split(shallowedKey, NestedSchemaSeperator)[0]) {
+			if shallowedKey != k && slices.Contains(originalSchema.Required, strings.Split(shallowedKey, NestedSchemaSeperator)[0]) {
 				originalSchema.Required = append(originalSchema.Required, shallowedKey)
 				originalSchema.Required = goutils.Filter(originalSchema.Required, strings.Split(shallowedKey, NestedSchemaSeperator)[0])
 			}

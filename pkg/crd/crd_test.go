@@ -162,7 +162,7 @@ func checkBlueprintAndActionsProperties(t *testing.T, f *Fixture, namespaced boo
 		}
 	})
 
-	createAction, err := cli.GetAction(f.portClient, "testkind", "create_testkind")
+	createAction, err := cli.GetAction(f.portClient, "create_testkind")
 	if err != nil {
 		t.Errorf("Error getting create action: %s", err.Error())
 	}
@@ -208,7 +208,7 @@ func checkBlueprintAndActionsProperties(t *testing.T, f *Fixture, namespaced boo
 		}
 	})
 
-	updateAction, err := cli.GetAction(f.portClient, "testkind", "update_testkind")
+	updateAction, err := cli.GetAction(f.portClient, "update_testkind")
 	if err != nil {
 		t.Errorf("Error getting update action: %s", err.Error())
 	}
@@ -254,7 +254,7 @@ func checkBlueprintAndActionsProperties(t *testing.T, f *Fixture, namespaced boo
 		}
 	})
 
-	deleteAction, err := cli.GetAction(f.portClient, "testkind", "delete_testkind")
+	deleteAction, err := cli.GetAction(f.portClient, "delete_testkind")
 	if err != nil {
 		t.Errorf("Error getting delete action: %s", err.Error())
 	}
@@ -264,7 +264,7 @@ func checkBlueprintAndActionsProperties(t *testing.T, f *Fixture, namespaced boo
 		}
 		// Delete action takes the namespace using control the payload feature
 		if namespaced {
-			if _, ok := updateAction.Trigger.UserInputs.Properties["namespace"]; ok {
+			if _, ok := deleteAction.Trigger.UserInputs.Properties["namespace"]; ok {
 				t.Errorf("namespace should not be present")
 			}
 		} else {
@@ -282,7 +282,7 @@ func TestCRD_crd_autoDiscoverCRDsToActionsClusterScoped(t *testing.T) {
 
 	checkBlueprintAndActionsProperties(t, f, false)
 
-	testUtils.CheckResourcesExistence(true, f.portClient, t, []string{"testkind"}, []string{})
+	testUtils.CheckResourcesExistence(true, f.portClient, t, []string{"testkind"}, []string{}, []string{"create_testkind", "update_testkind", "delete_testkind"})
 }
 
 func TestCRD_crd_autoDiscoverCRDsToActionsNamespaced(t *testing.T) {
@@ -292,7 +292,7 @@ func TestCRD_crd_autoDiscoverCRDsToActionsNamespaced(t *testing.T) {
 
 	checkBlueprintAndActionsProperties(t, f, true)
 
-	testUtils.CheckResourcesExistence(true, f.portClient, t, []string{"testkind"}, []string{})
+	testUtils.CheckResourcesExistence(true, f.portClient, t, []string{"testkind"}, []string{}, []string{"create_testkind", "update_testkind", "delete_testkind"})
 }
 
 func TestCRD_crd_autoDiscoverCRDsToActionsNoCRDs(t *testing.T) {
@@ -300,5 +300,5 @@ func TestCRD_crd_autoDiscoverCRDsToActionsNoCRDs(t *testing.T) {
 
 	AutodiscoverCRDsToActions(f.portConfig, f.apiextensionClient, f.portClient)
 
-	testUtils.CheckResourcesExistence(false, f.portClient, t, []string{"testkind"}, []string{})
+	testUtils.CheckResourcesExistence(false, f.portClient, t, []string{"testkind"}, []string{}, []string{"create_testkind", "update_testkind", "delete_testkind"})
 }
