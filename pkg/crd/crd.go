@@ -19,26 +19,11 @@ import (
 )
 
 const (
-	KindCRD        = "CustomResourceDefinition"
-	K8SIcon        = "Cluster"
-	CrossplaneIcon = "Crossplane"
+	KindCRD               = "CustomResourceDefinition"
+	K8SIcon               = "Cluster"
+	CrossplaneIcon        = "Crossplane"
+	NestedSchemaSeperator = "__"
 )
-
-var invisibleFields = []string{
-	"writeConnectionSecretToRef",
-	"publishConnectionDetailsTo",
-	"resourceRefs",
-	"environmentConfigRefs",
-	"compositeDeletePolicy",
-	"resourceRef",
-	"claimRefs",
-	"compositionUpdatePolicy",
-	"compositionRevisionSelector",
-	"compositionRevisionRef",
-	"compositionSelector",
-	"compositionRef",
-	"claimRef",
-}
 
 func createKindConfigFromCRD(crd v1.CustomResourceDefinition) port.Resource {
 	resource := crd.Spec.Names.Kind
@@ -123,7 +108,7 @@ func buildUpdateAction(crd v1.CustomResourceDefinition, as *port.ActionUserInput
 		updatedStruct := v
 
 		defaultMap := make(map[string]string)
-		defaultMap["jqQuery"] = ".entity.properties." + k
+		defaultMap["jqQuery"] = ".entity.properties." + strings.Replace(k, ".", NestedSchemaSeperator, -1)
 		updatedStruct.Default = defaultMap
 
 		as.Properties[k] = updatedStruct
@@ -203,7 +188,19 @@ func convertToPortSchema(crd v1.CustomResourceDefinition) ([]port.Action, *port.
 		}
 		if v.Type == "" {
 			if v.AnyOf != nil && len(v.AnyOf) > 0 {
-				v.Type = v.AnyOf[0].Type
+				possibleTypes := make([]string, 0)
+				for _, anyOf := range v.AnyOf {
+					possibleTypes = append(possibleTypes, anyOf.Type)
+				}
+				if slices.Contains(possibleTypes, "string") {
+					v.Type = "string"
+				} else if slices.Contains(possibleTypes, "number") {
+					v.Type = "number"
+				} else if slices.Contains(possibleTypes, "boolean") {
+					v.Type = "boolean"
+				} else {
+					v.Type = possibleTypes[0]
+				}
 			}
 			spec.Properties[i] = v
 		}
@@ -220,14 +217,26 @@ func convertToPortSchema(crd v1.CustomResourceDefinition) ([]port.Action, *port.
 		return nil, nil, fmt.Errorf("error unmarshaling schema into blueprint schema: %v", err)
 	}
 
-	// Make nested schemas shallow with __ separator
+	// Make nested schemas shallow with NestedSchemaSeperator separator
 	handleNestedSchema(&spec, "", &spec)
 
 	// Convert anyof types to the first type in the list, as Port does not yet support multiple types
 	for i, v := range spec.Properties {
 		if v.Type == "" {
 			if v.AnyOf != nil && len(v.AnyOf) > 0 {
-				v.Type = v.AnyOf[0].Type
+				possibleTypes := make([]string, 0)
+				for _, anyOf := range v.AnyOf {
+					possibleTypes = append(possibleTypes, anyOf.Type)
+				}
+				if slices.Contains(possibleTypes, "string") {
+					v.Type = "string"
+				} else if slices.Contains(possibleTypes, "number") {
+					v.Type = "number"
+				} else if slices.Contains(possibleTypes, "boolean") {
+					v.Type = "boolean"
+				} else {
+					v.Type = possibleTypes[0]
+				}
 			}
 			spec.Properties[i] = v
 		}
@@ -239,6 +248,7 @@ func convertToPortSchema(crd v1.CustomResourceDefinition) ([]port.Action, *port.
 			v.Format = ""
 			spec.Properties[i] = v
 		}
+
 	}
 	bytesNested, err := json.Marshal(&spec)
 	if err != nil {
@@ -249,6 +259,16 @@ func convertToPortSchema(crd v1.CustomResourceDefinition) ([]port.Action, *port.
 
 	if err != nil {
 		return nil, nil, fmt.Errorf("error unmarshaling schema into action schema: %v", err)
+	}
+
+	for k, v := range as.Properties {
+		if slices.Contains(as.Required, k) {
+			v.Visible = new(bool)
+			*v.Visible = true
+			as.Properties[k] = v
+		}
+
+		as.Properties[k] = v
 	}
 
 	if isCRDNamespacedScoped(crd) {
@@ -263,14 +283,6 @@ func convertToPortSchema(crd v1.CustomResourceDefinition) ([]port.Action, *port.
 		Title:      strings.Title(crd.Spec.Names.Singular),
 		Icon:       getIconFromCRD(crd),
 		Schema:     *bs,
-	}
-
-	// Hide fields that are not commonly needed by default, with this approach we can still let the platform engineer show them afterwards if needed
-	for k, v := range as.Properties {
-		if slices.Contains(invisibleFields, k) {
-			v.Visible = notVisible
-			as.Properties[k] = v
-		}
 	}
 
 	nameProperty := port.ActionProperty{
@@ -303,7 +315,7 @@ func convertToPortSchema(crd v1.CustomResourceDefinition) ([]port.Action, *port.
 					"{{if (.inputs | has(\"name\")) then \"name\" else null end}}":           "{{.inputs.\"name\"}}",
 					"{{if (.inputs | has(\"namespace\")) then \"namespace\" else null end}}": "{{.inputs.\"namespace\"}}",
 				},
-				"spec": "{{ .inputs as $inputs | $inputs | keys | reduce .[] as $key ({}; if ($key | test(\"__\")) then ($key | split(\"__\")) as $parts | reduce range(0; $parts | length - 1) as $idx (.; .[$parts[$idx]] |= if $idx == ($parts | length - 2) then . + { ($parts[$idx + 1]): ($inputs | getpath([$key])) } else .[$parts[$idx]] // {} end) | del(.[$key]) else . + { ($key): ($inputs | .[$key]) } end) | del(.name) }}",
+				"spec": "{{ .inputs as $inputs | $inputs | keys | reduce .[] as $key ({}; if ($key | test(\"NestedSchemaSeperator\")) then ($key | split(\"NestedSchemaSeperator\")) as $parts | reduce range(0; $parts | length - 1) as $idx (.; .[$parts[$idx]] |= if $idx == ($parts | length - 2) then . + { ($parts[$idx + 1]): ($inputs | getpath([$key])) } else .[$parts[$idx]] // {} end) | del(.[$key]) else . + { ($key): ($inputs | .[$key]) } end) | del(.name) }}",
 			},
 		},
 	}
@@ -348,21 +360,19 @@ func handleNestedSchema(schema *v1.JSONSchemaProps, parent string, originalSchem
 		if parent == "" {
 			shallowedKey = k
 		} else {
-			shallowedKey = parent + "__" + k
+			shallowedKey = parent + NestedSchemaSeperator + k
 		}
 
 		if v.Type != "object" {
 			originalSchema.Properties[shallowedKey] = v
-			if slices.Contains(originalSchema.Required, strings.Split(shallowedKey, "__")[0]) {
+			if slices.Contains(originalSchema.Required, strings.Split(shallowedKey, NestedSchemaSeperator)[0]) {
 				originalSchema.Required = append(originalSchema.Required, shallowedKey)
+				originalSchema.Required = append(originalSchema.Required[:slices.Index(originalSchema.Required, strings.Split(shallowedKey, NestedSchemaSeperator)[0])], originalSchema.Required[slices.Index(originalSchema.Required, strings.Split(shallowedKey, NestedSchemaSeperator)[0])+1:]...)
 			}
 
 		} else {
 			handleNestedSchema(&v, shallowedKey, originalSchema)
 			delete(originalSchema.Properties, k)
-			if slices.Contains(originalSchema.Required, k) {
-				originalSchema.Required = append(originalSchema.Required[:slices.Index(originalSchema.Required, k)], originalSchema.Required[slices.Index(originalSchema.Required, k)+1:]...)
-			}
 		}
 	}
 }
