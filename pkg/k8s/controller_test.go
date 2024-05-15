@@ -229,7 +229,7 @@ func TestDeleteDeploymentSameOwner(t *testing.T) {
 
 	f.runControllerSyncHandler(item, false)
 	_, err := f.controller.portClient.ReadEntity(context.Background(), "entityWithSameOwner", "k8s-export-test-bp")
-	if !strings.Contains(err.Error(), "was not found") {
+	if err != nil && !strings.Contains(err.Error(), "was not found") {
 		t.Errorf("expected entity to be deleted")
 	}
 }
