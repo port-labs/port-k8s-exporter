@@ -28,4 +28,3 @@ jobs:
         PORT_CLIENT_ID: ${{ secrets.PORT_CLIENT_ID }}
         PORT_CLIENT_SECRET: ${{ secrets.PORT_CLIENT_SECRET }}
         PORT_BASE_URL: https://api.stg-01.getport.io
-        STATE_KEY: my-k8s-exporter
