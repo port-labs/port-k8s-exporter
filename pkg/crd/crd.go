@@ -245,9 +245,9 @@ func convertToPortSchemas(crd v1.CustomResourceDefinition) ([]port.Action, *port
 	}
 
 	for k, v := range as.Properties {
-		if slices.Contains(as.Required, k) {
+		if !slices.Contains(as.Required, k) {
 			v.Visible = new(bool)
-			*v.Visible = true
+			*v.Visible = false
 			as.Properties[k] = v
 		}
 
