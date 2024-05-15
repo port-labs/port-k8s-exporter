@@ -299,7 +299,7 @@ func convertToPortSchemas(crd v1.CustomResourceDefinition) ([]port.Action, *port
 					"{{if (.entity.properties | has(\"namespace\")) then \"namespace\" else null end}}": "{{.entity.properties.\"namespace\"}}",
 					"{{if (.inputs | has(\"namespace\")) then \"namespace\" else null end}}":            "{{.inputs.\"namespace\"}}",
 				},
-				"spec": "{{ .inputs as $inputs | $inputs | keys | reduce .[] as $key ({}; if ($key | test(\"__\")) then ($key | split(\"__\")) as $parts | reduce range(0; $parts | length - 1) as $idx (.; .[$parts[$idx]] |= if $idx == ($parts | length - 2) then . + { ($parts[$idx + 1]): ($inputs | getpath([$key])) } else .[$parts[$idx]] // {} end) | del(.[$key]) else . + { ($key): ($inputs | .[$key]) } end) | del(.name) | del (.namespace) }}",
+				"spec": "{{ .inputs | to_entries | mapif .key | contains(\"__\") then .key |= split(\"__\") else . end) | reduce .[] as $item ({}; if $item.key | type  == \"array\" then setpath($item.key;$item.value) else setpath([$item.key];$item.value) end) | del(.name) | del (.namespace) }}",
 			},
 		},
 	}
@@ -353,7 +353,6 @@ func handleNestedSchema(schema *v1.JSONSchemaProps, parent string, originalSchem
 				originalSchema.Required = append(originalSchema.Required, shallowedKey)
 				originalSchema.Required = goutils.Filter(originalSchema.Required, strings.Split(shallowedKey, NestedSchemaSeperator)[0])
 			}
-
 		} else {
 			handleNestedSchema(&v, shallowedKey, originalSchema)
 			delete(originalSchema.Properties, k)
