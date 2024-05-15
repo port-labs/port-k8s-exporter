@@ -1,6 +1,7 @@
 package crd
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
@@ -58,7 +59,26 @@ func newFixture(t *testing.T, portClientId string, portClientSecret string, user
 													"boolProperty": {
 														Type: "boolean",
 													},
+													"nestedProperty": {
+														Type: "object",
+														Properties: map[string]v1.JSONSchemaProps{
+															"nestedStringProperty": {
+																Type: "string",
+															},
+														},
+													},
+													"anyOfProperty": {
+														AnyOf: []v1.JSONSchemaProps{
+															{
+																Type: "string",
+															},
+															{
+																Type: "integer",
+															},
+														},
+													},
 												},
+												Required: []string{"stringProperty", "nestedProperty"},
 											},
 										},
 									},
@@ -125,6 +145,12 @@ func checkBlueprintAndActionsProperties(t *testing.T, f *Fixture, namespaced boo
 		if bp.Schema.Properties["boolProperty"].Type != "boolean" {
 			t.Errorf("boolProperty type is not boolean")
 		}
+		if bp.Schema.Properties["anyOfProperty"].Type != "string" {
+			t.Errorf("anyOfProperty type is not string")
+		}
+		if bp.Schema.Properties["nestedProperty"].Type != "object" {
+			t.Errorf("nestedProperty type is not object")
+		}
 		if namespaced {
 			if bp.Schema.Properties["namespace"].Type != "string" {
 				t.Errorf("namespace type is not string")
@@ -144,29 +170,41 @@ func checkBlueprintAndActionsProperties(t *testing.T, f *Fixture, namespaced boo
 		if createAction == nil {
 			t.Errorf("Create action not found")
 		}
-		if *createAction.UserInputs.Properties["apiVersion"].Visible != false {
-			t.Errorf("apiVersion should not be visible")
-		}
-		if *createAction.UserInputs.Properties["kind"].Visible != false {
-			t.Errorf("kind should not be visible")
-		}
-		if createAction.UserInputs.Properties["stringProperty"].Type != "string" {
+		if createAction.Trigger.UserInputs.Properties["stringProperty"].Type != "string" {
 			t.Errorf("stringProperty type is not string")
 		}
-		if createAction.UserInputs.Properties["intProperty"].Type != "number" {
+		if createAction.Trigger.UserInputs.Properties["intProperty"].Type != "number" {
 			t.Errorf("intProperty type is not number")
 		}
-		if createAction.UserInputs.Properties["boolProperty"].Type != "boolean" {
+		if createAction.Trigger.UserInputs.Properties["boolProperty"].Type != "boolean" {
 			t.Errorf("boolProperty type is not boolean")
 		}
+		if createAction.Trigger.UserInputs.Properties["anyOfProperty"].Type != "string" {
+			t.Errorf("anyOfProperty type is not string")
+		}
+		if _, ok := createAction.Trigger.UserInputs.Properties["nestedProperty"]; ok {
+			t.Errorf("nestedProperty should not be present")
+		}
+		if createAction.Trigger.UserInputs.Properties["nestedProperty__nestedStringProperty"].Type != "string" {
+			t.Errorf("nestedProperty__nestedStringProperty type is not string")
+		}
 		if namespaced {
-			if createAction.UserInputs.Properties["namespace"].Type != "string" {
+			if createAction.Trigger.UserInputs.Properties["namespace"].Type != "string" {
 				t.Errorf("namespace type is not string")
 			}
 		} else {
-			if _, ok := createAction.UserInputs.Properties["namespace"]; ok {
+			if _, ok := createAction.Trigger.UserInputs.Properties["namespace"]; ok {
 				t.Errorf("namespace should not be present")
 			}
+		}
+		if slices.Contains(createAction.Trigger.UserInputs.Required, "stringProperty") == false {
+			t.Errorf("stringProperty should be required")
+		}
+		if slices.Contains(createAction.Trigger.UserInputs.Required, "nestedProperty__nestedStringProperty") == false {
+			t.Errorf("nestedProperty__nestedStringProperty should be required")
+		}
+		if slices.Contains(createAction.Trigger.UserInputs.Required, "nestedProperty") == true {
+			t.Errorf("nestedProperty should not be required")
 		}
 	})
 
@@ -178,29 +216,41 @@ func checkBlueprintAndActionsProperties(t *testing.T, f *Fixture, namespaced boo
 		if updateAction == nil {
 			t.Errorf("Update action not found")
 		}
-		if *updateAction.UserInputs.Properties["apiVersion"].Visible != false {
-			t.Errorf("apiVersion should not be visible")
-		}
-		if *updateAction.UserInputs.Properties["kind"].Visible != false {
-			t.Errorf("kind should not be visible")
-		}
-		if updateAction.UserInputs.Properties["stringProperty"].Type != "string" {
+		if updateAction.Trigger.UserInputs.Properties["stringProperty"].Type != "string" {
 			t.Errorf("stringProperty type is not string")
 		}
-		if updateAction.UserInputs.Properties["intProperty"].Type != "number" {
+		if updateAction.Trigger.UserInputs.Properties["intProperty"].Type != "number" {
 			t.Errorf("intProperty type is not number")
 		}
-		if updateAction.UserInputs.Properties["boolProperty"].Type != "boolean" {
+		if updateAction.Trigger.UserInputs.Properties["boolProperty"].Type != "boolean" {
 			t.Errorf("boolProperty type is not boolean")
 		}
+		if updateAction.Trigger.UserInputs.Properties["anyOfProperty"].Type != "string" {
+			t.Errorf("anyOfProperty type is not string")
+		}
+		if _, ok := createAction.Trigger.UserInputs.Properties["nestedProperty"]; ok {
+			t.Errorf("nestedProperty should not be present")
+		}
+		if createAction.Trigger.UserInputs.Properties["nestedProperty__nestedStringProperty"].Type != "string" {
+			t.Errorf("nestedProperty__nestedStringProperty type is not string")
+		}
 		if namespaced {
-			if updateAction.UserInputs.Properties["namespace"].Type != "string" {
+			if updateAction.Trigger.UserInputs.Properties["namespace"].Type != "string" {
 				t.Errorf("namespace type is not string")
 			}
 		} else {
-			if _, ok := updateAction.UserInputs.Properties["namespace"]; ok {
+			if _, ok := updateAction.Trigger.UserInputs.Properties["namespace"]; ok {
 				t.Errorf("namespace should not be present")
 			}
+		}
+		if slices.Contains(createAction.Trigger.UserInputs.Required, "stringProperty") == false {
+			t.Errorf("stringProperty should be required")
+		}
+		if slices.Contains(createAction.Trigger.UserInputs.Required, "nestedProperty__nestedStringProperty") == false {
+			t.Errorf("nestedProperty__nestedStringProperty should be required")
+		}
+		if slices.Contains(createAction.Trigger.UserInputs.Required, "nestedProperty") == true {
+			t.Errorf("nestedProperty should not be required")
 		}
 	})
 
@@ -212,18 +262,13 @@ func checkBlueprintAndActionsProperties(t *testing.T, f *Fixture, namespaced boo
 		if deleteAction == nil {
 			t.Errorf("Delete action not found")
 		}
-		if *deleteAction.UserInputs.Properties["apiVersion"].Visible != false {
-			t.Errorf("apiVersion should not be visible")
-		}
-		if *deleteAction.UserInputs.Properties["kind"].Visible != false {
-			t.Errorf("kind should not be visible")
-		}
+		// Delete action takes the namespace using control the payload feature
 		if namespaced {
-			if deleteAction.UserInputs.Properties["namespace"].Type != "string" {
-				t.Errorf("namespace type is not string")
+			if _, ok := updateAction.Trigger.UserInputs.Properties["namespace"]; ok {
+				t.Errorf("namespace should not be present")
 			}
 		} else {
-			if _, ok := deleteAction.UserInputs.Properties["namespace"]; ok {
+			if _, ok := deleteAction.Trigger.UserInputs.Properties["namespace"]; ok {
 				t.Errorf("namespace should not be present")
 			}
 		}

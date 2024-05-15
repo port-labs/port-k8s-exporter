@@ -134,7 +134,7 @@ func buildUpdateAction(crd v1.CustomResourceDefinition, as *port.ActionUserInput
 	return updtAct
 }
 
-func buildDeleteAction(crd v1.CustomResourceDefinition, namespaceProperty port.ActionProperty, invocation port.InvocationMethod) port.Action {
+func buildDeleteAction(crd v1.CustomResourceDefinition, invocation port.InvocationMethod) port.Action {
 	dltAct := port.Action{
 		Identifier:  "delete_" + crd.Spec.Names.Singular,
 		Title:       "Delete " + strings.Title(crd.Spec.Names.Singular),
@@ -152,18 +152,46 @@ func buildDeleteAction(crd v1.CustomResourceDefinition, namespaceProperty port.A
 		InvocationMethod: &invocation,
 	}
 
-	if isCRDNamespacedScoped(crd) {
-		visible := new(bool) // Using a pointer to bool to avoid the omitempty of false values
-		*visible = false
-		namespaceProperty.Visible = visible
-		dltAct.Trigger.UserInputs.Properties["namespace"] = namespaceProperty
-		dltAct.Trigger.UserInputs.Required = append(dltAct.Trigger.UserInputs.Required, "namespace")
-	}
-
 	return dltAct
 }
 
-func convertToPortSchema(crd v1.CustomResourceDefinition) ([]port.Action, *port.Blueprint, error) {
+func adjustSchemaToPortSchemaCompabtabilityLevel(spec *v1.JSONSchemaProps) {
+	for i, v := range spec.Properties {
+		if v.Type == "integer" {
+			v.Type = "number"
+			v.Format = ""
+			spec.Properties[i] = v
+		}
+	}
+
+	for i, v := range spec.Properties {
+		if v.Type == "" {
+			if v.AnyOf != nil && len(v.AnyOf) > 0 {
+				possibleTypes := make([]string, 0)
+				for _, anyOf := range v.AnyOf {
+					possibleTypes = append(possibleTypes, anyOf.Type)
+				}
+
+				// Prefer string over other types
+				if slices.Contains(possibleTypes, "string") {
+					v.Type = "string"
+				} else {
+					v.Type = possibleTypes[0]
+				}
+			}
+			spec.Properties[i] = v
+		}
+	}
+
+	for i, v := range spec.Properties {
+		if v.Type == "object" {
+			adjustSchemaToPortSchemaCompabtabilityLevel(&v)
+			spec.Properties[i] = v
+		}
+	}
+}
+
+func convertToPortSchemas(crd v1.CustomResourceDefinition) ([]port.Action, *port.Blueprint, error) {
 	latestCRDVersion := crd.Spec.Versions[0]
 	bs := &port.Schema{}
 	as := &port.ActionUserInputs{}
@@ -179,32 +207,7 @@ func convertToPortSchema(crd v1.CustomResourceDefinition) ([]port.Action, *port.
 		spec = *latestCRDVersion.Schema.OpenAPIV3Schema
 	}
 
-	// Convert integer types to number as Port does not yet support integers
-	for i, v := range spec.Properties {
-		if v.Type == "integer" {
-			v.Type = "number"
-			v.Format = ""
-			spec.Properties[i] = v
-		}
-		if v.Type == "" {
-			if v.AnyOf != nil && len(v.AnyOf) > 0 {
-				possibleTypes := make([]string, 0)
-				for _, anyOf := range v.AnyOf {
-					possibleTypes = append(possibleTypes, anyOf.Type)
-				}
-				if slices.Contains(possibleTypes, "string") {
-					v.Type = "string"
-				} else if slices.Contains(possibleTypes, "number") {
-					v.Type = "number"
-				} else if slices.Contains(possibleTypes, "boolean") {
-					v.Type = "boolean"
-				} else {
-					v.Type = possibleTypes[0]
-				}
-			}
-			spec.Properties[i] = v
-		}
-	}
+	adjustSchemaToPortSchemaCompabtabilityLevel(&spec)
 
 	bytes, err := json.Marshal(&spec)
 	if err != nil {
@@ -217,30 +220,9 @@ func convertToPortSchema(crd v1.CustomResourceDefinition) ([]port.Action, *port.
 		return nil, nil, fmt.Errorf("error unmarshaling schema into blueprint schema: %v", err)
 	}
 
-	// Make nested schemas shallow with NestedSchemaSeperator separator
+	// Make nested schemas shallow with `NestedSchemaSeperator`(__) separator
 	handleNestedSchema(&spec, "", &spec)
 
-	// Convert anyof types to the first type in the list, as Port does not yet support multiple types
-	for i, v := range spec.Properties {
-		if v.Type == "" {
-			if v.AnyOf != nil && len(v.AnyOf) > 0 {
-				possibleTypes := make([]string, 0)
-				for _, anyOf := range v.AnyOf {
-					possibleTypes = append(possibleTypes, anyOf.Type)
-				}
-				if slices.Contains(possibleTypes, "string") {
-					v.Type = "string"
-				} else if slices.Contains(possibleTypes, "number") {
-					v.Type = "number"
-				} else if slices.Contains(possibleTypes, "boolean") {
-					v.Type = "boolean"
-				} else {
-					v.Type = possibleTypes[0]
-				}
-			}
-			spec.Properties[i] = v
-		}
-	}
 	// Convert integer types to number as Port does not yet support integers
 	for i, v := range spec.Properties {
 		if v.Type == "integer" {
@@ -250,6 +232,7 @@ func convertToPortSchema(crd v1.CustomResourceDefinition) ([]port.Action, *port.
 		}
 
 	}
+
 	bytesNested, err := json.Marshal(&spec)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error marshaling schema: %v", err)
@@ -311,9 +294,10 @@ func convertToPortSchema(crd v1.CustomResourceDefinition) ([]port.Action, *port.
 				"apiVersion": crd.Spec.Group + "/" + crd.Spec.Versions[0].Name,
 				"kind":       crd.Spec.Names.Kind,
 				"metadata": map[string]interface{}{
-					"{{if (.entity | has(\"identifier\")) then \"name\" else null end}}":     "{{.entity.\"identifier\"}}",
-					"{{if (.inputs | has(\"name\")) then \"name\" else null end}}":           "{{.inputs.\"name\"}}",
-					"{{if (.inputs | has(\"namespace\")) then \"namespace\" else null end}}": "{{.inputs.\"namespace\"}}",
+					"{{if (.entity | has(\"identifier\")) then \"name\" else null end}}":                "{{.entity.\"identifier\"}}",
+					"{{if (.inputs | has(\"name\")) then \"name\" else null end}}":                      "{{.inputs.\"name\"}}",
+					"{{if (.entity.properties | has(\"namespace\")) then \"namespace\" else null end}}": "{{.entity.properties.\"namespace\"}}",
+					"{{if (.inputs | has(\"namespace\")) then \"namespace\" else null end}}":            "{{.inputs.\"namespace\"}}",
 				},
 				"spec": "{{ .inputs as $inputs | $inputs | keys | reduce .[] as $key ({}; if ($key | test(\"NestedSchemaSeperator\")) then ($key | split(\"NestedSchemaSeperator\")) as $parts | reduce range(0; $parts | length - 1) as $idx (.; .[$parts[$idx]] |= if $idx == ($parts | length - 2) then . + { ($parts[$idx + 1]): ($inputs | getpath([$key])) } else .[$parts[$idx]] // {} end) | del(.[$key]) else . + { ($key): ($inputs | .[$key]) } end) | del(.name) }}",
 			},
@@ -323,7 +307,7 @@ func convertToPortSchema(crd v1.CustomResourceDefinition) ([]port.Action, *port.
 	actions := []port.Action{
 		buildCreateAction(crd, as, nameProperty, namespaceProperty, invocation),
 		buildUpdateAction(crd, as, namespaceProperty, invocation),
-		buildDeleteAction(crd, namespaceProperty, invocation),
+		buildDeleteAction(crd, invocation),
 	}
 
 	return actions, &bp, nil
@@ -367,7 +351,7 @@ func handleNestedSchema(schema *v1.JSONSchemaProps, parent string, originalSchem
 			originalSchema.Properties[shallowedKey] = v
 			if slices.Contains(originalSchema.Required, strings.Split(shallowedKey, NestedSchemaSeperator)[0]) {
 				originalSchema.Required = append(originalSchema.Required, shallowedKey)
-				originalSchema.Required = append(originalSchema.Required[:slices.Index(originalSchema.Required, strings.Split(shallowedKey, NestedSchemaSeperator)[0])], originalSchema.Required[slices.Index(originalSchema.Required, strings.Split(shallowedKey, NestedSchemaSeperator)[0])+1:]...)
+				originalSchema.Required = goutils.Filter(originalSchema.Required, strings.Split(shallowedKey, NestedSchemaSeperator)[0])
 			}
 
 		} else {
@@ -382,7 +366,7 @@ func handleCRD(crds []v1.CustomResourceDefinition, portConfig *port.IntegrationA
 
 	for _, crd := range matchedCRDs {
 		portConfig.Resources = append(portConfig.Resources, createKindConfigFromCRD(crd))
-		actions, bp, err := convertToPortSchema(crd)
+		actions, bp, err := convertToPortSchemas(crd)
 		if err != nil {
 			klog.Errorf("Error converting CRD to Port schemas: %s", err.Error())
 			continue
@@ -406,7 +390,7 @@ func handleCRD(crds []v1.CustomResourceDefinition, portConfig *port.IntegrationA
 			_, err = cli.CreateAction(portClient, act)
 			if err != nil {
 				if strings.Contains(err.Error(), "taken") {
-					if portConfig.OverwriteCRDsActions == true {
+					if portConfig.OverwriteCRDsActions {
 						_, err = cli.UpdateAction(portClient, act)
 						if err != nil {
 							klog.Errorf("Error updating blueprint action: %s", err.Error())
