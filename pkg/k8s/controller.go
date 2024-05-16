@@ -8,12 +8,15 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/mapping"
+	"hash/fnv"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
+	"strconv"
 	"time"
 
+	"encoding/json"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
@@ -68,7 +71,42 @@ func NewController(resource port.AggregatedResource, portClient *cli.PortClient,
 			item.ActionType = UpdateAction
 			item.Key, err = cache.MetaNamespaceKeyFunc(new)
 			if err == nil {
-				controller.workqueue.Add(item)
+
+				if config.ApplicationConfig.UpdateEntityOnlyOnDiff == false {
+					controller.workqueue.Add(item)
+				} else {
+					for _, kindConfig := range controller.resource.KindConfigs {
+						oldEntities, err := controller.getObjectEntities(old, kindConfig.Selector, kindConfig.Port.Entity.Mappings)
+						if err != nil {
+							klog.Errorf("Error getting old entities: %v", err)
+							controller.workqueue.Add(item)
+							break
+						}
+						newEntities, err := controller.getObjectEntities(new, kindConfig.Selector, kindConfig.Port.Entity.Mappings)
+						if err != nil {
+							klog.Errorf("Error getting new entities: %v", err)
+							controller.workqueue.Add(item)
+							break
+						}
+						oldEntitiesHash, err := hashAllEntities(oldEntities)
+						if err != nil {
+							klog.Errorf("Error hashing old entities: %v", err)
+							controller.workqueue.Add(item)
+							break
+						}
+						newEntitiesHash, err := hashAllEntities(newEntities)
+						if err != nil {
+							klog.Errorf("Error hashing new entities: %v", err)
+							controller.workqueue.Add(item)
+							break
+						}
+
+						if oldEntitiesHash != newEntitiesHash {
+							controller.workqueue.Add(item)
+							break
+						}
+					}
+				}
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
@@ -334,4 +372,19 @@ func (c *Controller) GetEntitiesSet() (map[string]interface{}, error) {
 	}
 
 	return k8sEntitiesSet, nil
+}
+
+func hashAllEntities(entities []port.Entity) (string, error) {
+	h := fnv.New64a()
+	for _, entity := range entities {
+		entityBytes, err := json.Marshal(entity)
+		if err != nil {
+			return "", err
+		}
+		_, err = h.Write(entityBytes)
+		if err != nil {
+			return "", err
+		}
+	}
+	return strconv.FormatUint(h.Sum64(), 10), nil
 }

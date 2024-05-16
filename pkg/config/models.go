@@ -26,4 +26,5 @@ type ApplicationConfiguration struct {
 	Resources                    []port.Resource
 	DeleteDependents             bool `json:"deleteDependents,omitempty"`
 	CreateMissingRelatedEntities bool `json:"createMissingRelatedEntities,omitempty"`
+	UpdateEntityOnlyOnDiff       bool `json:"updateEntityOnlyOnDiff,omitempty"`
 }
