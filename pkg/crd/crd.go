@@ -155,7 +155,7 @@ func buildDeleteAction(crd v1.CustomResourceDefinition, invocation port.Invocati
 	return dltAct
 }
 
-func adjustSchemaToPortSchemaCompabtabilityLevel(spec *v1.JSONSchemaProps) {
+func adjustSchemaToPortSchemaCompatibilityLevel(spec *v1.JSONSchemaProps) {
 	for i, v := range spec.Properties {
 		if v.Type == "integer" {
 			v.Type = "number"
@@ -185,7 +185,7 @@ func adjustSchemaToPortSchemaCompabtabilityLevel(spec *v1.JSONSchemaProps) {
 
 	for i, v := range spec.Properties {
 		if v.Type == "object" {
-			adjustSchemaToPortSchemaCompabtabilityLevel(&v)
+			adjustSchemaToPortSchemaCompatibilityLevel(&v)
 			spec.Properties[i] = v
 		}
 	}
@@ -207,7 +207,7 @@ func convertToPortSchemas(crd v1.CustomResourceDefinition) ([]port.Action, *port
 		spec = *latestCRDVersion.Schema.OpenAPIV3Schema
 	}
 
-	adjustSchemaToPortSchemaCompabtabilityLevel(&spec)
+	adjustSchemaToPortSchemaCompatibilityLevel(&spec)
 
 	bytes, err := json.Marshal(&spec)
 	if err != nil {
