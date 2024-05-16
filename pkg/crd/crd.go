@@ -22,7 +22,7 @@ const (
 	KindCRD               = "CustomResourceDefinition"
 	K8SIcon               = "Cluster"
 	CrossplaneIcon        = "Crossplane"
-	NestedSchemaSeperator = "__"
+	NestedSchemaSeparator = "__"
 )
 
 func createKindConfigFromCRD(crd v1.CustomResourceDefinition) port.Resource {
@@ -108,7 +108,7 @@ func buildUpdateAction(crd v1.CustomResourceDefinition, as *port.ActionUserInput
 		updatedStruct := v
 
 		defaultMap := make(map[string]string)
-		defaultMap["jqQuery"] = ".entity.properties." + strings.Replace(k, ".", NestedSchemaSeperator, -1)
+		defaultMap["jqQuery"] = ".entity.properties." + strings.Replace(k, NestedSchemaSeparator, ".", -1)
 		updatedStruct.Default = defaultMap
 
 		as.Properties[k] = updatedStruct
@@ -344,14 +344,14 @@ func handleNestedSchema(schema *v1.JSONSchemaProps, parent string, originalSchem
 		if parent == "" {
 			shallowedKey = k
 		} else {
-			shallowedKey = parent + NestedSchemaSeperator + k
+			shallowedKey = parent + NestedSchemaSeparator + k
 		}
 
 		if v.Type != "object" {
 			originalSchema.Properties[shallowedKey] = v
-			if shallowedKey != k && slices.Contains(originalSchema.Required, strings.Split(shallowedKey, NestedSchemaSeperator)[0]) {
+			if shallowedKey != k && slices.Contains(originalSchema.Required, strings.Split(shallowedKey, NestedSchemaSeparator)[0]) {
 				originalSchema.Required = append(originalSchema.Required, shallowedKey)
-				originalSchema.Required = goutils.Filter(originalSchema.Required, strings.Split(shallowedKey, NestedSchemaSeperator)[0])
+				originalSchema.Required = goutils.Filter(originalSchema.Required, strings.Split(shallowedKey, NestedSchemaSeparator)[0])
 			}
 		} else {
 			handleNestedSchema(&v, shallowedKey, originalSchema)
