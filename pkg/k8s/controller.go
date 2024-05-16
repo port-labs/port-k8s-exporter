@@ -73,40 +73,8 @@ func NewController(resource port.AggregatedResource, portClient *cli.PortClient,
 			item.Key, err = cache.MetaNamespaceKeyFunc(new)
 			if err == nil {
 
-				if config.ApplicationConfig.UpdateEntityOnlyOnDiff == false {
+				if controller.shouldSendUpdateEvent(old, new, config.ApplicationConfig.UpdateEntityOnlyOnDiff) {
 					controller.workqueue.Add(item)
-				} else {
-					for _, kindConfig := range controller.resource.KindConfigs {
-						oldEntities, err := controller.getObjectEntities(old, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
-						if err != nil {
-							klog.Errorf("Error getting old entities: %v", err)
-							controller.workqueue.Add(item)
-							break
-						}
-						newEntities, err := controller.getObjectEntities(new, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
-						if err != nil {
-							klog.Errorf("Error getting new entities: %v", err)
-							controller.workqueue.Add(item)
-							break
-						}
-						oldEntitiesHash, err := hashAllEntities(oldEntities)
-						if err != nil {
-							klog.Errorf("Error hashing old entities: %v", err)
-							controller.workqueue.Add(item)
-							break
-						}
-						newEntitiesHash, err := hashAllEntities(newEntities)
-						if err != nil {
-							klog.Errorf("Error hashing new entities: %v", err)
-							controller.workqueue.Add(item)
-							break
-						}
-
-						if oldEntitiesHash != newEntitiesHash {
-							controller.workqueue.Add(item)
-							break
-						}
-					}
 				}
 			}
 		},
@@ -436,4 +404,39 @@ func hashAllEntities(entities []port.Entity) (string, error) {
 		}
 	}
 	return strconv.FormatUint(h.Sum64(), 10), nil
+}
+
+func (c *Controller) shouldSendUpdateEvent(old interface{}, new interface{}, updateEntityOnlyOnDiff bool) bool {
+
+	if updateEntityOnlyOnDiff == false {
+		return true
+	} else {
+		for _, kindConfig := range c.resource.KindConfigs {
+			oldEntities, err := c.getObjectEntities(old, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
+			if err != nil {
+				klog.Errorf("Error getting old entities: %v", err)
+				return true
+			}
+			newEntities, err := c.getObjectEntities(new, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
+			if err != nil {
+				klog.Errorf("Error getting new entities: %v", err)
+				return true
+			}
+			oldEntitiesHash, err := hashAllEntities(oldEntities)
+			if err != nil {
+				klog.Errorf("Error hashing old entities: %v", err)
+				return true
+			}
+			newEntitiesHash, err := hashAllEntities(newEntities)
+			if err != nil {
+				klog.Errorf("Error hashing new entities: %v", err)
+				return true
+			}
+
+			if oldEntitiesHash != newEntitiesHash {
+				return true
+			}
+		}
+	}
+	return false
 }

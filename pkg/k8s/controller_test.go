@@ -3,6 +3,9 @@ package k8s
 import (
 	"context"
 	"fmt"
+	"github.com/stretchr/testify/assert"
+	"k8s.io/client-go/kubernetes/fake"
+	"log"
 	"reflect"
 	"strings"
 	"testing"
@@ -76,6 +79,33 @@ func newDeployment() *appsv1.Deployment {
 	labels := map[string]string{
 		"app": "port-k8s-exporter",
 	}
+	return &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "port-k8s-exporter",
+			Namespace: "port-k8s-exporter",
+		},
+		Spec: appsv1.DeploymentSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: labels,
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: labels,
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "port-k8s-exporter",
+							Image: "port-k8s-exporter:latest",
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func newDeploymentWithCustomLabels(labels map[string]string) *appsv1.Deployment {
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "port-k8s-exporter",
@@ -316,4 +346,77 @@ func TestGetEntitiesSet(t *testing.T) {
 
 	f := newFixture(t, "", "", "", resource, objects)
 	f.runControllerGetEntitiesSet(expectedEntitiesSet, false)
+}
+
+func TestUpdateDeploymentWithoutDiff(t *testing.T) {
+	clientset := fake.NewSimpleClientset()
+	d := newDeployment()
+	a, err := clientset.AppsV1().Deployments("port-k8s-exporter").Update(context.Background(), d, metav1.UpdateOptions{})
+	if err != nil {
+		return
+	}
+	log.Fatal(a)
+
+}
+
+func TestUpdateHandler(t *testing.T) {
+	oldDeployment := []runtime.Object{newUnstructured(newDeployment())}[0]
+	newDep := []runtime.Object{newUnstructured(newDeploymentWithCustomLabels(map[string]string{"app": "port-k8s-exporter", "new": "label"}))}[0]
+	fullMapping := newResource("", []port.EntityMapping{
+		{
+			Identifier: ".metadata.name",
+			Blueprint:  "\"k8s-export-test-bp\"",
+			Icon:       "\"Microservice\"",
+			Team:       "\"Test\"",
+			Properties: map[string]string{
+				"text": "\"pod\"",
+				"num":  "1",
+				"bool": "true",
+				"obj":  ".spec.selector",
+				"arr":  ".spec.template.spec.containers",
+			},
+			Relations: map[string]string{
+				"k8s-relation": "\"e_AgPMYvq1tAs8TuqM\"",
+			},
+		},
+	})
+
+	partialMappingWithoutLables := newResource("", []port.EntityMapping{
+		{
+			Identifier: ".metadata.name",
+			Blueprint:  "\"k8s-export-test-bp\"",
+			Icon:       "\"Microservice\"",
+			Team:       "\"Test\"",
+			Properties: map[string]string{
+				"text": "\"pod\"",
+				"num":  "1",
+				"bool": "true",
+			},
+			Relations: map[string]string{
+				"k8s-relation": "\"e_AgPMYvq1tAs8TuqM\"",
+			},
+		},
+	})
+
+	controllerWithFullMapping := newFixture(t, "", "", "", fullMapping, []runtime.Object{}).controller
+
+	// Same object and feature flag on - should return false
+	result := controllerWithFullMapping.shouldSendUpdateEvent(oldDeployment, oldDeployment, true)
+	assert.False(t, result, "Expected false when same object and feature flag is on")
+
+	// Different object and feature flag on - should return true
+	result = controllerWithFullMapping.shouldSendUpdateEvent(oldDeployment, newDep, true)
+	assert.True(t, result, "Expected true when different object and feature flag is on")
+
+	// feature flag off - should return true regardless of whether objects are same or different
+	result = controllerWithFullMapping.shouldSendUpdateEvent(oldDeployment, oldDeployment, false)
+	assert.True(t, result, "Expected true when same object and feature flag is off")
+
+	result = controllerWithFullMapping.shouldSendUpdateEvent(oldDeployment, newDep, false)
+	assert.True(t, result, "Expected true when different object and feature flag is off")
+
+	controllerWithPartialMapping := newFixture(t, "", "", "", partialMappingWithoutLables, []runtime.Object{}).controller
+	result = controllerWithPartialMapping.shouldSendUpdateEvent(oldDeployment, newDep, true)
+	assert.False(t, result, "Expected false when objects are different but mapping not include the change and feature flag is on")
+
 }
