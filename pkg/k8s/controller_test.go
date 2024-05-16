@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/stretchr/testify/assert"
-	"k8s.io/client-go/kubernetes/fake"
-	"log"
 	"reflect"
 	"strings"
 	"testing"
@@ -348,17 +346,6 @@ func TestGetEntitiesSet(t *testing.T) {
 	f.runControllerGetEntitiesSet(expectedEntitiesSet, false)
 }
 
-func TestUpdateDeploymentWithoutDiff(t *testing.T) {
-	clientset := fake.NewSimpleClientset()
-	d := newDeployment()
-	a, err := clientset.AppsV1().Deployments("port-k8s-exporter").Update(context.Background(), d, metav1.UpdateOptions{})
-	if err != nil {
-		return
-	}
-	log.Fatal(a)
-
-}
-
 func TestUpdateHandler(t *testing.T) {
 	oldDeployment := []runtime.Object{newUnstructured(newDeployment())}[0]
 	newDep := []runtime.Object{newUnstructured(newDeploymentWithCustomLabels(map[string]string{"app": "port-k8s-exporter", "new": "label"}))}[0]
@@ -418,5 +405,8 @@ func TestUpdateHandler(t *testing.T) {
 	controllerWithPartialMapping := newFixture(t, "", "", "", partialMappingWithoutLables, []runtime.Object{}).controller
 	result = controllerWithPartialMapping.shouldSendUpdateEvent(oldDeployment, newDep, true)
 	assert.False(t, result, "Expected false when objects are different but mapping not include the change and feature flag is on")
+
+	result = controllerWithPartialMapping.shouldSendUpdateEvent(oldDeployment, newDep, false)
+	assert.True(t, result, "Expected false when objects are different but mapping not include the change and feature flag is off")
 
 }
