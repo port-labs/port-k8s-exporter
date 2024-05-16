@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 )
 

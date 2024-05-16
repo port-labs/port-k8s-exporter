@@ -38,7 +38,7 @@ type (
 		UpdatedAt           *time.Time             `json:"updatedAt,omitempty"`
 	}
 
-	BlueprintProperty struct {
+	Property struct {
 		Type        string            `json:"type,omitempty"`
 		Title       string            `json:"title,omitempty"`
 		Identifier  string            `json:"identifier,omitempty"`
@@ -50,6 +50,21 @@ type (
 		Pattern     string            `json:"pattern,omitempty"`
 		Enum        []string          `json:"enum,omitempty"`
 		EnumColors  map[string]string `json:"enumColors,omitempty"`
+	}
+
+	ActionProperty struct {
+		Type        string            `json:"type,omitempty"`
+		Title       string            `json:"title,omitempty"`
+		Identifier  string            `json:"identifier,omitempty"`
+		Default     any               `json:"default,omitempty"`
+		Icon        string            `json:"icon,omitempty"`
+		Format      string            `json:"format,omitempty"`
+		Description string            `json:"description,omitempty"`
+		Blueprint   string            `json:"blueprint,omitempty"`
+		Pattern     string            `json:"pattern,omitempty"`
+		Enum        []string          `json:"enum,omitempty"`
+		EnumColors  map[string]string `json:"enumColors,omitempty"`
+		Visible     *bool             `json:"visible,omitempty"`
 	}
 
 	BlueprintMirrorProperty struct {
@@ -78,14 +93,20 @@ type (
 		Type            string      `json:"type,omitempty"`
 	}
 
-	BlueprintSchema struct {
-		Properties map[string]BlueprintProperty `json:"properties"`
-		Required   []string                     `json:"required,omitempty"`
+	Schema struct {
+		Properties map[string]Property `json:"properties"`
+		Required   []string            `json:"required,omitempty"`
 	}
 
 	InvocationMethod struct {
-		Type string `json:"type,omitempty"`
-		Url  string `json:"url,omitempty"`
+		Type                 string `json:"type,omitempty"`
+		Url                  string `json:"url,omitempty"`
+		Organization         string `json:"org,omitempty"`
+		Repository           string `json:"repo,omitempty"`
+		Workflow             string `json:"workflow,omitempty"`
+		OmitUserInputs       bool   `json:"omitUserInputs,omitempty"`
+		OmitPayload          bool   `json:"omitPayload,omitempty"`
+		ReportWorkflowStatus bool   `json:"reportWorkflowStatus,omitempty"`
 	}
 
 	ChangelogDestination struct {
@@ -93,7 +114,10 @@ type (
 		Url  string `json:"url,omitempty"`
 	}
 
-	ActionUserInputs = BlueprintSchema
+	ActionUserInputs struct {
+		Properties map[string]ActionProperty `json:"properties"`
+		Required   []string                  `json:"required,omitempty"`
+	}
 
 	Blueprint struct {
 		Meta
@@ -101,7 +125,7 @@ type (
 		Title                 string                                  `json:"title,omitempty"`
 		Icon                  string                                  `json:"icon"`
 		Description           string                                  `json:"description"`
-		Schema                BlueprintSchema                         `json:"schema"`
+		Schema                Schema                                  `json:"schema"`
 		CalculationProperties map[string]BlueprintCalculationProperty `json:"calculationProperties,omitempty"`
 		AggregationProperties map[string]BlueprintAggregationProperty `json:"aggregationProperties,omitempty"`
 		MirrorProperties      map[string]BlueprintMirrorProperty      `json:"mirrorProperties,omitempty"`
@@ -179,21 +203,22 @@ type ResponseBody struct {
 }
 
 type EntityMapping struct {
-	Identifier string            `json:"identifier"`
-	Title      string            `json:"title"`
-	Blueprint  string            `json:"blueprint"`
-	Icon       string            `json:"icon,omitempty"`
-	Team       string            `json:"team,omitempty"`
-	Properties map[string]string `json:"properties,omitempty"`
-	Relations  map[string]string `json:"relations,omitempty"`
+	Identifier string            `json:"identifier" yaml:"identifier"`
+	Title      string            `json:"title" yaml:"title"`
+	Blueprint  string            `json:"blueprint" yaml:"blueprint"`
+	Icon       string            `json:"icon,omitempty" yaml:"icon,omitempty"`
+	Team       string            `json:"team,omitempty" yaml:"team,omitempty"`
+	Properties map[string]string `json:"properties,omitempty" yaml:"properties,omitempty"`
+	Relations  map[string]string `json:"relations,omitempty" yaml:"relations,omitempty"`
 }
 
 type EntityMappings struct {
-	Mappings []EntityMapping `json:"mappings"`
+	Mappings []EntityMapping `json:"mappings" yaml:"mappings"`
 }
 
 type Port struct {
-	Entity EntityMappings `json:"entity"`
+	Entity       EntityMappings `json:"entity" yaml:"entity"`
+	ItemsToParse string         `json:"itemsToParse" yaml:"itemsToParse"`
 }
 
 type Selector struct {
@@ -201,9 +226,9 @@ type Selector struct {
 }
 
 type Resource struct {
-	Kind     string   `json:"kind"`
-	Selector Selector `json:"selector,omitempty"`
-	Port     Port     `json:"port"`
+	Kind     string   `json:"kind" yaml:"kind"`
+	Selector Selector `json:"selector,omitempty" yaml:"selector,omitempty"`
+	Port     Port     `json:"port" yaml:"port"`
 }
 
 type EventListenerSettings struct {
@@ -224,6 +249,8 @@ type IntegrationAppConfig struct {
 	DeleteDependents             bool       `json:"deleteDependents,omitempty" yaml:"deleteDependents,omitempty"`
 	CreateMissingRelatedEntities bool       `json:"createMissingRelatedEntities,omitempty" yaml:"createMissingRelatedEntities,omitempty"`
 	Resources                    []Resource `json:"resources,omitempty" yaml:"resources,omitempty"`
+	CRDSToDiscover               string     `json:"crdsToDiscover,omitempty"`
+	OverwriteCRDsActions         bool       `json:"overwriteCrdsActions,omitempty"`
 }
 
 type Config struct {
@@ -234,6 +261,8 @@ type Config struct {
 	OverwriteConfigurationOnRestart bool   `yaml:"overwriteConfigurationOnRestart,omitempty"`
 	// These Configurations are used only for setting up the Integration on installation or when using OverwriteConfigurationOnRestart flag.
 	Resources                    []Resource `yaml:"resources,omitempty"`
+	CRDSToDiscover               string     `yaml:"crdsToDiscover,omitempty"`
+	OverwriteCRDsActions         bool       `yaml:"overwriteCrdsActions,omitempty"`
 	DeleteDependents             bool       `yaml:"deleteDependents,omitempty"`
 	CreateMissingRelatedEntities bool       `yaml:"createMissingRelatedEntities,omitempty"`
 }

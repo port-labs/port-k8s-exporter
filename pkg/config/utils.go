@@ -2,9 +2,10 @@ package config
 
 import (
 	"flag"
+	"strings"
+
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
 	"k8s.io/utils/strings/slices"
-	"strings"
 )
 
 var keys []string
