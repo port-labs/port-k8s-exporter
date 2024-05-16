@@ -248,6 +248,7 @@ func convertToPortSchemas(crd v1.CustomResourceDefinition) ([]port.Action, *port
 		if !slices.Contains(as.Required, k) {
 			v.Visible = new(bool)
 			*v.Visible = false
+			v.Default = nil
 			as.Properties[k] = v
 		}
 
@@ -299,7 +300,7 @@ func convertToPortSchemas(crd v1.CustomResourceDefinition) ([]port.Action, *port
 					"{{if (.entity.properties | has(\"namespace\")) then \"namespace\" else null end}}": "{{.entity.properties.\"namespace\"}}",
 					"{{if (.inputs | has(\"namespace\")) then \"namespace\" else null end}}":            "{{.inputs.\"namespace\"}}",
 				},
-				"spec": "{{ .inputs | to_entries | mapif .key | contains(\"__\") then .key |= split(\"__\") else . end) | reduce .[] as $item ({}; if $item.key | type  == \"array\" then setpath($item.key;$item.value) else setpath([$item.key];$item.value) end) | del(.name) | del (.namespace) }}",
+				"spec": "{{ .inputs | to_entries | map(if .key | contains(\"__\") then .key |= split(\"__\") else . end) | reduce .[] as $item ({}; if $item.key | type  == \"array\" then setpath($item.key;$item.value) else setpath([$item.key];$item.value) end) | del(.name) | del (.namespace) }}",
 			},
 		},
 	}
