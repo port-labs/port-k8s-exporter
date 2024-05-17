@@ -211,11 +211,8 @@ func convertToPortSchemas(crd v1.CustomResourceDefinition) ([]port.Action, *port
 	}
 
 	// Make nested schemas shallow with `NestedSchemaSeparator`(__) separator
-	required := []string{}
-	shallowedProperties := map[string]v1.JSONSchemaProps{}
-	handleNestedSchema(&spec, "", &required, &shallowedProperties)
-
-	bytesNested, err := json.Marshal(&spec)
+	shallowedSchema := ShallowJsonSchema(&spec, NestedSchemaSeparator)
+	bytesNested, err := json.Marshal(&shallowedSchema)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error marshaling schema: %v", err)
 	}
@@ -320,27 +317,6 @@ func findMatchingCRDs(crds []v1.CustomResourceDefinition, pattern string) []v1.C
 	}
 
 	return matchedCRDs
-}
-
-func handleNestedSchema(schema *v1.JSONSchemaProps, parent string, required *[]string, shallowedProperties *map[string]v1.JSONSchemaProps) {
-	for k, v := range schema.Properties {
-		shallowedKey := k
-
-		if parent != "" {
-			shallowedKey = parent + NestedSchemaSeparator + k
-		}
-
-		if v.Type == "object" {
-			for _, r := range v.Required {
-				if v.Properties[r].Type != "object" {
-					*required = append(*required, shallowedKey+NestedSchemaSeparator+r)
-				}
-			}
-			handleNestedSchema(&v, shallowedKey, required, shallowedProperties)
-		} else {
-			(*shallowedProperties)[shallowedKey] = v
-		}
-	}
 }
 
 func handleCRD(crds []v1.CustomResourceDefinition, portConfig *port.IntegrationAppConfig, portClient *cli.PortClient) {

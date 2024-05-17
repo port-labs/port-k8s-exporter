@@ -1,7 +1,6 @@
 package crd
 
 import (
-	"fmt"
 	"slices"
 	"testing"
 
@@ -296,62 +295,4 @@ func TestCRD_crd_autoDiscoverCRDsToActionsNoCRDs(t *testing.T) {
 	AutodiscoverCRDsToActions(f.portConfig, f.apiextensionClient, f.portClient)
 
 	testUtils.CheckResourcesExistence(false, f.portClient, t, []string{"testkind"}, []string{}, []string{"create_testkind", "update_testkind", "delete_testkind"})
-}
-
-func TestCRD_crd_andleNestedSchema(t *testing.T) {
-	originalSchema := &v1.JSONSchemaProps{
-		Type: "object",
-		Properties: map[string]v1.JSONSchemaProps{
-			"spec": {
-				Type: "object",
-				Properties: map[string]v1.JSONSchemaProps{
-					"stringProperty": {
-						Type: "string",
-					},
-					"intProperty": {
-						Type: "integer",
-					},
-					"boolProperty": {
-						Type: "boolean",
-					},
-					"nestedProperty": {
-						Type: "object",
-						Properties: map[string]v1.JSONSchemaProps{
-							"nestedStringProperty": {
-								Type: "string",
-							},
-							"nestedIntProperty": {
-								Type: "integer",
-							},
-						},
-						Required: []string{"nestedStringProperty"},
-					},
-					"multiNestedProperty": {
-						Type: "object",
-						Properties: map[string]v1.JSONSchemaProps{
-							"nestedObjectProperty": {
-								Type: "object",
-								Properties: map[string]v1.JSONSchemaProps{
-									"nestedStringProperty": {
-										Type: "string",
-									},
-								},
-								Required: []string{"nestedStringProperty"},
-							},
-						},
-						Required: []string{},
-					},
-				},
-				Required: []string{"stringProperty", "nestedProperty", "multiNestedProperty"},
-			},
-		},
-		Required: []string{"spec"},
-	}
-
-	required := []string{}
-	properties := map[string]v1.JSONSchemaProps{}
-
-	handleNestedSchema(originalSchema, "", &required, &properties)
-
-	fmt.Println(originalSchema)
 }
