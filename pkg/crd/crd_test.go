@@ -66,6 +66,7 @@ func newFixture(t *testing.T, portClientId string, portClientSecret string, user
 																Type: "string",
 															},
 														},
+														Required: []string{"nestedStringProperty"},
 													},
 													"anyOfProperty": {
 														AnyOf: []v1.JSONSchemaProps{
