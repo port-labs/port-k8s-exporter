@@ -98,16 +98,12 @@ func buildCreateAction(crd v1.CustomResourceDefinition, as *port.ActionUserInput
 	return crtAct
 }
 
-func buildUpdateAction(crd v1.CustomResourceDefinition, as *port.ActionUserInputs, namespaceProperty port.ActionProperty, invocation port.InvocationMethod) port.Action {
-	if isCRDNamespacedScoped(crd) {
-		as.Properties["namespace"] = namespaceProperty
-		as.Required = append(as.Required, "namespace")
-	}
-
+func buildUpdateAction(crd v1.CustomResourceDefinition, as *port.ActionUserInputs, invocation port.InvocationMethod) port.Action {
 	for k, v := range as.Properties {
 		updatedStruct := v
 
 		defaultMap := make(map[string]string)
+		// Blueprint schema differs from the action schema, as it not shallow - this JQ pattern assign the defaults from the entity nested schema to the action shallow one
 		defaultMap["jqQuery"] = ".entity.properties." + strings.Replace(k, NestedSchemaSeparator, ".", -1)
 		updatedStruct.Default = defaultMap
 
@@ -157,15 +153,15 @@ func buildDeleteAction(crd v1.CustomResourceDefinition, invocation port.Invocati
 
 func adjustSchemaToPortSchemaCompatibilityLevel(spec *v1.JSONSchemaProps) {
 	for i, v := range spec.Properties {
-		if v.Type == "integer" {
+		switch v.Type {
+		case "object":
+			adjustSchemaToPortSchemaCompatibilityLevel(&v)
+			spec.Properties[i] = v
+		case "integer":
 			v.Type = "number"
 			v.Format = ""
 			spec.Properties[i] = v
-		}
-	}
-
-	for i, v := range spec.Properties {
-		if v.Type == "" {
+		case "":
 			if v.AnyOf != nil && len(v.AnyOf) > 0 {
 				possibleTypes := make([]string, 0)
 				for _, anyOf := range v.AnyOf {
@@ -182,18 +178,11 @@ func adjustSchemaToPortSchemaCompatibilityLevel(spec *v1.JSONSchemaProps) {
 			spec.Properties[i] = v
 		}
 	}
-
-	for i, v := range spec.Properties {
-		if v.Type == "object" {
-			adjustSchemaToPortSchemaCompatibilityLevel(&v)
-			spec.Properties[i] = v
-		}
-	}
 }
 
 func convertToPortSchemas(crd v1.CustomResourceDefinition) ([]port.Action, *port.Blueprint, error) {
 	latestCRDVersion := crd.Spec.Versions[0]
-	bs := &port.Schema{}
+	bs := &port.BlueprintSchema{}
 	as := &port.ActionUserInputs{}
 	notVisible := new(bool) // Using a pointer to bool to avoid the omitempty of false values
 	*notVisible = false
@@ -207,6 +196,8 @@ func convertToPortSchemas(crd v1.CustomResourceDefinition) ([]port.Action, *port
 		spec = *latestCRDVersion.Schema.OpenAPIV3Schema
 	}
 
+	// Adjust schema to be compatible with Port schema
+	// Port's schema complexity is not rich as k8s, so we need to adjust some types and formats so we can bridge this gap
 	adjustSchemaToPortSchemaCompatibilityLevel(&spec)
 
 	bytes, err := json.Marshal(&spec)
@@ -215,23 +206,14 @@ func convertToPortSchemas(crd v1.CustomResourceDefinition) ([]port.Action, *port
 	}
 
 	err = json.Unmarshal(bytes, &bs)
-
 	if err != nil {
 		return nil, nil, fmt.Errorf("error unmarshaling schema into blueprint schema: %v", err)
 	}
 
-	// Make nested schemas shallow with `NestedSchemaSeperator`(__) separator
-	handleNestedSchema(&spec, "", &spec)
-
-	// Convert integer types to number as Port does not yet support integers
-	for i, v := range spec.Properties {
-		if v.Type == "integer" {
-			v.Type = "number"
-			v.Format = ""
-			spec.Properties[i] = v
-		}
-
-	}
+	// Make nested schemas shallow with `NestedSchemaSeparator`(__) separator
+	required := []string{}
+	shallowedProperties := map[string]v1.JSONSchemaProps{}
+	handleNestedSchema(&spec, "", &required, &shallowedProperties)
 
 	bytesNested, err := json.Marshal(&spec)
 	if err != nil {
@@ -247,6 +229,7 @@ func convertToPortSchemas(crd v1.CustomResourceDefinition) ([]port.Action, *port
 	for k, v := range as.Properties {
 		if !slices.Contains(as.Required, k) {
 			v.Visible = new(bool)
+			// Not required fields should not be visible, and also shouldn't be applying default values in Port's side, instead we should let k8s apply the defaults
 			*v.Visible = false
 			v.Default = nil
 			as.Properties[k] = v
@@ -307,7 +290,7 @@ func convertToPortSchemas(crd v1.CustomResourceDefinition) ([]port.Action, *port
 
 	actions := []port.Action{
 		buildCreateAction(crd, as, nameProperty, namespaceProperty, invocation),
-		buildUpdateAction(crd, as, namespaceProperty, invocation),
+		buildUpdateAction(crd, as, invocation),
 		buildDeleteAction(crd, invocation),
 	}
 
@@ -339,24 +322,23 @@ func findMatchingCRDs(crds []v1.CustomResourceDefinition, pattern string) []v1.C
 	return matchedCRDs
 }
 
-func handleNestedSchema(schema *v1.JSONSchemaProps, parent string, originalSchema *v1.JSONSchemaProps) {
+func handleNestedSchema(schema *v1.JSONSchemaProps, parent string, required *[]string, shallowedProperties *map[string]v1.JSONSchemaProps) {
 	for k, v := range schema.Properties {
-		var shallowedKey string
-		if parent == "" {
-			shallowedKey = k
-		} else {
+		shallowedKey := k
+
+		if parent != "" {
 			shallowedKey = parent + NestedSchemaSeparator + k
 		}
 
-		if v.Type != "object" {
-			originalSchema.Properties[shallowedKey] = v
-			if shallowedKey != k && slices.Contains(originalSchema.Required, strings.Split(shallowedKey, NestedSchemaSeparator)[0]) {
-				originalSchema.Required = append(originalSchema.Required, shallowedKey)
-				originalSchema.Required = goutils.Filter(originalSchema.Required, strings.Split(shallowedKey, NestedSchemaSeparator)[0])
+		if v.Type == "object" {
+			for _, r := range v.Required {
+				if v.Properties[r].Type != "object" {
+					*required = append(*required, shallowedKey+NestedSchemaSeparator+r)
+				}
 			}
+			handleNestedSchema(&v, shallowedKey, required, shallowedProperties)
 		} else {
-			handleNestedSchema(&v, shallowedKey, originalSchema)
-			delete(originalSchema.Properties, k)
+			(*shallowedProperties)[shallowedKey] = v
 		}
 	}
 }

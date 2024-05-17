@@ -93,7 +93,7 @@ type (
 		Type            string      `json:"type,omitempty"`
 	}
 
-	Schema struct {
+	BlueprintSchema struct {
 		Properties map[string]Property `json:"properties"`
 		Required   []string            `json:"required,omitempty"`
 	}
@@ -124,7 +124,7 @@ type (
 		Title                 string                                  `json:"title,omitempty"`
 		Icon                  string                                  `json:"icon"`
 		Description           string                                  `json:"description"`
-		Schema                Schema                                  `json:"schema"`
+		Schema                BlueprintSchema                         `json:"schema"`
 		CalculationProperties map[string]BlueprintCalculationProperty `json:"calculationProperties,omitempty"`
 		AggregationProperties map[string]BlueprintAggregationProperty `json:"aggregationProperties,omitempty"`
 		MirrorProperties      map[string]BlueprintMirrorProperty      `json:"mirrorProperties,omitempty"`

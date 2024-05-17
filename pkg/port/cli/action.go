@@ -11,7 +11,7 @@ func CreateAction(portClient *PortClient, action port.Action) (*port.Action, err
 	resp, err := portClient.Client.R().
 		SetResult(&pb).
 		SetBody(action).
-		Post("v1/actions/")
+		Post("v1/actions")
 	if err != nil {
 		return nil, err
 	}

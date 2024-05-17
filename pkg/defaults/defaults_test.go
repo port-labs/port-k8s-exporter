@@ -108,7 +108,7 @@ func Test_InitIntegration_BlueprintExists(t *testing.T) {
 	if _, err := blueprint.NewBlueprint(f.portClient, port.Blueprint{
 		Identifier: "workload",
 		Title:      "Workload",
-		Schema: port.Schema{
+		Schema: port.BlueprintSchema{
 			Properties: map[string]port.Property{},
 		},
 	}); err != nil {
