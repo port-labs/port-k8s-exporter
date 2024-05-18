@@ -110,7 +110,11 @@ func ParseMapInterface(jqQueries map[string]string, obj interface{}) (map[string
 		if key != "*" {
 			mapInterface[key] = queryRes
 		} else {
-			mapInterface = goutils.MergeMaps(mapInterface, queryRes.(map[string]interface{}))
+			if _, ok := queryRes.(map[string]interface{}); ok {
+				mapInterface = goutils.MergeMaps(mapInterface, queryRes.(map[string]interface{}))
+			} else {
+				mapInterface[key] = queryRes
+			}
 		}
 
 	}
