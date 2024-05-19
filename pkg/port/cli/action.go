@@ -6,12 +6,12 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 )
 
-func CreateAction(portClient *PortClient, blueprintIdentifier string, action port.Action) (*port.Action, error) {
+func CreateAction(portClient *PortClient, action port.Action) (*port.Action, error) {
 	pb := &port.ResponseBody{}
 	resp, err := portClient.Client.R().
 		SetResult(&pb).
 		SetBody(action).
-		Post(fmt.Sprintf("v1/blueprints/%s/actions/", blueprintIdentifier))
+		Post("v1/actions")
 	if err != nil {
 		return nil, err
 	}
@@ -21,12 +21,12 @@ func CreateAction(portClient *PortClient, blueprintIdentifier string, action por
 	return &pb.Action, nil
 }
 
-func UpdateAction(portClient *PortClient, blueprintIdentifier string, action port.Action) (*port.Action, error) {
+func UpdateAction(portClient *PortClient, action port.Action) (*port.Action, error) {
 	pb := &port.ResponseBody{}
 	resp, err := portClient.Client.R().
 		SetResult(&pb).
 		SetBody(action).
-		Put(fmt.Sprintf("v1/blueprints/%s/actions/%s", blueprintIdentifier, action.Identifier))
+		Put(fmt.Sprintf("v1/actions/%s", action.Identifier))
 	if err != nil {
 		return nil, err
 	}
@@ -36,11 +36,11 @@ func UpdateAction(portClient *PortClient, blueprintIdentifier string, action por
 	return &pb.Action, nil
 }
 
-func GetAction(portClient *PortClient, blueprintIdentifier string, actionIdentifier string) (*port.Action, error) {
+func GetAction(portClient *PortClient, actionIdentifier string) (*port.Action, error) {
 	pb := &port.ResponseBody{}
 	resp, err := portClient.Client.R().
 		SetResult(&pb).
-		Get(fmt.Sprintf("v1/blueprints/%s/actions/%s", blueprintIdentifier, actionIdentifier))
+		Get(fmt.Sprintf("v1/actions/%s", actionIdentifier))
 	if err != nil {
 		return nil, err
 	}
@@ -48,4 +48,18 @@ func GetAction(portClient *PortClient, blueprintIdentifier string, actionIdentif
 		return nil, fmt.Errorf("failed to get action, got: %s", resp.Body())
 	}
 	return &pb.Action, nil
+}
+
+func DeleteAction(portClient *PortClient, actionIdentifier string) error {
+	pb := &port.ResponseBody{}
+	resp, err := portClient.Client.R().
+		SetResult(&pb).
+		Delete(fmt.Sprintf("v1/actions/%s", actionIdentifier))
+	if err != nil {
+		return err
+	}
+	if !pb.OK {
+		return fmt.Errorf("failed to delete action, got: %s", resp.Body())
+	}
+	return nil
 }

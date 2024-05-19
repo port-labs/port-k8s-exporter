@@ -22,30 +22,6 @@ func NewBlueprint(portClient *cli.PortClient, blueprint port.Blueprint) (*port.B
 	return bp, nil
 }
 
-func NewBlueprintAction(portClient *cli.PortClient, blueprintIdentifier string, action port.Action) (*port.Action, error) {
-	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
-	if err != nil {
-		return nil, fmt.Errorf("error authenticating with Port: %v", err)
-	}
-	act, err := cli.CreateAction(portClient, blueprintIdentifier, action)
-	if err != nil {
-		return nil, fmt.Errorf("error creating blueprint action: %v", err)
-	}
-	return act, nil
-}
-
-func UpdateBlueprintAction(portClient *cli.PortClient, blueprintIdentifier string, action port.Action) (*port.Action, error) {
-	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
-	if err != nil {
-		return nil, fmt.Errorf("error authenticating with Port: %v", err)
-	}
-	act, err := cli.UpdateAction(portClient, blueprintIdentifier, action)
-	if err != nil {
-		return nil, fmt.Errorf("error updating blueprint action: %v", err)
-	}
-	return act, nil
-}
-
 func PatchBlueprint(portClient *cli.PortClient, blueprint port.Blueprint) (*port.Blueprint, error) {
 	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
 	if err != nil {

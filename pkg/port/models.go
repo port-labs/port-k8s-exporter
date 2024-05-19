@@ -93,20 +93,19 @@ type (
 		Type            string      `json:"type,omitempty"`
 	}
 
-	Schema struct {
+	BlueprintSchema struct {
 		Properties map[string]Property `json:"properties"`
 		Required   []string            `json:"required,omitempty"`
 	}
 
 	InvocationMethod struct {
-		Type                 string `json:"type,omitempty"`
-		Url                  string `json:"url,omitempty"`
-		Organization         string `json:"org,omitempty"`
-		Repository           string `json:"repo,omitempty"`
-		Workflow             string `json:"workflow,omitempty"`
-		OmitUserInputs       bool   `json:"omitUserInputs,omitempty"`
-		OmitPayload          bool   `json:"omitPayload,omitempty"`
-		ReportWorkflowStatus bool   `json:"reportWorkflowStatus,omitempty"`
+		Type                 string                 `json:"type,omitempty"`
+		Url                  string                 `json:"url,omitempty"`
+		Organization         string                 `json:"org,omitempty"`
+		Repository           string                 `json:"repo,omitempty"`
+		Workflow             string                 `json:"workflow,omitempty"`
+		WorkflowInputs       map[string]interface{} `json:"workflowInputs,omitempty"`
+		ReportWorkflowStatus bool                   `json:"reportWorkflowStatus,omitempty"`
 	}
 
 	ChangelogDestination struct {
@@ -125,7 +124,7 @@ type (
 		Title                 string                                  `json:"title,omitempty"`
 		Icon                  string                                  `json:"icon"`
 		Description           string                                  `json:"description"`
-		Schema                Schema                                  `json:"schema"`
+		Schema                BlueprintSchema                         `json:"schema"`
 		CalculationProperties map[string]BlueprintCalculationProperty `json:"calculationProperties,omitempty"`
 		AggregationProperties map[string]BlueprintAggregationProperty `json:"aggregationProperties,omitempty"`
 		MirrorProperties      map[string]BlueprintMirrorProperty      `json:"mirrorProperties,omitempty"`
@@ -141,16 +140,35 @@ type (
 		Widgets    interface{} `json:"widgets,omitempty"`
 		Type       string      `json:"type,omitempty"`
 	}
+	TriggerEvent struct {
+		Type                string  `json:"type"`
+		BlueprintIdentifier *string `json:"blueprintIdentifier,omitempty"`
+		PropertyIdentifier  *string `json:"propertyIdentifier,omitempty"`
+	}
+
+	TriggerCondition struct {
+		Type        string   `json:"type"`
+		Expressions []string `json:"expressions"`
+		Combinator  *string  `json:"combinator,omitempty"`
+	}
+	Trigger struct {
+		Type                string            `json:"type"`
+		BlueprintIdentifier string            `json:"blueprintIdentifier,omitempty"`
+		Operation           string            `json:"operation,omitempty"`
+		UserInputs          *ActionUserInputs `json:"userInputs,omitempty"`
+		Event               *TriggerEvent     `json:"event,omitempty"`
+		Condition           *TriggerCondition `json:"condition,omitempty"`
+	}
 
 	Action struct {
 		ID               string            `json:"id,omitempty"`
-		Identifier       string            `json:"identifier,omitempty"`
-		Description      string            `json:"description,omitempty"`
+		Identifier       string            `json:"identifier"`
 		Title            string            `json:"title,omitempty"`
 		Icon             string            `json:"icon,omitempty"`
-		UserInputs       ActionUserInputs  `json:"userInputs"`
-		Trigger          string            `json:"trigger"`
+		Description      string            `json:"description,omitempty"`
+		Trigger          *Trigger          `json:"trigger"`
 		InvocationMethod *InvocationMethod `json:"invocationMethod,omitempty"`
+		Publish          bool              `json:"publish,omitempty"`
 	}
 
 	Scorecard struct {

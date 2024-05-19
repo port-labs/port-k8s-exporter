@@ -9,7 +9,19 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func CheckResourcesExistence(shouldExist bool, portClient *cli.PortClient, t *testing.T, blueprints []string, pages []string) {
+func CheckResourcesExistence(shouldExist bool, portClient *cli.PortClient, t *testing.T, blueprints []string, pages []string, actions []string) {
+	for _, a := range actions {
+		_, err := cli.GetAction(portClient, a)
+		if err == nil {
+			_ = cli.DeleteAction(portClient, a)
+		}
+		if shouldExist {
+			assert.Nil(t, err)
+		} else {
+			assert.NotNil(t, err)
+		}
+	}
+
 	for _, bp := range blueprints {
 		_, err := blueprint.GetBlueprint(portClient, bp)
 		if err == nil {
