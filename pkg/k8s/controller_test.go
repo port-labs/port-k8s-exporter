@@ -356,6 +356,11 @@ func TestGetEntitiesSet(t *testing.T) {
 
 func TestUpdateHandlerWithIndividualPropertyChanges(t *testing.T) {
 
+	type Property struct {
+		Value           interface{}
+		ShouldSendEvent bool
+	}
+
 	fullMapping := []port.Resource{
 		newResource("", []port.EntityMapping{
 			{
@@ -407,37 +412,38 @@ func TestUpdateHandlerWithIndividualPropertyChanges(t *testing.T) {
 		controllerWithFullMapping := newFixture(t, "", "", "", mapping, []runtime.Object{}).controller
 
 		// Test changes in each individual property
-		properties := map[string]interface{}{
-			"metadata.generation":        int64(3),
-			"metadata.generateName":      "new-port-k8s-exporter2",
-			"metadata.creationTimestamp": v1.Now().Add(1 * time.Hour).Format(time.RFC3339),
+		properties := map[string]Property{
+			"metadata.name":              {Value: "port-k8s-exporter", ShouldSendEvent: false},
+			"something_without_mapping":  {Value: "port-k8s-exporter", ShouldSendEvent: false},
+			"metadata.generation":        {Value: int64(3), ShouldSendEvent: true},
+			"metadata.generateName":      {Value: "new-port-k8s-exporter2", ShouldSendEvent: true},
+			"metadata.creationTimestamp": {Value: v1.Now().Add(1 * time.Hour).Format(time.RFC3339), ShouldSendEvent: true},
 		}
 
-		dep := newUnstructured(newDeploymentWithCustomLabels(2, "new-port-k8s-exporter", v1.Now(), map[string]string{"app": "new-port-k8s-exporter"}))
-		result := controllerWithFullMapping.shouldSendUpdateEvent(dep, dep, true)
-		assert.False(t, result, "Expected false when no changes and feature flag is on")
-		result = controllerWithFullMapping.shouldSendUpdateEvent(dep, dep, false)
-		assert.True(t, result, "Expected true when no changes and feature flag is off")
-
 		for property, value := range properties {
-			newDep := newUnstructured(newDeploymentWithCustomLabels(2, "new-port-k8s-exporter", v1.Now(), map[string]string{"app": "new-port-k8s-exporter"}))
-			oldDep := newUnstructured(newDeploymentWithCustomLabels(2, "new-port-k8s-exporter", v1.Now(), map[string]string{"app": "new-port-k8s-exporter"}))
+			newDep := newUnstructured(newDeploymentWithCustomLabels(2, "new-port-k8s-exporter", v1.Now(), map[string]string{"app": "port-k8s-exporter"}))
+			oldDep := newUnstructured(newDeploymentWithCustomLabels(2, "new-port-k8s-exporter", v1.Now(), map[string]string{"app": "port-k8s-exporter"}))
 
 			// Update the property in the new deployment
-			unstructured.SetNestedField(newDep.Object, value, strings.Split(property, ".")...)
+			unstructured.SetNestedField(newDep.Object, value.Value, strings.Split(property, ".")...)
 
 			result := controllerWithFullMapping.shouldSendUpdateEvent(oldDep, newDep, true)
-			assert.True(t, result, fmt.Sprintf("Expected true when %s changes and feature flag is on", property))
+			if value.ShouldSendEvent {
+				assert.True(t, result, fmt.Sprintf("Expected true when %s changes and feature flag is on", property))
+			} else {
+				assert.False(t, result, fmt.Sprintf("Expected false when %s changes and feature flag is on", property))
+			}
 			result = controllerWithFullMapping.shouldSendUpdateEvent(oldDep, newDep, false)
 			assert.True(t, result, fmt.Sprintf("Expected true when %s changes and feature flag is off", property))
 		}
 
+		// Add a case for json update because you can't edit the json directly
+		newDep := newUnstructured(newDeploymentWithCustomLabels(2, "new-port-k8s-exporter", v1.Now(), map[string]string{"app": "port-k8s-exporter"}))
 		oldDep := newUnstructured(newDeploymentWithCustomLabels(2, "new-port-k8s-exporter", v1.Now(), map[string]string{"app": "new-port-k8s-exporter"}))
-		newDep := newUnstructured(newDeploymentWithCustomLabels(2, "new-port-k8s-exporter", v1.Now(), map[string]string{"app": "new label"}))
 
-		result = controllerWithFullMapping.shouldSendUpdateEvent(oldDep, newDep, true)
-		assert.True(t, result, "Expected true when labels changes and feature flag is on")
+		result := controllerWithFullMapping.shouldSendUpdateEvent(oldDep, newDep, true)
+		assert.True(t, result, fmt.Sprintf("Expected true when labels changes and feature flag is on"))
 		result = controllerWithFullMapping.shouldSendUpdateEvent(oldDep, newDep, false)
-		assert.True(t, result, "Expected true when labels changes and feature flag is off")
+		assert.True(t, result, fmt.Sprintf("Expected true when labels changes and feature flag is off"))
 	}
 }
