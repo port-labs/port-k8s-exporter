@@ -20,6 +20,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/tools/cache"
@@ -103,11 +104,18 @@ func newDeployment() *appsv1.Deployment {
 	}
 }
 
-func newDeploymentWithCustomLabels(labels map[string]string) *appsv1.Deployment {
+func newDeploymentWithCustomLabels(generation int64,
+	generateName string,
+	creationTimestamp v1.Time,
+	labels map[string]string,
+) *appsv1.Deployment {
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "port-k8s-exporter",
-			Namespace: "port-k8s-exporter",
+			Name:              "port-k8s-exporter",
+			Namespace:         "port-k8s-exporter",
+			GenerateName:      generateName,
+			Generation:        generation,
+			CreationTimestamp: creationTimestamp,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Selector: &metav1.LabelSelector{
@@ -346,67 +354,90 @@ func TestGetEntitiesSet(t *testing.T) {
 	f.runControllerGetEntitiesSet(expectedEntitiesSet, false)
 }
 
-func TestUpdateHandler(t *testing.T) {
-	oldDeployment := []runtime.Object{newUnstructured(newDeployment())}[0]
-	newDep := []runtime.Object{newUnstructured(newDeploymentWithCustomLabels(map[string]string{"app": "port-k8s-exporter", "new": "label"}))}[0]
-	fullMapping := newResource("", []port.EntityMapping{
-		{
-			Identifier: ".metadata.name",
-			Blueprint:  "\"k8s-export-test-bp\"",
-			Icon:       "\"Microservice\"",
-			Team:       "\"Test\"",
-			Properties: map[string]string{
-				"text": "\"pod\"",
-				"num":  "1",
-				"bool": "true",
-				"obj":  ".spec.selector",
-				"arr":  ".spec.template.spec.containers",
+func TestUpdateHandlerWithIndividualPropertyChanges(t *testing.T) {
+
+	fullMapping := []port.Resource{
+		newResource("", []port.EntityMapping{
+			{
+				Identifier: ".metadata.name",
+				Blueprint:  "\"k8s-export-test-bp\"",
+				Icon:       "\"Microservice\"",
+				Team:       "\"Test\"",
+				Properties: map[string]string{
+					"labels":            ".spec.selector",
+					"generation":        ".metadata.generation",
+					"generateName":      ".metadata.generateName",
+					"creationTimestamp": ".metadata.creationTimestamp",
+				},
+				Relations: map[string]string{
+					"k8s-relation": "\"e_AgPMYvq1tAs8TuqM\"",
+				},
 			},
-			Relations: map[string]string{
-				"k8s-relation": "\"e_AgPMYvq1tAs8TuqM\"",
+		}),
+		newResource("", []port.EntityMapping{
+
+			{
+				Identifier: ".metadata.name",
+				Blueprint:  "\"k8s-export-test-bp\"",
+				Icon:       "\"Microservice\"",
+				Team:       "\"Test\"",
+				Properties: map[string]string{},
+				Relations:  map[string]string{},
 			},
-		},
-	})
-
-	partialMappingWithoutLables := newResource("", []port.EntityMapping{
-		{
-			Identifier: ".metadata.name",
-			Blueprint:  "\"k8s-export-test-bp\"",
-			Icon:       "\"Microservice\"",
-			Team:       "\"Test\"",
-			Properties: map[string]string{
-				"text": "\"pod\"",
-				"num":  "1",
-				"bool": "true",
+			{
+				Identifier: ".metadata.name",
+				Blueprint:  "\"k8s-export-test-bp\"",
+				Icon:       "\"Microservice\"",
+				Team:       "\"Test\"",
+				Properties: map[string]string{
+					"labels":            ".spec.selector",
+					"generation":        ".metadata.generation",
+					"generateName":      ".metadata.generateName",
+					"creationTimestamp": ".metadata.creationTimestamp",
+				},
+				Relations: map[string]string{
+					"k8s-relation": "\"e_AgPMYvq1tAs8TuqM\"",
+				},
 			},
-			Relations: map[string]string{
-				"k8s-relation": "\"e_AgPMYvq1tAs8TuqM\"",
-			},
-		},
-	})
+		}),
+	}
 
-	controllerWithFullMapping := newFixture(t, "", "", "", fullMapping, []runtime.Object{}).controller
+	for _, mapping := range fullMapping {
 
-	// Same object and feature flag on - should return false
-	result := controllerWithFullMapping.shouldSendUpdateEvent(oldDeployment, oldDeployment, true)
-	assert.False(t, result, "Expected false when same object and feature flag is on")
+		controllerWithFullMapping := newFixture(t, "", "", "", mapping, []runtime.Object{}).controller
 
-	// Different object and feature flag on - should return true
-	result = controllerWithFullMapping.shouldSendUpdateEvent(oldDeployment, newDep, true)
-	assert.True(t, result, "Expected true when different object and feature flag is on")
+		// Test changes in each individual property
+		properties := map[string]interface{}{
+			"metadata.generation":        int64(3),
+			"metadata.generateName":      "new-port-k8s-exporter2",
+			"metadata.creationTimestamp": v1.Now().Add(1 * time.Hour).Format(time.RFC3339),
+		}
 
-	// feature flag off - should return true regardless of whether objects are same or different
-	result = controllerWithFullMapping.shouldSendUpdateEvent(oldDeployment, oldDeployment, false)
-	assert.True(t, result, "Expected true when same object and feature flag is off")
+		dep := newUnstructured(newDeploymentWithCustomLabels(2, "new-port-k8s-exporter", v1.Now(), map[string]string{"app": "new-port-k8s-exporter"}))
+		result := controllerWithFullMapping.shouldSendUpdateEvent(dep, dep, true)
+		assert.False(t, result, "Expected false when no changes and feature flag is on")
+		result = controllerWithFullMapping.shouldSendUpdateEvent(dep, dep, false)
+		assert.True(t, result, "Expected true when no changes and feature flag is off")
 
-	result = controllerWithFullMapping.shouldSendUpdateEvent(oldDeployment, newDep, false)
-	assert.True(t, result, "Expected true when different object and feature flag is off")
+		for property, value := range properties {
+			newDep := newUnstructured(newDeploymentWithCustomLabels(2, "new-port-k8s-exporter", v1.Now(), map[string]string{"app": "new-port-k8s-exporter"}))
+			oldDep := newUnstructured(newDeploymentWithCustomLabels(2, "new-port-k8s-exporter", v1.Now(), map[string]string{"app": "new-port-k8s-exporter"}))
 
-	controllerWithPartialMapping := newFixture(t, "", "", "", partialMappingWithoutLables, []runtime.Object{}).controller
-	result = controllerWithPartialMapping.shouldSendUpdateEvent(oldDeployment, newDep, true)
-	assert.False(t, result, "Expected false when objects are different but mapping not include the change and feature flag is on")
+			// Update the property in the new deployment
+			unstructured.SetNestedField(newDep.Object, value, strings.Split(property, ".")...)
 
-	result = controllerWithPartialMapping.shouldSendUpdateEvent(oldDeployment, newDep, false)
-	assert.True(t, result, "Expected false when objects are different but mapping not include the change and feature flag is off")
+			result := controllerWithFullMapping.shouldSendUpdateEvent(oldDep, newDep, true)
+			assert.True(t, result, fmt.Sprintf("Expected true when %s changes and feature flag is on", property))
+			result = controllerWithFullMapping.shouldSendUpdateEvent(oldDep, newDep, false)
+			assert.True(t, result, fmt.Sprintf("Expected true when %s changes and feature flag is off", property))
+		}
 
+		oldDep := newUnstructured(newDeploymentWithCustomLabels(2, "new-port-k8s-exporter", v1.Now(), map[string]string{"app": "new-port-k8s-exporter"}))
+		newDep := newUnstructured(newDeploymentWithCustomLabels(2, "new-port-k8s-exporter", v1.Now(), map[string]string{"app": "new label"}))
+
+		result = controllerWithFullMapping.shouldSendUpdateEvent(oldDep, newDep, true)
+		assert.True(t, result, "Expected true when labels changes and feature flag is on")
+		result = controllerWithFullMapping.shouldSendUpdateEvent(oldDep, newDep, false)
+		assert.True(t, result, "Expected true when labels changes and feature flag is off")
+	}
 }
