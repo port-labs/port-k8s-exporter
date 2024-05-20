@@ -433,10 +433,10 @@ func (c *Controller) shouldSendUpdateEvent(old interface{}, new interface{}, upd
 			return true
 		}
 
-		if oldEntitiesHash == newEntitiesHash {
-			return false
+		if oldEntitiesHash != newEntitiesHash {
+			return true
 		}
 	}
 
-	return true
+	return false
 }
