@@ -10,11 +10,14 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/mapping"
+	"hash/fnv"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
+	"strconv"
 
+	"encoding/json"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
@@ -69,7 +72,10 @@ func NewController(resource port.AggregatedResource, portClient *cli.PortClient,
 			item.ActionType = UpdateAction
 			item.Key, err = cache.MetaNamespaceKeyFunc(new)
 			if err == nil {
-				controller.workqueue.Add(item)
+
+				if controller.shouldSendUpdateEvent(old, new, config.ApplicationConfig.UpdateEntityOnlyOnDiff) {
+					controller.workqueue.Add(item)
+				}
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
@@ -246,7 +252,7 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 	entities := make([]port.Entity, 0, len(mappings))
 	objectsToMap := make([]interface{}, 0)
 
-	if (itemsToParse == "") {
+	if itemsToParse == "" {
 		objectsToMap = append(objectsToMap, structuredObj)
 	} else {
 		items, parseItemsError := jq.ParseArray(itemsToParse, structuredObj)
@@ -268,7 +274,7 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 			objectsToMap = append(objectsToMap, copiedObject)
 		}
 	}
-	
+
 	for _, objectToMap := range objectsToMap {
 		selectorResult, err := isPassSelector(objectToMap, selector)
 
@@ -383,4 +389,54 @@ func (c *Controller) GetEntitiesSet() (map[string]interface{}, error) {
 	}
 
 	return k8sEntitiesSet, nil
+}
+
+func hashAllEntities(entities []port.Entity) (string, error) {
+	h := fnv.New64a()
+	for _, entity := range entities {
+		entityBytes, err := json.Marshal(entity)
+		if err != nil {
+			return "", err
+		}
+		_, err = h.Write(entityBytes)
+		if err != nil {
+			return "", err
+		}
+	}
+	return strconv.FormatUint(h.Sum64(), 10), nil
+}
+
+func (c *Controller) shouldSendUpdateEvent(old interface{}, new interface{}, updateEntityOnlyOnDiff bool) bool {
+
+	if updateEntityOnlyOnDiff == false {
+		return true
+	}
+	for _, kindConfig := range c.resource.KindConfigs {
+		oldEntities, err := c.getObjectEntities(old, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
+		if err != nil {
+			klog.Errorf("Error getting old entities: %v", err)
+			return true
+		}
+		newEntities, err := c.getObjectEntities(new, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
+		if err != nil {
+			klog.Errorf("Error getting new entities: %v", err)
+			return true
+		}
+		oldEntitiesHash, err := hashAllEntities(oldEntities)
+		if err != nil {
+			klog.Errorf("Error hashing old entities: %v", err)
+			return true
+		}
+		newEntitiesHash, err := hashAllEntities(newEntities)
+		if err != nil {
+			klog.Errorf("Error hashing new entities: %v", err)
+			return true
+		}
+
+		if oldEntitiesHash != newEntitiesHash {
+			return true
+		}
+	}
+
+	return false
 }
