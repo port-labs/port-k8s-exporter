@@ -39,7 +39,7 @@ func Init() {
 	NewString(&ApplicationConfig.PortClientSecret, "port-client-secret", "", "Port client secret. Required.")
 	NewBool(&ApplicationConfig.CreateDefaultResources, "create-default-resources", true, "Create default resources on installation. Optional.")
 	NewBool(&ApplicationConfig.OverwriteConfigurationOnRestart, "overwrite-configuration-on-restart", false, "Overwrite the configuration in port on restarting the exporter. Optional.")
-	NewBool(&ApplicationConfig.UpdateEntityOnlyOnDiff, "update-entity-only-on-diff", true, "Optimization to reduce requests to port. Optional.")
+	NewBool(&ApplicationConfig.UpdateEntityOnlyOnDiff, "update-entity-only-on-diff", false, "Optimization to reduce requests to port. Optional.")
 
 	// Deprecated
 	NewBool(&ApplicationConfig.DeleteDependents, "delete-dependents", false, "Delete dependents. Optional.")
