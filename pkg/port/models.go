@@ -284,5 +284,4 @@ type Config struct {
 	OverwriteCRDsActions         bool       `yaml:"overwriteCrdsActions,omitempty"`
 	DeleteDependents             bool       `yaml:"deleteDependents,omitempty"`
 	CreateMissingRelatedEntities bool       `yaml:"createMissingRelatedEntities,omitempty"`
-	UpdateEntityOnlyOnDiff       bool       `yaml:"updateEntityOnlyOnDiff,omitempty"`
 }
