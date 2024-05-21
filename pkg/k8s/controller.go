@@ -47,7 +47,7 @@ type Controller struct {
 	workqueue  workqueue.RateLimitingInterface
 }
 
-func NewController(resource port.AggregatedResource, portClient *cli.PortClient, informer informers.GenericInformer) *Controller {
+func NewController(resource port.AggregatedResource, portClient *cli.PortClient, informer informers.GenericInformer, integrationConfig *port.IntegrationAppConfig) *Controller {
 	controller := &Controller{
 		resource:   resource,
 		portClient: portClient,
@@ -73,7 +73,7 @@ func NewController(resource port.AggregatedResource, portClient *cli.PortClient,
 			item.Key, err = cache.MetaNamespaceKeyFunc(new)
 			if err == nil {
 
-				if controller.shouldSendUpdateEvent(old, new, config.ApplicationConfig.UpdateEntityOnlyOnDiff) {
+				if controller.shouldSendUpdateEvent(old, new, integrationConfig.UpdateEntityOnlyOnDiff) {
 					controller.workqueue.Add(item)
 				}
 			}

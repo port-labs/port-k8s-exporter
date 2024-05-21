@@ -36,6 +36,11 @@ type fixture struct {
 }
 
 func newFixture(t *testing.T, portClientId string, portClientSecret string, userAgent string, resource port.Resource, objects []runtime.Object) *fixture {
+	interationConfig := &port.IntegrationAppConfig{
+		DeleteDependents:             true,
+		CreateMissingRelatedEntities: true,
+		Resources:                    []port.Resource{resource},
+	}
 	kubeclient := k8sfake.NewSimpleDynamicClient(runtime.NewScheme())
 
 	if portClientId == "" {
@@ -56,7 +61,7 @@ func newFixture(t *testing.T, portClientId string, portClientSecret string, user
 
 	return &fixture{
 		t:          t,
-		controller: newController(resource, objects, portClient, kubeclient),
+		controller: newController(resource, objects, portClient, kubeclient, interationConfig),
 	}
 }
 
@@ -146,13 +151,13 @@ func newUnstructured(obj interface{}) *unstructured.Unstructured {
 	return &unstructured.Unstructured{Object: res}
 }
 
-func newController(resource port.Resource, objects []runtime.Object, portClient *cli.PortClient, kubeclient *k8sfake.FakeDynamicClient) *Controller {
+func newController(resource port.Resource, objects []runtime.Object, portClient *cli.PortClient, kubeclient *k8sfake.FakeDynamicClient, integrationConfig *port.IntegrationAppConfig) *Controller {
 	k8sI := dynamicinformer.NewDynamicSharedInformerFactory(kubeclient, noResyncPeriodFunc())
 	s := strings.SplitN(resource.Kind, "/", 3)
 	gvr := schema.GroupVersionResource{Group: s[0], Version: s[1], Resource: s[2]}
 	informer := k8sI.ForResource(gvr)
 	kindConfig := port.KindConfig{Selector: resource.Selector, Port: resource.Port}
-	c := NewController(port.AggregatedResource{Kind: resource.Kind, KindConfigs: []port.KindConfig{kindConfig}}, portClient, informer)
+	c := NewController(port.AggregatedResource{Kind: resource.Kind, KindConfigs: []port.KindConfig{kindConfig}}, portClient, informer, integrationConfig)
 
 	for _, d := range objects {
 		informer.Informer().GetIndexer().Add(d)
