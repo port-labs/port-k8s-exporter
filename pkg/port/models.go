@@ -269,6 +269,7 @@ type IntegrationAppConfig struct {
 	Resources                    []Resource `json:"resources,omitempty" yaml:"resources,omitempty"`
 	CRDSToDiscover               string     `json:"crdsToDiscover,omitempty"`
 	OverwriteCRDsActions         bool       `json:"overwriteCrdsActions,omitempty"`
+	UpdateEntityOnlyOnDiff       bool       `json:"updateEntityOnlyOnDiff,omitempty"`
 }
 
 type Config struct {
@@ -283,4 +284,5 @@ type Config struct {
 	OverwriteCRDsActions         bool       `yaml:"overwriteCrdsActions,omitempty"`
 	DeleteDependents             bool       `yaml:"deleteDependents,omitempty"`
 	CreateMissingRelatedEntities bool       `yaml:"createMissingRelatedEntities,omitempty"`
+	UpdateEntityOnlyOnDiff       bool       `yaml:"updateEntityOnlyOnDiff,omitempty"`
 }

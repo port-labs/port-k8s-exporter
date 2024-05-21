@@ -57,6 +57,7 @@ func NewConfiguration() (*port.Config, error) {
 		OverwriteConfigurationOnRestart: ApplicationConfig.OverwriteConfigurationOnRestart,
 		CreateMissingRelatedEntities:    ApplicationConfig.CreateMissingRelatedEntities,
 		DeleteDependents:                ApplicationConfig.DeleteDependents,
+		UpdateEntityOnlyOnDiff:          ApplicationConfig.UpdateEntityOnlyOnDiff,
 	}
 
 	v, err := os.ReadFile(ApplicationConfig.ConfigFilePath)
