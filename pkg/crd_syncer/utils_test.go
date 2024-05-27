@@ -1,4 +1,4 @@
-package crd
+package crdsyncer
 
 import (
 	"reflect"

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/port-labs/port-k8s-exporter/pkg/crd"
+	crdsyncer "github.com/port-labs/port-k8s-exporter/pkg/crd_syncer"
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
 	"github.com/port-labs/port-k8s-exporter/pkg/k8s"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
@@ -28,9 +28,7 @@ func NewControllersHandler(exporterConfig *port.Config, portConfig *port.Integra
 	informersFactory := dynamicinformer.NewDynamicSharedInformerFactory(k8sClient.DynamicClient, resync)
 
 	if portConfig.CRDSToDiscover != "" {
-		crd.AutodiscoverCRDsToActions(portConfig, k8sClient.ApiExtensionClient, portClient)
-		crdInformer := informersFactory.ForResource(schema.GroupVersionResource{Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"})
-		crd.NewCrdController(portClient, crdInformer, portConfig, k8sClient.ApiExtensionClient)
+		crdsyncer.InitalizeCRDSyncerControllers(portClient, portConfig, k8sClient.ApiExtensionClient, informersFactory)
 	}
 
 	aggResources := make(map[string][]port.KindConfig)

@@ -1,4 +1,4 @@
-package crd
+package crdsyncer
 
 import (
 	"slices"
@@ -273,7 +273,7 @@ func checkBlueprintAndActionsProperties(t *testing.T, f *Fixture, namespaced boo
 func TestCRD_crd_autoDiscoverCRDsToActionsClusterScoped(t *testing.T) {
 	f := newFixture(t, "", "", "", false, "true")
 
-	AutodiscoverCRDsToActions(f.portConfig, f.apiextensionClient, f.portClient)
+	AutoDiscoverSingleCRDToAction(f.portConfig, f.apiextensionClient, f.portClient, "testkind")
 
 	checkBlueprintAndActionsProperties(t, f, false)
 
@@ -283,7 +283,7 @@ func TestCRD_crd_autoDiscoverCRDsToActionsClusterScoped(t *testing.T) {
 func TestCRD_crd_autoDiscoverCRDsToActionsNamespaced(t *testing.T) {
 	f := newFixture(t, "", "", "", true, "true")
 
-	AutodiscoverCRDsToActions(f.portConfig, f.apiextensionClient, f.portClient)
+	AutoDiscoverSingleCRDToAction(f.portConfig, f.apiextensionClient, f.portClient, "testkind")
 
 	checkBlueprintAndActionsProperties(t, f, true)
 
@@ -293,7 +293,7 @@ func TestCRD_crd_autoDiscoverCRDsToActionsNamespaced(t *testing.T) {
 func TestCRD_crd_autoDiscoverCRDsToActionsNoCRDs(t *testing.T) {
 	f := newFixture(t, "", "", "", false, "false")
 
-	AutodiscoverCRDsToActions(f.portConfig, f.apiextensionClient, f.portClient)
+	AutoDiscoverSingleCRDToAction(f.portConfig, f.apiextensionClient, f.portClient, "testkind")
 
 	testUtils.CheckResourcesExistence(false, f.portClient, t, []string{"testkind"}, []string{}, []string{"create_testkind", "update_testkind", "delete_testkind"})
 }

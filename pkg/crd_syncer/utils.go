@@ -1,4 +1,4 @@
-package crd
+package crdsyncer
 
 import (
 	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"

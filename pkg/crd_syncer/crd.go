@@ -1,4 +1,4 @@
-package crd
+package crdsyncer
 
 import (
 	"context"
@@ -358,18 +358,6 @@ func handleCRD(crds []v1.CustomResourceDefinition, portConfig *port.IntegrationA
 			}
 		}
 	}
-}
-
-func AutodiscoverCRDsToActions(portConfig *port.IntegrationAppConfig, apiExtensionsClient apiextensions.ApiextensionsV1Interface, portClient *cli.PortClient) {
-	klog.Infof("Discovering CRDs/XRDs with pattern: %s", portConfig.CRDSToDiscover)
-	crds, err := apiExtensionsClient.CustomResourceDefinitions().List(context.Background(), metav1.ListOptions{})
-
-	if err != nil {
-		klog.Errorf("Error listing CRDs: %s", err.Error())
-		return
-	}
-
-	handleCRD(crds.Items, portConfig, portClient)
 }
 
 func AutoDiscoverSingleCRDToAction(portConfig *port.IntegrationAppConfig, apiExtensionsClient apiextensions.ApiextensionsV1Interface, portClient *cli.PortClient, crdName string) {
