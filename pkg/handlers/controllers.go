@@ -27,7 +27,11 @@ func NewControllersHandler(exporterConfig *port.Config, portConfig *port.Integra
 	resync := time.Minute * time.Duration(exporterConfig.ResyncInterval)
 	informersFactory := dynamicinformer.NewDynamicSharedInformerFactory(k8sClient.DynamicClient, resync)
 
-	crd.AutodiscoverCRDsToActions(portConfig, k8sClient.ApiExtensionClient, portClient)
+	if portConfig.CRDSToDiscover != "" {
+		crd.AutodiscoverCRDsToActions(portConfig, k8sClient.ApiExtensionClient, portClient)
+		crdInformer := informersFactory.ForResource(schema.GroupVersionResource{Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"})
+		crd.NewCrdController(portClient, crdInformer, portConfig, k8sClient.ApiExtensionClient)
+	}
 
 	aggResources := make(map[string][]port.KindConfig)
 	for _, resource := range portConfig.Resources {
