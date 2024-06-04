@@ -221,13 +221,13 @@ type ResponseBody struct {
 }
 
 type EntityMapping struct {
-	Identifier string            `json:"identifier" yaml:"identifier"`
-	Title      string            `json:"title" yaml:"title"`
-	Blueprint  string            `json:"blueprint" yaml:"blueprint"`
-	Icon       string            `json:"icon,omitempty" yaml:"icon,omitempty"`
-	Team       string            `json:"team,omitempty" yaml:"team,omitempty"`
-	Properties map[string]string `json:"properties,omitempty" yaml:"properties,omitempty"`
-	Relations  map[string]string `json:"relations,omitempty" yaml:"relations,omitempty"`
+	Identifier string                 `json:"identifier" yaml:"identifier"`
+	Title      string                 `json:"title" yaml:"title"`
+	Blueprint  string                 `json:"blueprint" yaml:"blueprint"`
+	Icon       string                 `json:"icon,omitempty" yaml:"icon,omitempty"`
+	Team       string                 `json:"team,omitempty" yaml:"team,omitempty"`
+	Properties map[string]string      `json:"properties,omitempty" yaml:"properties,omitempty"`
+	Relations  map[string]interface{} `json:"relations,omitempty" yaml:"relations,omitempty"`
 }
 
 type EntityMappings struct {

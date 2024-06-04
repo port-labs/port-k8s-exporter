@@ -3,6 +3,7 @@ package k8s
 import (
 	"context"
 	"fmt"
+	"github.com/port-labs/port-k8s-exporter/pkg/jq"
 	"github.com/stretchr/testify/assert"
 	"reflect"
 	"strings"
@@ -215,13 +216,92 @@ func TestCreateDeployment(t *testing.T) {
 				"obj":  ".spec.selector",
 				"arr":  ".spec.template.spec.containers",
 			},
-			Relations: map[string]string{
+			Relations: map[string]interface{}{
 				"k8s-relation": "\"e_AgPMYvq1tAs8TuqM\"",
 			},
 		},
 	})
 	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
 
+	f := newFixture(t, "", "", "", resource, objects)
+	f.runControllerSyncHandler(item, false)
+}
+
+func TestJqSearchRelation(t *testing.T) {
+
+	mapping := []port.EntityMapping{
+		{
+			Identifier: ".metadata.name",
+			Blueprint:  "\"k8s-export-test-bp\"",
+			Icon:       "\"Microservice\"",
+			Team:       "\"Test\"",
+			Properties: map[string]string{},
+			Relations: map[string]interface{}{
+				"k8s-relation": map[string]interface{}{
+					"combinator": "\"or\"",
+					"rules": []interface{}{
+						map[string]interface{}{
+							"property": "\"$identifier\"",
+							"operator": "\"=\"",
+							"value":    "\"e_AgPMYvq1tAs8TuqM\"",
+						},
+					},
+				},
+			},
+		},
+	}
+	res, _ := jq.ParseRelations(mapping[0].Relations, nil)
+	assert.Equal(t, res, map[string]interface{}{
+		"k8s-relation": map[string]interface{}{
+			"combinator": "or",
+			"rules": []interface{}{
+				map[string]interface{}{
+					"property": "$identifier",
+					"operator": "=",
+					"value":    "e_AgPMYvq1tAs8TuqM",
+				},
+			},
+		},
+	})
+
+}
+
+func TestCreateDeploymentWithSearchRelation(t *testing.T) {
+	d := newDeployment()
+	objects := []runtime.Object{newUnstructured(d)}
+	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
+	resource := newResource("", []port.EntityMapping{
+		{
+			Identifier: ".metadata.name",
+			Blueprint:  "\"k8s-export-test-bp\"",
+			Icon:       "\"Microservice\"",
+			Team:       "\"Test\"",
+			Properties: map[string]string{
+				"text": "\"pod\"",
+				"num":  "1",
+				"bool": "true",
+				"obj":  ".spec.selector",
+				"arr":  ".spec.template.spec.containers",
+			},
+			Relations: map[string]interface{}{
+				"k8s-relation": map[string]interface{}{
+					"combinator": "\"or\"",
+					"rules": []interface{}{
+						map[string]interface{}{
+							"property": "\"$identifier\"",
+							"operator": "\"=\"",
+							"value":    "\"e_AgPMYvq1tAs8TuqM\"",
+						},
+						map[string]interface{}{
+							"property": "\"$identifier\"",
+							"operator": "\"=\"",
+							"value":    ".metadata.name",
+						},
+					},
+				},
+			},
+		},
+	})
 	f := newFixture(t, "", "", "", resource, objects)
 	f.runControllerSyncHandler(item, false)
 }
@@ -242,7 +322,7 @@ func TestUpdateDeployment(t *testing.T) {
 				"obj":  ".spec.selector",
 				"arr":  ".spec.template.spec.containers",
 			},
-			Relations: map[string]string{
+			Relations: map[string]interface{}{
 				"k8s-relation": "\"e_AgPMYvq1tAs8TuqM\"",
 			},
 		},
@@ -379,7 +459,7 @@ func TestUpdateHandlerWithIndividualPropertyChanges(t *testing.T) {
 					"generateName":      ".metadata.generateName",
 					"creationTimestamp": ".metadata.creationTimestamp",
 				},
-				Relations: map[string]string{
+				Relations: map[string]interface{}{
 					"k8s-relation": "\"e_AgPMYvq1tAs8TuqM\"",
 				},
 			},
@@ -392,7 +472,7 @@ func TestUpdateHandlerWithIndividualPropertyChanges(t *testing.T) {
 				Icon:       "\"Microservice\"",
 				Team:       "\"Test\"",
 				Properties: map[string]string{},
-				Relations:  map[string]string{},
+				Relations:  map[string]interface{}{},
 			},
 			{
 				Identifier: ".metadata.name",
@@ -405,7 +485,7 @@ func TestUpdateHandlerWithIndividualPropertyChanges(t *testing.T) {
 					"generateName":      ".metadata.generateName",
 					"creationTimestamp": ".metadata.creationTimestamp",
 				},
-				Relations: map[string]string{
+				Relations: map[string]interface{}{
 					"k8s-relation": "\"e_AgPMYvq1tAs8TuqM\"",
 				},
 			},

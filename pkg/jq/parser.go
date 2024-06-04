@@ -3,6 +3,7 @@ package jq
 import (
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"sync"
 
@@ -117,6 +118,41 @@ func ParseMapInterface(jqQueries map[string]string, obj interface{}) (map[string
 			}
 		}
 
+	}
+
+	return mapInterface, nil
+}
+
+func ParseRelations(jqQueries map[string]interface{}, obj interface{}) (map[string]interface{}, error) {
+	mapInterface := make(map[string]interface{}, len(jqQueries))
+
+	for key, jqQuery := range jqQueries {
+
+		if reflect.TypeOf(jqQuery).Kind() == reflect.String {
+			queryRes, _ := ParseMapInterface(map[string]string{key: jqQuery.(string)}, obj)
+			mapInterface = goutils.MergeMaps(mapInterface, queryRes)
+		} else if reflect.TypeOf(jqQuery).Kind() == reflect.Map {
+			for mapKey, mapValue := range jqQuery.(map[string]interface{}) {
+				queryRes, _ := ParseRelations(map[string]interface{}{mapKey: mapValue}, obj)
+				for queryKey, queryVal := range queryRes {
+					if mapInterface[key] == nil {
+						mapInterface[key] = make(map[string]interface{})
+					}
+					mapInterface[key].(map[string]interface{})[queryKey] = queryVal
+				}
+			}
+		} else if reflect.TypeOf(jqQuery).Kind() == reflect.Slice {
+			jqArrayValue := reflect.ValueOf(jqQuery)
+			relations := make([]interface{}, jqArrayValue.Len())
+			for i := 0; i < jqArrayValue.Len(); i++ {
+				relation, err := ParseRelations(map[string]interface{}{key: jqArrayValue.Index(i).Interface()}, obj)
+				if err != nil {
+					return nil, err
+				}
+				relations[i] = relation[key]
+			}
+			mapInterface[key] = relations
+		}
 	}
 
 	return mapInterface, nil
