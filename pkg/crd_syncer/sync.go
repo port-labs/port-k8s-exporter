@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	crdSyncerV1alpha1 "github.com/port-labs/port-k8s-exporter/pkg/api/v1alpha1"
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
 	"github.com/port-labs/port-k8s-exporter/pkg/jq"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
@@ -360,7 +361,8 @@ func handleCRD(crds []v1.CustomResourceDefinition, portConfig *port.IntegrationA
 	}
 }
 
-func AutoDiscoverSingleCRDToAction(portConfig *port.IntegrationAppConfig, apiExtensionsClient apiextensions.ApiextensionsV1Interface, portClient *cli.PortClient, crdName string) {
+func Sync(configurations []crdSyncerV1alpha1.CrdSyncer, apiExtensionsClient apiextensions.ApiextensionsV1Interface, portClient *cli.PortClient, crdName string) {
+	// Get all the CRDS
 	klog.Infof("Trying to export CRD/XRD: %s", crdName)
 	crd, err := apiExtensionsClient.CustomResourceDefinitions().Get(context.Background(), crdName, metav1.GetOptions{})
 

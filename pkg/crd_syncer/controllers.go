@@ -7,6 +7,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 
+	crdSyncerV1alpha1 "github.com/port-labs/port-k8s-exporter/pkg/api/v1alpha1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 )
@@ -41,44 +42,54 @@ func InitalizeCRDSyncerControllers(portClient *cli.PortClient, portConfig *port.
 		workqueue:  workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 	}
 
-	crdController.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			var err error
-			var item EventItem
-			item.ActionType = CreateAction
-			item.Key, err = cache.MetaNamespaceKeyFunc(obj)
-			if err == nil {
-				AutoDiscoverSingleCRDToAction(portConfig, apiExtensionsClient, portClient, item.Key)
-			}
-		},
-		UpdateFunc: func(old interface{}, new interface{}) {
-			var err error
-			var item EventItem
-			item.ActionType = UpdateAction
-			item.Key, err = cache.MetaNamespaceKeyFunc(new)
-			if err == nil {
-				AutoDiscoverSingleCRDToAction(portConfig, apiExtensionsClient, portClient, item.Key)
-			}
-		},
-	})
+	// crdController.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	// If a CRD is added we want to see wheter he matches any of the CRD Syncers and if so to add it
+	// AddFunc: func(obj interface{}) {
+	// var err error
+	// var item EventItem
+	// item.ActionType = CreateAction
+	// item.Key, err = cache.MetaNamespaceKeyFunc(obj)
+	// if err == nil {
+	// AutoDiscoverSingleCRDToAction(portConfig, apiExtensionsClient, portClient, item.Key)
+	// }
+	// },
+	// If a CRD changed we want to update the relevant blueprint in Port (if there's a mapping that matches the CRD)
+	// UpdateFunc: func(old interface{}, new interface{}) {
+	// var err error
+	// var item EventItem
+	// item.ActionType = UpdateAction
+	// item.Key, err = cache.MetaNamespaceKeyFunc(new)
+	// if err == nil {
+	// AutoDiscoverSingleCRDToAction(portConfig, apiExtensionsClient, portClient, item.Key)
+	// }
+	// },
+	// })
 
 	syncerConfigurationInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		// If there's a new file of CRDSyncer configuration we want to see if there's a CRD that matches it and if so to add it
 		AddFunc: func(obj interface{}) {
-			var err error
-			var item EventItem
-			item.ActionType = CreateAction
-			item.Key, err = cache.MetaNamespaceKeyFunc(obj)
-			if err == nil {
-				AutoDiscoverSingleCRDToAction(portConfig, apiExtensionsClient, portClient, item.Key)
+			if crdSyncerConfiguration, ok := obj.(*crdSyncerV1alpha1.CrdSyncer); ok {
+				var err error
+				var item EventItem
+				item.ActionType = CreateAction
+				item.Key, err = cache.MetaNamespaceKeyFunc(obj)
+				if err == nil {
+					Sync([]crdSyncerV1alpha1.CrdSyncer{*crdSyncerConfiguration}, apiExtensionsClient, portClient, item.Key)
+				}
 			}
+
 		},
+		// If there's an update to the CRDSyncer configuration we want to update the relevant blueprints/automations that affected from it in Port
 		UpdateFunc: func(old interface{}, new interface{}) {
-			var err error
-			var item EventItem
-			item.ActionType = UpdateAction
-			item.Key, err = cache.MetaNamespaceKeyFunc(new)
-			if err == nil {
-				AutoDiscoverSingleCRDToAction(portConfig, apiExtensionsClient, portClient, item.Key)
+			if crdSyncerConfiguration, ok := new.(*crdSyncerV1alpha1.CrdSyncer); ok {
+				var err error
+				var item EventItem
+
+				item.ActionType = UpdateAction
+				item.Key, err = cache.MetaNamespaceKeyFunc(new)
+				if err == nil {
+					Sync([]crdSyncerV1alpha1.CrdSyncer{*crdSyncerConfiguration}, apiExtensionsClient, portClient, item.Key)
+				}
 			}
 		},
 	})
