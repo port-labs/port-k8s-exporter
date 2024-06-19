@@ -73,7 +73,7 @@ func NewController(resource port.AggregatedResource, portClient *cli.PortClient,
 			item.Key, err = cache.MetaNamespaceKeyFunc(new)
 			if err == nil {
 
-				if controller.shouldSendUpdateEvent(old, new, integrationConfig.UpdateEntityOnlyOnDiff) {
+				if controller.shouldSendUpdateEvent(old, new, integrationConfig.UpdateEntityOnlyOnDiff == nil || *(integrationConfig.UpdateEntityOnlyOnDiff)) {
 					controller.workqueue.Add(item)
 				}
 			}
