@@ -37,9 +37,11 @@ type fixture struct {
 }
 
 func newFixture(t *testing.T, portClientId string, portClientSecret string, userAgent string, resource port.Resource, objects []runtime.Object) *fixture {
+	defaultTrue := true
 	interationConfig := &port.IntegrationAppConfig{
 		DeleteDependents:             true,
 		CreateMissingRelatedEntities: true,
+		SendRawDataExamples:          &defaultTrue,
 		Resources:                    []port.Resource{resource},
 	}
 	kubeclient := k8sfake.NewSimpleDynamicClient(runtime.NewScheme())
