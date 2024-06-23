@@ -177,8 +177,8 @@ func (f *fixture) runControllerSyncHandler(item EventItem, expectError bool) {
 
 }
 
-func (f *fixture) runControllerGetEntitiesSet(expectedEntitiesSet map[string]interface{}, expectError bool) {
-	entitiesSet, err := f.controller.GetEntitiesSet()
+func (f *fixture) runControllerGetEntitiesSet(expectedEntitiesSet map[string]interface{}, expectedExamples []interface{}, expectError bool) {
+	entitiesSet, examples, err := f.controller.GetEntitiesSet()
 	if !expectError && err != nil {
 		f.t.Errorf("error syncing item: %v", err)
 	} else if expectError && err == nil {
@@ -188,6 +188,11 @@ func (f *fixture) runControllerGetEntitiesSet(expectedEntitiesSet map[string]int
 	eq := reflect.DeepEqual(entitiesSet, expectedEntitiesSet)
 	if !eq {
 		f.t.Errorf("expected entities set: %v, got: %v", expectedEntitiesSet, entitiesSet)
+	}
+
+	eq = reflect.DeepEqual(examples, expectedExamples)
+	if !eq {
+		f.t.Errorf("expected raw data examples: %v, got: %v", expectedExamples, examples)
 	}
 }
 
@@ -423,8 +428,11 @@ func TestFailDeletePortEntity(t *testing.T) {
 }
 
 func TestGetEntitiesSet(t *testing.T) {
-	d := newDeployment()
-	objects := []runtime.Object{newUnstructured(d)}
+	d := newUnstructured(newDeployment())
+	var structuredObj interface{}
+	runtime.DefaultUnstructuredConverter.FromUnstructured(d.Object, &structuredObj)
+
+	objects := []runtime.Object{d}
 	resource := newResource("", []port.EntityMapping{
 		{
 			Identifier: ".metadata.name",
@@ -436,7 +444,7 @@ func TestGetEntitiesSet(t *testing.T) {
 	}
 
 	f := newFixture(t, "", "", "", resource, objects)
-	f.runControllerGetEntitiesSet(expectedEntitiesSet, false)
+	f.runControllerGetEntitiesSet(expectedEntitiesSet, []interface{}{structuredObj}, false)
 }
 
 func TestUpdateHandlerWithIndividualPropertyChanges(t *testing.T) {

@@ -2,7 +2,9 @@ package cli
 
 import (
 	"fmt"
+	"github.com/port-labs/port-k8s-exporter/pkg/parsers"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
+	"net/url"
 )
 
 func parseIntegration(i *port.Integration) *port.Integration {
@@ -74,6 +76,23 @@ func (c *PortClient) PatchIntegration(stateKey string, integration *port.Integra
 	}
 	if !pb.OK {
 		return fmt.Errorf("failed to update config, got: %s", resp.Body())
+	}
+	return nil
+}
+
+func (c *PortClient) PostIntegrationKindExample(stateKey string, kind string, examples []interface{}) error {
+	pb := &port.ResponseBody{}
+	resp, err := c.Client.R().
+		SetBody(map[string]interface{}{
+			"examples": parsers.ParseSensitiveData(examples),
+		}).
+		SetResult(&pb).
+		Post(fmt.Sprintf("v1/integration/%s/kinds/%s/examples", url.QueryEscape(stateKey), url.QueryEscape(kind)))
+	if err != nil {
+		return err
+	}
+	if !pb.OK {
+		return fmt.Errorf("failed to post integration kind example, got: %s", resp.Body())
 	}
 	return nil
 }
