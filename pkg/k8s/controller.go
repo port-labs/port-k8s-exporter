@@ -89,7 +89,7 @@ func NewController(resource port.AggregatedResource, portClient *cli.PortClient,
 			if err == nil {
 				err = controller.objectHandler(obj, item)
 				if err != nil {
-					klog.Errorf("Error deleting item '%s' of Resource '%s': %s", item.Key, resource.Kind, err.Error())
+					klog.Errorf("Error deleting item '%s' of resource '%s': %s", item.Key, resource.Kind, err.Error())
 				}
 			}
 		},
@@ -99,13 +99,13 @@ func NewController(resource port.AggregatedResource, portClient *cli.PortClient,
 }
 
 func (c *Controller) Shutdown() {
-	klog.Infof("Shutting down controller for Resource '%s'", c.Resource.Kind)
+	klog.Infof("Shutting down controller for resource '%s'", c.Resource.Kind)
 	c.workqueue.ShutDown()
-	klog.Infof("Closed controller for Resource '%s'", c.Resource.Kind)
+	klog.Infof("Closed controller for resource '%s'", c.Resource.Kind)
 }
 
 func (c *Controller) WaitForCacheSync(stopCh <-chan struct{}) error {
-	klog.Infof("Waiting for informer cache to sync for Resource '%s'", c.Resource.Kind)
+	klog.Infof("Waiting for informer cache to sync for resource '%s'", c.Resource.Kind)
 	if ok := cache.WaitForCacheSync(stopCh, c.informer.HasSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
@@ -116,11 +116,11 @@ func (c *Controller) WaitForCacheSync(stopCh <-chan struct{}) error {
 func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 
-	klog.Infof("Starting workers for Resource '%s'", c.Resource.Kind)
+	klog.Infof("Starting workers for resource '%s'", c.Resource.Kind)
 	for i := 0; i < workers; i++ {
 		go wait.Until(c.runWorker, time.Second, stopCh)
 	}
-	klog.Infof("Started workers for Resource '%s'", c.Resource.Kind)
+	klog.Infof("Started workers for resource '%s'", c.Resource.Kind)
 }
 
 func (c *Controller) runWorker() {
@@ -142,18 +142,18 @@ func (c *Controller) processNextWorkItem() bool {
 
 		if !ok {
 			c.workqueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected event item of Resource '%s' in workqueue but got %#v", c.Resource.Kind, obj))
+			utilruntime.HandleError(fmt.Errorf("expected event item of resource '%s' in workqueue but got %#v", c.Resource.Kind, obj))
 			return nil
 		}
 
 		if err := c.syncHandler(item); err != nil {
 			if c.workqueue.NumRequeues(obj) >= MaxNumRequeues {
-				utilruntime.HandleError(fmt.Errorf("error syncing '%s' of Resource '%s': %s, give up after %d requeues", item.Key, c.Resource.Kind, err.Error(), MaxNumRequeues))
+				utilruntime.HandleError(fmt.Errorf("error syncing '%s' of resource '%s': %s, give up after %d requeues", item.Key, c.Resource.Kind, err.Error(), MaxNumRequeues))
 				return nil
 			}
 
 			c.workqueue.AddRateLimited(obj)
-			return fmt.Errorf("error syncing '%s' of Resource '%s': %s, requeuing", item.Key, c.Resource.Kind, err.Error())
+			return fmt.Errorf("error syncing '%s' of resource '%s': %s, requeuing", item.Key, c.Resource.Kind, err.Error())
 		}
 
 		c.workqueue.Forget(obj)
@@ -373,7 +373,7 @@ func (c *Controller) GetEntitiesSet() (map[string]interface{}, []interface{}, er
 	k8sEntitiesSet := map[string]interface{}{}
 	objects, err := c.lister.List(labels.Everything())
 	if err != nil {
-		return nil, nil, fmt.Errorf("error listing K8s objects of Resource '%s': %v", c.Resource.Kind, err)
+		return nil, nil, fmt.Errorf("error listing K8s objects of resource '%s': %v", c.Resource.Kind, err)
 	}
 
 	rawDataExamples := make([]interface{}, 0)
