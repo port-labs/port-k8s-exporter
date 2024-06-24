@@ -36,35 +36,49 @@ type fixture struct {
 	controller *Controller
 }
 
-func newFixture(t *testing.T, portClientId string, portClientSecret string, userAgent string, resource port.Resource, objects []runtime.Object) *fixture {
+type fixtureConfig struct {
+	portClientId        string
+	portClientSecret    string
+	userAgent           string
+	sendRawDataExamples *bool
+	resource            port.Resource
+	objects             []runtime.Object
+}
+
+func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 	defaultTrue := true
+	sendRawDataExamples := &defaultTrue
+	if fixtureConfig.sendRawDataExamples != nil {
+		sendRawDataExamples = fixtureConfig.sendRawDataExamples
+	}
+
 	interationConfig := &port.IntegrationAppConfig{
 		DeleteDependents:             true,
 		CreateMissingRelatedEntities: true,
-		SendRawDataExamples:          &defaultTrue,
-		Resources:                    []port.Resource{resource},
+		SendRawDataExamples:          sendRawDataExamples,
+		Resources:                    []port.Resource{fixtureConfig.resource},
 	}
 	kubeclient := k8sfake.NewSimpleDynamicClient(runtime.NewScheme())
 
-	if portClientId == "" {
-		portClientId = config.ApplicationConfig.PortClientId
+	if fixtureConfig.portClientId == "" {
+		fixtureConfig.portClientId = config.ApplicationConfig.PortClientId
 	}
-	if portClientSecret == "" {
-		portClientSecret = config.ApplicationConfig.PortClientSecret
+	if fixtureConfig.portClientSecret == "" {
+		fixtureConfig.portClientSecret = config.ApplicationConfig.PortClientSecret
 	}
-	if userAgent == "" {
-		userAgent = "port-k8s-exporter/0.1"
+	if fixtureConfig.userAgent == "" {
+		fixtureConfig.userAgent = "port-k8s-exporter/0.1"
 	}
 
-	portClient, err := cli.New(config.ApplicationConfig.PortBaseURL, cli.WithHeader("User-Agent", userAgent),
-		cli.WithClientID(portClientId), cli.WithClientSecret(portClientSecret))
+	portClient, err := cli.New(config.ApplicationConfig.PortBaseURL, cli.WithHeader("User-Agent", fixtureConfig.userAgent),
+		cli.WithClientID(fixtureConfig.portClientId), cli.WithClientSecret(fixtureConfig.portClientSecret))
 	if err != nil {
 		t.Errorf("Error building Port client: %s", err.Error())
 	}
 
 	return &fixture{
 		t:          t,
-		controller: newController(resource, objects, portClient, kubeclient, interationConfig),
+		controller: newController(fixtureConfig.resource, fixtureConfig.objects, portClient, kubeclient, interationConfig),
 	}
 }
 
@@ -230,7 +244,7 @@ func TestCreateDeployment(t *testing.T) {
 	})
 	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
 
-	f := newFixture(t, "", "", "", resource, objects)
+	f := newFixture(t, &fixtureConfig{resource: resource, objects: objects})
 	f.runControllerSyncHandler(item, false)
 }
 
@@ -309,7 +323,7 @@ func TestCreateDeploymentWithSearchRelation(t *testing.T) {
 			},
 		},
 	})
-	f := newFixture(t, "", "", "", resource, objects)
+	f := newFixture(t, &fixtureConfig{resource: resource, objects: objects})
 	f.runControllerSyncHandler(item, false)
 }
 
@@ -336,7 +350,7 @@ func TestUpdateDeployment(t *testing.T) {
 	})
 	item := EventItem{Key: getKey(d, t), ActionType: UpdateAction}
 
-	f := newFixture(t, "", "", "", resource, objects)
+	f := newFixture(t, &fixtureConfig{resource: resource, objects: objects})
 	f.runControllerSyncHandler(item, false)
 }
 
@@ -352,7 +366,7 @@ func TestDeleteDeploymentSameOwner(t *testing.T) {
 	createItem := EventItem{Key: getKey(d, t), ActionType: CreateAction}
 	item := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
 
-	f := newFixture(t, "", "", fmt.Sprintf("port-k8s-exporter/0.1 (statekey/%s)", config.ApplicationConfig.StateKey), resource, objects)
+	f := newFixture(t, &fixtureConfig{userAgent: fmt.Sprintf("port-k8s-exporter/0.1 (statekey/%s)", config.ApplicationConfig.StateKey), resource: resource, objects: objects})
 	f.runControllerSyncHandler(createItem, false)
 
 	f.runControllerSyncHandler(item, false)
@@ -374,7 +388,7 @@ func TestDeleteDeploymentDifferentOwner(t *testing.T) {
 	createItem := EventItem{Key: getKey(d, t), ActionType: CreateAction}
 	item := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
 
-	f := newFixture(t, "", "", fmt.Sprintf("statekey/%s", "non_exist_statekey")+"port-k8s-exporter", resource, objects)
+	f := newFixture(t, &fixtureConfig{userAgent: fmt.Sprintf("statekey/%s", "non_exist_statekey") + "port-k8s-exporter", resource: resource, objects: objects})
 	f.runControllerSyncHandler(createItem, false)
 
 	f.runControllerSyncHandler(item, false)
@@ -395,7 +409,7 @@ func TestSelectorQueryFilterDeployment(t *testing.T) {
 	})
 	item := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
 
-	f := newFixture(t, "", "", "", resource, objects)
+	f := newFixture(t, &fixtureConfig{resource: resource, objects: objects})
 	f.runControllerSyncHandler(item, false)
 }
 
@@ -410,7 +424,7 @@ func TestFailPortAuth(t *testing.T) {
 	})
 	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
 
-	f := newFixture(t, "wrongclientid", "wrongclientsecret", "", resource, objects)
+	f := newFixture(t, &fixtureConfig{portClientId: "wrongclientid", portClientSecret: "wrongclientsecret", resource: resource, objects: objects})
 	f.runControllerSyncHandler(item, true)
 }
 
@@ -425,14 +439,17 @@ func TestFailDeletePortEntity(t *testing.T) {
 	})
 	item := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
 
-	f := newFixture(t, "", "", "", resource, objects)
+	f := newFixture(t, &fixtureConfig{resource: resource, objects: objects})
 	f.runControllerSyncHandler(item, false)
 }
 
 func TestGetEntitiesSet(t *testing.T) {
 	d := newUnstructured(newDeployment())
 	var structuredObj interface{}
-	runtime.DefaultUnstructuredConverter.FromUnstructured(d.Object, &structuredObj)
+	err := runtime.DefaultUnstructuredConverter.FromUnstructured(d.Object, &structuredObj)
+	if err != nil {
+		t.Errorf("Error from unstructured: %s", err.Error())
+	}
 
 	objects := []runtime.Object{d}
 	resource := newResource("", []port.EntityMapping{
@@ -445,8 +462,12 @@ func TestGetEntitiesSet(t *testing.T) {
 		"k8s-export-test-bp;port-k8s-exporter": nil,
 	}
 
-	f := newFixture(t, "", "", "", resource, objects)
+	f := newFixture(t, &fixtureConfig{resource: resource, objects: objects})
 	f.runControllerGetEntitiesSet(expectedEntitiesSet, []interface{}{structuredObj}, false)
+
+	sendRawDataExamples := false
+	f = newFixture(t, &fixtureConfig{sendRawDataExamples: &sendRawDataExamples, resource: resource, objects: objects})
+	f.runControllerGetEntitiesSet(expectedEntitiesSet, []interface{}{}, false)
 }
 
 func TestUpdateHandlerWithIndividualPropertyChanges(t *testing.T) {
@@ -504,7 +525,7 @@ func TestUpdateHandlerWithIndividualPropertyChanges(t *testing.T) {
 
 	for _, mapping := range fullMapping {
 
-		controllerWithFullMapping := newFixture(t, "", "", "", mapping, []runtime.Object{}).controller
+		controllerWithFullMapping := newFixture(t, &fixtureConfig{resource: mapping, objects: []runtime.Object{}}).controller
 
 		// Test changes in each individual property
 		properties := map[string]Property{
