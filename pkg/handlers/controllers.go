@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"github.com/port-labs/port-k8s-exporter/pkg/port/integration"
 	"time"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/crd"
@@ -74,8 +75,24 @@ func (c *ControllersHandler) Handle() {
 			klog.Fatalf("Error while waiting for informer cache sync: %s", err.Error())
 		}
 	}
+
+	currentEntitiesSet := make([]map[string]interface{}, 0)
+	for _, controller := range c.controllers {
+		controllerEntitiesSet, rawDataExamples, err := controller.GetEntitiesSet()
+		if err != nil {
+			klog.Errorf("error getting controller entities set: %s", err.Error())
+		}
+		currentEntitiesSet = append(currentEntitiesSet, controllerEntitiesSet)
+		if len(rawDataExamples) > 0 {
+			err = integration.PostIntegrationKindExample(c.portClient, c.stateKey, controller.Resource.Kind, rawDataExamples)
+			if err != nil {
+				klog.Warningf("failed to post integration kind example: %s", err.Error())
+			}
+		}
+	}
+
 	klog.Info("Deleting stale entities")
-	c.RunDeleteStaleEntities()
+	c.RunDeleteStaleEntities(currentEntitiesSet)
 	klog.Info("Starting controllers")
 	for _, controller := range c.controllers {
 		controller.Run(1, c.stopCh)
@@ -91,16 +108,7 @@ func (c *ControllersHandler) Handle() {
 	}()
 }
 
-func (c *ControllersHandler) RunDeleteStaleEntities() {
-	currentEntitiesSet := make([]map[string]interface{}, 0)
-	for _, controller := range c.controllers {
-		controllerEntitiesSet, err := controller.GetEntitiesSet()
-		if err != nil {
-			klog.Errorf("error getting controller entities set: %s", err.Error())
-		}
-		currentEntitiesSet = append(currentEntitiesSet, controllerEntitiesSet)
-	}
-
+func (c *ControllersHandler) RunDeleteStaleEntities(currentEntitiesSet []map[string]interface{}) {
 	_, err := c.portClient.Authenticate(context.Background(), c.portClient.ClientID, c.portClient.ClientSecret)
 	if err != nil {
 		klog.Errorf("error authenticating with Port: %v", err)

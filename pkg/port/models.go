@@ -236,11 +236,11 @@ type EntityMappings struct {
 
 type Port struct {
 	Entity       EntityMappings `json:"entity" yaml:"entity"`
-	ItemsToParse string         `json:"itemsToParse" yaml:"itemsToParse"`
+	ItemsToParse string         `json:"itemsToParse,omitempty" yaml:"itemsToParse"`
 }
 
 type Selector struct {
-	Query string
+	Query string `json:"query,omitempty" yaml:"query"`
 }
 
 type Resource struct {
@@ -270,6 +270,7 @@ type IntegrationAppConfig struct {
 	CRDSToDiscover               string     `json:"crdsToDiscover,omitempty"`
 	OverwriteCRDsActions         bool       `json:"overwriteCrdsActions,omitempty"`
 	UpdateEntityOnlyOnDiff       *bool      `json:"updateEntityOnlyOnDiff,omitempty"`
+	SendRawDataExamples          *bool      `json:"sendRawDataExamples,omitempty"`
 }
 
 type Config struct {
