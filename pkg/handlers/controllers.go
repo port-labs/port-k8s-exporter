@@ -2,8 +2,10 @@ package handlers
 
 import (
 	"context"
-	"github.com/port-labs/port-k8s-exporter/pkg/port/integration"
 	"time"
+
+	"github.com/port-labs/port-k8s-exporter/pkg/config"
+	"github.com/port-labs/port-k8s-exporter/pkg/port/integration"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/crd"
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
@@ -51,7 +53,7 @@ func NewControllersHandler(exporterConfig *port.Config, portConfig *port.Integra
 		}
 
 		informer := informersFactory.ForResource(gvr)
-		controller := k8s.NewController(port.AggregatedResource{Kind: kind, KindConfigs: kindConfigs}, portClient, informer, portConfig)
+		controller := k8s.NewController(port.AggregatedResource{Kind: kind, KindConfigs: kindConfigs}, informer, portConfig, config.ApplicationConfig)
 		controllers = append(controllers, controller)
 	}
 

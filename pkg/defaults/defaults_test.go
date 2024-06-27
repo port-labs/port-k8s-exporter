@@ -1,7 +1,6 @@
 package defaults
 
 import (
-	"fmt"
 	"testing"
 
 	guuid "github.com/google/uuid"
@@ -23,11 +22,7 @@ type Fixture struct {
 
 func NewFixture(t *testing.T) *Fixture {
 	stateKey := guuid.NewString()
-	portClient, err := cli.New(config.ApplicationConfig.PortBaseURL, cli.WithHeader("User-Agent", fmt.Sprintf("port-k8s-exporter/0.1 (statekey/%s)", stateKey)),
-		cli.WithClientID(config.ApplicationConfig.PortClientId), cli.WithClientSecret(config.ApplicationConfig.PortClientSecret))
-	if err != nil {
-		t.Errorf("Error building Port client: %s", err.Error())
-	}
+	portClient := cli.New(config.ApplicationConfig)
 
 	deleteDefaultResources(portClient, stateKey)
 	return &Fixture{

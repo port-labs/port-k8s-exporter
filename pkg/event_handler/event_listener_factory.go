@@ -2,6 +2,7 @@ package event_handler
 
 import (
 	"fmt"
+
 	"github.com/port-labs/port-k8s-exporter/pkg/event_handler/consumer"
 	"github.com/port-labs/port-k8s-exporter/pkg/event_handler/polling"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"

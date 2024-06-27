@@ -5,19 +5,21 @@ import (
 	"fmt"
 	"time"
 
+	"hash/fnv"
+	"strconv"
+
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/jq"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/mapping"
-	"hash/fnv"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
-	"strconv"
 
 	"encoding/json"
+
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
@@ -49,7 +51,12 @@ type Controller struct {
 	workqueue         workqueue.RateLimitingInterface
 }
 
-func NewController(resource port.AggregatedResource, portClient *cli.PortClient, informer informers.GenericInformer, integrationConfig *port.IntegrationAppConfig) *Controller {
+func NewController(resource port.AggregatedResource, informer informers.GenericInformer, integrationConfig *port.IntegrationAppConfig, applicationConfig *config.ApplicationConfiguration) *Controller {
+	// We create a new Port client for each controller because the Resty client is not thread-safe.
+	portClient := cli.New(applicationConfig)
+
+	cli.WithDeleteDependents(integrationConfig.DeleteDependents)(portClient)
+	cli.WithCreateMissingRelatedEntities(integrationConfig.CreateMissingRelatedEntities)(portClient)
 	controller := &Controller{
 		Resource:          resource,
 		portClient:        portClient,
@@ -247,7 +254,7 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 		return nil, nil, fmt.Errorf("error casting to unstructured")
 	}
 	var structuredObj interface{}
-	err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.Object, &structuredObj)
+	err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.DeepCopy().Object, &structuredObj)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error converting from unstructured: %v", err)
 	}

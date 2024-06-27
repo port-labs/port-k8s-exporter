@@ -26,7 +26,7 @@ func deleteDefaultResources(portClient *cli.PortClient) {
 	_ = blueprint.DeleteBlueprint(portClient, "testkind")
 }
 
-func newFixture(t *testing.T, portClientId string, portClientSecret string, userAgent string, namespaced bool, crdsDiscoveryPattern string) *Fixture {
+func newFixture(t *testing.T, userAgent string, namespaced bool, crdsDiscoveryPattern string) *Fixture {
 	apiExtensionsFakeClient := fakeapiextensionsv1.FakeApiextensionsV1{Fake: &clienttesting.Fake{}}
 
 	apiExtensionsFakeClient.AddReactor("list", "customresourcedefinitions", func(action clienttesting.Action) (handled bool, ret runtime.Object, err error) {
@@ -100,22 +100,12 @@ func newFixture(t *testing.T, portClientId string, portClientSecret string, user
 		return true, fakeCrd, nil
 	})
 
-	if portClientId == "" {
-		portClientId = config.ApplicationConfig.PortClientId
-	}
-	if portClientSecret == "" {
-		portClientSecret = config.ApplicationConfig.PortClientSecret
-	}
 	if userAgent == "" {
 		userAgent = "port-k8s-exporter/0.1"
 	}
 
-	portClient, err := cli.New(config.ApplicationConfig.PortBaseURL, cli.WithHeader("User-Agent", userAgent),
-		cli.WithClientID(portClientId), cli.WithClientSecret(portClientSecret))
+	portClient := cli.New(config.ApplicationConfig)
 	deleteDefaultResources(portClient)
-	if err != nil {
-		t.Errorf("Error building Port client: %s", err.Error())
-	}
 
 	return &Fixture{
 		t:                  t,
@@ -271,7 +261,7 @@ func checkBlueprintAndActionsProperties(t *testing.T, f *Fixture, namespaced boo
 }
 
 func TestCRD_crd_autoDiscoverCRDsToActionsClusterScoped(t *testing.T) {
-	f := newFixture(t, "", "", "", false, "true")
+	f := newFixture(t, "", false, "true")
 
 	AutodiscoverCRDsToActions(f.portConfig, f.apiextensionClient, f.portClient)
 
@@ -281,7 +271,7 @@ func TestCRD_crd_autoDiscoverCRDsToActionsClusterScoped(t *testing.T) {
 }
 
 func TestCRD_crd_autoDiscoverCRDsToActionsNamespaced(t *testing.T) {
-	f := newFixture(t, "", "", "", true, "true")
+	f := newFixture(t, "", true, "true")
 
 	AutodiscoverCRDsToActions(f.portConfig, f.apiextensionClient, f.portClient)
 
@@ -291,7 +281,7 @@ func TestCRD_crd_autoDiscoverCRDsToActionsNamespaced(t *testing.T) {
 }
 
 func TestCRD_crd_autoDiscoverCRDsToActionsNoCRDs(t *testing.T) {
-	f := newFixture(t, "", "", "", false, "false")
+	f := newFixture(t, "", false, "false")
 
 	AutodiscoverCRDsToActions(f.portConfig, f.apiextensionClient, f.portClient)
 
