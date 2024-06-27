@@ -5,14 +5,11 @@ import (
 	"os"
 	"reflect"
 	"strings"
-	"sync"
 
 	"github.com/itchyny/gojq"
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
 	"k8s.io/klog/v2"
 )
-
-var mutex = &sync.Mutex{}
 
 func runJQQuery(jqQuery string, obj interface{}) (interface{}, error) {
 	query, err := gojq.Parse(jqQuery)
@@ -30,10 +27,8 @@ func runJQQuery(jqQuery string, obj interface{}) (interface{}, error) {
 		klog.Warningf("failed to compile jq query: %s", jqQuery)
 		return nil, err
 	}
-	mutex.Lock()
 	deepClone := goutils.DeepCopy(obj)
 	queryRes, ok := code.Run(deepClone).Next()
-	mutex.Unlock()
 
 	if !ok {
 		return nil, fmt.Errorf("query should return at least one value")
