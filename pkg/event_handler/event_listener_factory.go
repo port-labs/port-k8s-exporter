@@ -3,6 +3,7 @@ package event_handler
 import (
 	"fmt"
 
+	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/event_handler/consumer"
 	"github.com/port-labs/port-k8s-exporter/pkg/event_handler/polling"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
@@ -10,10 +11,7 @@ import (
 )
 
 func CreateEventListener(stateKey string, eventListenerType string) (IListener, error) {
-	portClient, err := cli.New()
-	if err != nil {
-		return nil, fmt.Errorf("error building Port client: %v", err)
-	}
+	portClient := cli.New(config.ApplicationConfig)
 
 	klog.Infof("Received event listener type: %s", eventListenerType)
 	switch eventListenerType {

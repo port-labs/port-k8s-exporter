@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/integration"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/crd"
@@ -52,7 +53,7 @@ func NewControllersHandler(exporterConfig *port.Config, portConfig *port.Integra
 		}
 
 		informer := informersFactory.ForResource(gvr)
-		controller := k8s.NewController(port.AggregatedResource{Kind: kind, KindConfigs: kindConfigs}, informer, portConfig, nil)
+		controller := k8s.NewController(port.AggregatedResource{Kind: kind, KindConfigs: kindConfigs}, informer, portConfig, config.ApplicationConfig)
 		controllers = append(controllers, controller)
 	}
 

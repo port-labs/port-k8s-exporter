@@ -22,16 +22,10 @@ type (
 	}
 )
 
-func New(opts ...Option) (*PortClient, error) {
-	applicationConfig, err := config.NewConfiguration()
-
-	if err != nil {
-		return nil, err
-	}
-
+func New(applicationConfig *config.ApplicationConfiguration, opts ...Option) *PortClient {
 	c := &PortClient{
 		Client: resty.New().
-			SetBaseURL(config.ApplicationConfig.PortBaseURL).
+			SetBaseURL(applicationConfig.PortBaseURL).
 			SetRetryCount(5).
 			SetRetryWaitTime(300).
 			// retry when create permission fails because scopes are created async-ly and sometimes (mainly in tests) the scope doesn't exist yet.
@@ -48,15 +42,15 @@ func New(opts ...Option) (*PortClient, error) {
 			}),
 	}
 
-	WithClientID(config.ApplicationConfig.PortClientId)(c)
-	WithClientSecret(config.ApplicationConfig.PortClientSecret)(c)
+	WithClientID(applicationConfig.PortClientId)(c)
+	WithClientSecret(applicationConfig.PortClientSecret)(c)
 	WithHeader("User-Agent", fmt.Sprintf("port-k8s-exporter/^0.3.4 (statekey/%s)", applicationConfig.StateKey))(c)
 
 	for _, opt := range opts {
 		opt(c)
 	}
 
-	return c, nil
+	return c
 }
 
 func (c *PortClient) Authenticate(ctx context.Context, clientID, clientSecret string) (string, error) {

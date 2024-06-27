@@ -16,10 +16,8 @@ import (
 )
 
 func initiateHandler(exporterConfig *port.Config, k8sClient *k8s.Client) (*handlers.ControllersHandler, error) {
-	portClient, err := cli.New()
-	if err != nil {
-		return nil, fmt.Errorf("error building Port client: %v", err)
-	}
+	portClient := cli.New(config.ApplicationConfig)
+
 	i, err := integration.GetIntegration(portClient, exporterConfig.StateKey)
 	if err != nil {
 		return nil, fmt.Errorf("error getting Port integration: %v", err)
@@ -51,10 +49,7 @@ func main() {
 	if err != nil {
 		klog.Fatalf("Error building K8s client: %s", err.Error())
 	}
-	portClient, err := cli.New()
-	if err != nil {
-		klog.Fatalf("Error building Port client: %s", err.Error())
-	}
+	portClient := cli.New(config.ApplicationConfig)
 
 	if err := defaults.InitIntegration(portClient, applicationConfig); err != nil {
 		klog.Fatalf("Error initializing Port integration: %s", err.Error())

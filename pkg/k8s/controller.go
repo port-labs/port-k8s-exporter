@@ -51,14 +51,8 @@ type Controller struct {
 	workqueue         workqueue.RateLimitingInterface
 }
 
-func NewController(resource port.AggregatedResource, informer informers.GenericInformer, integrationConfig *port.IntegrationAppConfig, portClient *cli.PortClient) *Controller {
-	if portClient == nil {
-		var err error
-		portClient, err = cli.New()
-		if err != nil {
-			klog.Fatalf("Error building Port client: %v", err)
-		}
-	}
+func NewController(resource port.AggregatedResource, informer informers.GenericInformer, integrationConfig *port.IntegrationAppConfig, applicationConfig *config.ApplicationConfiguration) *Controller {
+	portClient := cli.New(applicationConfig)
 
 	cli.WithDeleteDependents(integrationConfig.DeleteDependents)(portClient)
 	cli.WithCreateMissingRelatedEntities(integrationConfig.CreateMissingRelatedEntities)(portClient)
