@@ -59,19 +59,35 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 	}
 	kubeclient := k8sfake.NewSimpleDynamicClient(runtime.NewScheme())
 
+	newConfig := &config.ApplicationConfiguration{
+		ConfigFilePath:                  config.ApplicationConfig.ConfigFilePath,
+		ResyncInterval:                  config.ApplicationConfig.ResyncInterval,
+		PortBaseURL:                     config.ApplicationConfig.PortBaseURL,
+		EventListenerType:               config.ApplicationConfig.EventListenerType,
+		CreateDefaultResources:          config.ApplicationConfig.CreateDefaultResources,
+		OverwriteConfigurationOnRestart: config.ApplicationConfig.OverwriteConfigurationOnRestart,
+		Resources:                       config.ApplicationConfig.Resources,
+		DeleteDependents:                config.ApplicationConfig.DeleteDependents,
+		CreateMissingRelatedEntities:    config.ApplicationConfig.CreateMissingRelatedEntities,
+		UpdateEntityOnlyOnDiff:          config.ApplicationConfig.UpdateEntityOnlyOnDiff,
+		PortClientId:                    config.ApplicationConfig.PortClientId,
+		PortClientSecret:                config.ApplicationConfig.PortClientSecret,
+		StateKey:                        config.ApplicationConfig.StateKey,
+	}
+
 	if fixtureConfig.portClientId != "" {
-		config.ApplicationConfig.PortClientId = fixtureConfig.portClientId
+		newConfig.PortClientId = fixtureConfig.portClientId
 	}
 	if fixtureConfig.portClientSecret != "" {
-		config.ApplicationConfig.PortClientSecret = fixtureConfig.portClientSecret
+		newConfig.PortClientSecret = fixtureConfig.portClientSecret
 	}
 	if fixtureConfig.stateKey != "" {
-		config.ApplicationConfig.StateKey = fixtureConfig.stateKey
+		newConfig.StateKey = fixtureConfig.stateKey
 	}
 
 	return &fixture{
 		t:          t,
-		controller: newController(fixtureConfig.resource, fixtureConfig.objects, kubeclient, interationConfig, config.ApplicationConfig),
+		controller: newController(fixtureConfig.resource, fixtureConfig.objects, kubeclient, interationConfig, newConfig),
 	}
 }
 
