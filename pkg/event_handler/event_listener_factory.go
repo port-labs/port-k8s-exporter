@@ -3,16 +3,13 @@ package event_handler
 import (
 	"fmt"
 
-	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/event_handler/consumer"
 	"github.com/port-labs/port-k8s-exporter/pkg/event_handler/polling"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"k8s.io/klog/v2"
 )
 
-func CreateEventListener(stateKey string, eventListenerType string) (IListener, error) {
-	portClient := cli.New(config.ApplicationConfig)
-
+func CreateEventListener(stateKey string, eventListenerType string, portClient *cli.PortClient) (IListener, error) {
 	klog.Infof("Received event listener type: %s", eventListenerType)
 	switch eventListenerType {
 	case "KAFKA":

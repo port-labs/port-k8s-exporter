@@ -52,6 +52,7 @@ type Controller struct {
 }
 
 func NewController(resource port.AggregatedResource, informer informers.GenericInformer, integrationConfig *port.IntegrationAppConfig, applicationConfig *config.ApplicationConfiguration) *Controller {
+	// We create a new Port client for each controller because the Resty client is not thread-safe.
 	portClient := cli.New(applicationConfig)
 
 	cli.WithDeleteDependents(integrationConfig.DeleteDependents)(portClient)

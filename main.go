@@ -15,9 +15,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func initiateHandler(exporterConfig *port.Config, k8sClient *k8s.Client) (*handlers.ControllersHandler, error) {
-	portClient := cli.New(config.ApplicationConfig)
-
+func initiateHandler(exporterConfig *port.Config, k8sClient *k8s.Client, portClient *cli.PortClient) (*handlers.ControllersHandler, error) {
 	i, err := integration.GetIntegration(portClient, exporterConfig.StateKey)
 	if err != nil {
 		return nil, fmt.Errorf("error getting Port integration: %v", err)
@@ -55,14 +53,14 @@ func main() {
 		klog.Fatalf("Error initializing Port integration: %s", err.Error())
 	}
 
-	eventListener, err := event_handler.CreateEventListener(applicationConfig.StateKey, applicationConfig.EventListenerType)
+	eventListener, err := event_handler.CreateEventListener(applicationConfig.StateKey, applicationConfig.EventListenerType, portClient)
 	if err != nil {
 		klog.Fatalf("Error creating event listener: %s", err.Error())
 	}
 
 	klog.Info("Starting controllers handler")
 	err = event_handler.Start(eventListener, func() (event_handler.IStoppableRsync, error) {
-		return initiateHandler(applicationConfig, k8sClient)
+		return initiateHandler(applicationConfig, k8sClient, portClient)
 	})
 
 	if err != nil {
