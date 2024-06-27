@@ -27,8 +27,7 @@ func runJQQuery(jqQuery string, obj interface{}) (interface{}, error) {
 		klog.Warningf("failed to compile jq query: %s", jqQuery)
 		return nil, err
 	}
-	deepClone := goutils.DeepCopy(obj)
-	queryRes, ok := code.Run(deepClone).Next()
+	queryRes, ok := code.Run(obj).Next()
 
 	if !ok {
 		return nil, fmt.Errorf("query should return at least one value")

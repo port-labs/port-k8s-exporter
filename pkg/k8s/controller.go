@@ -253,7 +253,7 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 		return nil, nil, fmt.Errorf("error casting to unstructured")
 	}
 	var structuredObj interface{}
-	err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.Object, &structuredObj)
+	err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.DeepCopy().Object, &structuredObj)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error converting from unstructured: %v", err)
 	}

@@ -22,15 +22,3 @@ func StructToMap(obj interface{}) (newMap map[string]interface{}, err error) {
 	err = json.Unmarshal(data, &newMap)
 	return
 }
-
-func DeepCopy(obj interface{}) interface{} {
-	if obj == nil {
-		return nil
-	}
-
-	var newObj interface{}
-	data, _ := json.Marshal(obj)
-	json.Unmarshal(data, &newObj)
-
-	return newObj
-}
