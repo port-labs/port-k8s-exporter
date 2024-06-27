@@ -3,16 +3,16 @@ package k8s
 import (
 	"context"
 	"fmt"
-	"github.com/port-labs/port-k8s-exporter/pkg/jq"
-	"github.com/stretchr/testify/assert"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/port-labs/port-k8s-exporter/pkg/jq"
+	"github.com/stretchr/testify/assert"
+
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
-	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	_ "github.com/port-labs/port-k8s-exporter/test_utils"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -21,8 +21,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/tools/cache"
 )
@@ -70,15 +69,9 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 		fixtureConfig.userAgent = "port-k8s-exporter/0.1"
 	}
 
-	portClient, err := cli.New(config.ApplicationConfig.PortBaseURL, cli.WithHeader("User-Agent", fixtureConfig.userAgent),
-		cli.WithClientID(fixtureConfig.portClientId), cli.WithClientSecret(fixtureConfig.portClientSecret))
-	if err != nil {
-		t.Errorf("Error building Port client: %s", err.Error())
-	}
-
 	return &fixture{
 		t:          t,
-		controller: newController(fixtureConfig.resource, fixtureConfig.objects, portClient, kubeclient, interationConfig),
+		controller: newController(fixtureConfig.resource, fixtureConfig.objects, kubeclient, interationConfig),
 	}
 }
 
@@ -101,16 +94,16 @@ func newDeployment() *appsv1.Deployment {
 		"app": "port-k8s-exporter",
 	}
 	return &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
+		ObjectMeta: v1.ObjectMeta{
 			Name:      "port-k8s-exporter",
 			Namespace: "port-k8s-exporter",
 		},
 		Spec: appsv1.DeploymentSpec{
-			Selector: &metav1.LabelSelector{
+			Selector: &v1.LabelSelector{
 				MatchLabels: labels,
 			},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
+				ObjectMeta: v1.ObjectMeta{
 					Labels: labels,
 				},
 				Spec: corev1.PodSpec{
@@ -132,7 +125,7 @@ func newDeploymentWithCustomLabels(generation int64,
 	labels map[string]string,
 ) *appsv1.Deployment {
 	return &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
+		ObjectMeta: v1.ObjectMeta{
 			Name:              "port-k8s-exporter",
 			Namespace:         "port-k8s-exporter",
 			GenerateName:      generateName,
@@ -140,11 +133,11 @@ func newDeploymentWithCustomLabels(generation int64,
 			CreationTimestamp: creationTimestamp,
 		},
 		Spec: appsv1.DeploymentSpec{
-			Selector: &metav1.LabelSelector{
+			Selector: &v1.LabelSelector{
 				MatchLabels: labels,
 			},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
+				ObjectMeta: v1.ObjectMeta{
 					Labels: labels,
 				},
 				Spec: corev1.PodSpec{
@@ -168,13 +161,13 @@ func newUnstructured(obj interface{}) *unstructured.Unstructured {
 	return &unstructured.Unstructured{Object: res}
 }
 
-func newController(resource port.Resource, objects []runtime.Object, portClient *cli.PortClient, kubeclient *k8sfake.FakeDynamicClient, integrationConfig *port.IntegrationAppConfig) *Controller {
+func newController(resource port.Resource, objects []runtime.Object, kubeclient *k8sfake.FakeDynamicClient, integrationConfig *port.IntegrationAppConfig) *Controller {
 	k8sI := dynamicinformer.NewDynamicSharedInformerFactory(kubeclient, noResyncPeriodFunc())
 	s := strings.SplitN(resource.Kind, "/", 3)
 	gvr := schema.GroupVersionResource{Group: s[0], Version: s[1], Resource: s[2]}
 	informer := k8sI.ForResource(gvr)
 	kindConfig := port.KindConfig{Selector: resource.Selector, Port: resource.Port}
-	c := NewController(port.AggregatedResource{Kind: resource.Kind, KindConfigs: []port.KindConfig{kindConfig}}, portClient, informer, integrationConfig)
+	c := NewController(port.AggregatedResource{Kind: resource.Kind, KindConfigs: []port.KindConfig{kindConfig}}, informer, integrationConfig)
 
 	for _, d := range objects {
 		informer.Informer().GetIndexer().Add(d)

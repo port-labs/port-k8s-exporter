@@ -110,7 +110,7 @@ func newFixture(t *testing.T, portClientId string, portClientSecret string, user
 		userAgent = "port-k8s-exporter/0.1"
 	}
 
-	portClient, err := cli.New(config.ApplicationConfig.PortBaseURL, cli.WithHeader("User-Agent", userAgent),
+	portClient, err := cli.New(cli.WithHeader("User-Agent", userAgent),
 		cli.WithClientID(portClientId), cli.WithClientSecret(portClientSecret))
 	deleteDefaultResources(portClient)
 	if err != nil {

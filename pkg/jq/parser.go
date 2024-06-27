@@ -30,9 +30,9 @@ func runJQQuery(jqQuery string, obj interface{}) (interface{}, error) {
 		klog.Warningf("failed to compile jq query: %s", jqQuery)
 		return nil, err
 	}
-
 	mutex.Lock()
-	queryRes, ok := code.Run(obj).Next()
+	deepClone := goutils.DeepCopy(obj)
+	queryRes, ok := code.Run(deepClone).Next()
 	mutex.Unlock()
 
 	if !ok {

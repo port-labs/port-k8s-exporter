@@ -5,19 +5,21 @@ import (
 	"fmt"
 	"time"
 
+	"hash/fnv"
+	"strconv"
+
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/jq"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/mapping"
-	"hash/fnv"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
-	"strconv"
 
 	"encoding/json"
+
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
@@ -49,7 +51,13 @@ type Controller struct {
 	workqueue         workqueue.RateLimitingInterface
 }
 
-func NewController(resource port.AggregatedResource, portClient *cli.PortClient, informer informers.GenericInformer, integrationConfig *port.IntegrationAppConfig) *Controller {
+func NewController(resource port.AggregatedResource, informer informers.GenericInformer, integrationConfig *port.IntegrationAppConfig) *Controller {
+	portClient, err := cli.New()
+	if err != nil {
+		klog.Fatalf("Error building Port client: %v", err)
+	}
+	cli.WithDeleteDependents(integrationConfig.DeleteDependents)(portClient)
+	cli.WithCreateMissingRelatedEntities(integrationConfig.CreateMissingRelatedEntities)(portClient)
 	controller := &Controller{
 		Resource:          resource,
 		portClient:        portClient,

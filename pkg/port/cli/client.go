@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 )
 
@@ -21,10 +22,16 @@ type (
 	}
 )
 
-func New(baseURL string, opts ...Option) (*PortClient, error) {
+func New(opts ...Option) (*PortClient, error) {
+	applicationConfig, err := config.NewConfiguration()
+
+	if err != nil {
+		return nil, err
+	}
+
 	c := &PortClient{
 		Client: resty.New().
-			SetBaseURL(baseURL).
+			SetBaseURL(config.ApplicationConfig.PortBaseURL).
 			SetRetryCount(5).
 			SetRetryWaitTime(300).
 			// retry when create permission fails because scopes are created async-ly and sometimes (mainly in tests) the scope doesn't exist yet.
@@ -40,9 +47,15 @@ func New(baseURL string, opts ...Option) (*PortClient, error) {
 				return err != nil || b["ok"] != true
 			}),
 	}
+
+	WithClientID(config.ApplicationConfig.PortClientId)(c)
+	WithClientSecret(config.ApplicationConfig.PortClientSecret)(c)
+	WithHeader("User-Agent", fmt.Sprintf("port-k8s-exporter/^0.3.4 (statekey/%s)", applicationConfig.StateKey))(c)
+
 	for _, opt := range opts {
 		opt(c)
 	}
+
 	return c, nil
 }
 

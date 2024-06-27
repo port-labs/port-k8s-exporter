@@ -15,7 +15,11 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func initiateHandler(exporterConfig *port.Config, k8sClient *k8s.Client, portClient *cli.PortClient) (*handlers.ControllersHandler, error) {
+func initiateHandler(exporterConfig *port.Config, k8sClient *k8s.Client) (*handlers.ControllersHandler, error) {
+	portClient, err := cli.New()
+	if err != nil {
+		return nil, fmt.Errorf("error building Port client: %v", err)
+	}
 	i, err := integration.GetIntegration(portClient, exporterConfig.StateKey)
 	if err != nil {
 		return nil, fmt.Errorf("error getting Port integration: %v", err)
@@ -24,9 +28,6 @@ func initiateHandler(exporterConfig *port.Config, k8sClient *k8s.Client, portCli
 		return nil, errors.New("integration config is nil")
 
 	}
-
-	cli.WithDeleteDependents(i.Config.DeleteDependents)(portClient)
-	cli.WithCreateMissingRelatedEntities(i.Config.CreateMissingRelatedEntities)(portClient)
 
 	newHandler := handlers.NewControllersHandler(exporterConfig, i.Config, k8sClient, portClient)
 	newHandler.Handle()
@@ -50,12 +51,7 @@ func main() {
 	if err != nil {
 		klog.Fatalf("Error building K8s client: %s", err.Error())
 	}
-
-	portClient, err := cli.New(config.ApplicationConfig.PortBaseURL,
-		cli.WithClientID(config.ApplicationConfig.PortClientId), cli.WithClientSecret(config.ApplicationConfig.PortClientSecret),
-		cli.WithHeader("User-Agent", fmt.Sprintf("port-k8s-exporter/^0.3.4 (statekey/%s)", applicationConfig.StateKey)),
-	)
-
+	portClient, err := cli.New()
 	if err != nil {
 		klog.Fatalf("Error building Port client: %s", err.Error())
 	}
@@ -64,14 +60,14 @@ func main() {
 		klog.Fatalf("Error initializing Port integration: %s", err.Error())
 	}
 
-	eventListener, err := event_handler.CreateEventListener(applicationConfig.StateKey, applicationConfig.EventListenerType, portClient)
+	eventListener, err := event_handler.CreateEventListener(applicationConfig.StateKey, applicationConfig.EventListenerType)
 	if err != nil {
 		klog.Fatalf("Error creating event listener: %s", err.Error())
 	}
 
 	klog.Info("Starting controllers handler")
 	err = event_handler.Start(eventListener, func() (event_handler.IStoppableRsync, error) {
-		return initiateHandler(applicationConfig, k8sClient, portClient)
+		return initiateHandler(applicationConfig, k8sClient)
 	})
 
 	if err != nil {

@@ -51,7 +51,7 @@ func NewControllersHandler(exporterConfig *port.Config, portConfig *port.Integra
 		}
 
 		informer := informersFactory.ForResource(gvr)
-		controller := k8s.NewController(port.AggregatedResource{Kind: kind, KindConfigs: kindConfigs}, portClient, informer, portConfig)
+		controller := k8s.NewController(port.AggregatedResource{Kind: kind, KindConfigs: kindConfigs}, informer, portConfig)
 		controllers = append(controllers, controller)
 	}
 
