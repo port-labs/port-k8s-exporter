@@ -59,23 +59,19 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 	}
 	kubeclient := k8sfake.NewSimpleDynamicClient(runtime.NewScheme())
 
-	if fixtureConfig.portClientId == "" {
-		fixtureConfig.portClientId = config.ApplicationConfig.PortClientId
+	if fixtureConfig.portClientId != "" {
+		config.ApplicationConfig.PortClientId = fixtureConfig.portClientId
 	}
-	if fixtureConfig.portClientSecret == "" {
-		fixtureConfig.portClientSecret = config.ApplicationConfig.PortClientSecret
+	if fixtureConfig.portClientSecret != "" {
+		config.ApplicationConfig.PortClientSecret = fixtureConfig.portClientSecret
 	}
-	if fixtureConfig.stateKey == "" {
-		fixtureConfig.stateKey = "port-k8s-exporter/0.1"
+	if fixtureConfig.stateKey != "" {
+		config.ApplicationConfig.StateKey = fixtureConfig.stateKey
 	}
 
 	return &fixture{
-		t: t,
-		controller: newController(fixtureConfig.resource, fixtureConfig.objects, kubeclient, interationConfig, &config.ApplicationConfiguration{
-			StateKey:         fixtureConfig.stateKey,
-			PortClientId:     fixtureConfig.portClientId,
-			PortClientSecret: fixtureConfig.portClientSecret,
-		}),
+		t:          t,
+		controller: newController(fixtureConfig.resource, fixtureConfig.objects, kubeclient, interationConfig, config.ApplicationConfig),
 	}
 }
 
