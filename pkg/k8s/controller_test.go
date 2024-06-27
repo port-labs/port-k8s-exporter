@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/jq"
+	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
@@ -69,9 +70,14 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 		fixtureConfig.userAgent = "port-k8s-exporter/0.1"
 	}
 
+	portClient, err := cli.New(cli.WithClientID(fixtureConfig.portClientId), cli.WithClientSecret(fixtureConfig.portClientSecret), cli.WithHeader("User-Agent", fixtureConfig.userAgent))
+	if err != nil {
+		t.Fatalf("Error building Port client: %v", err)
+	}
+
 	return &fixture{
 		t:          t,
-		controller: newController(fixtureConfig.resource, fixtureConfig.objects, kubeclient, interationConfig),
+		controller: newController(fixtureConfig.resource, fixtureConfig.objects, kubeclient, interationConfig, portClient),
 	}
 }
 
@@ -161,13 +167,13 @@ func newUnstructured(obj interface{}) *unstructured.Unstructured {
 	return &unstructured.Unstructured{Object: res}
 }
 
-func newController(resource port.Resource, objects []runtime.Object, kubeclient *k8sfake.FakeDynamicClient, integrationConfig *port.IntegrationAppConfig) *Controller {
+func newController(resource port.Resource, objects []runtime.Object, kubeclient *k8sfake.FakeDynamicClient, integrationConfig *port.IntegrationAppConfig, portClient *cli.PortClient) *Controller {
 	k8sI := dynamicinformer.NewDynamicSharedInformerFactory(kubeclient, noResyncPeriodFunc())
 	s := strings.SplitN(resource.Kind, "/", 3)
 	gvr := schema.GroupVersionResource{Group: s[0], Version: s[1], Resource: s[2]}
 	informer := k8sI.ForResource(gvr)
 	kindConfig := port.KindConfig{Selector: resource.Selector, Port: resource.Port}
-	c := NewController(port.AggregatedResource{Kind: resource.Kind, KindConfigs: []port.KindConfig{kindConfig}}, informer, integrationConfig)
+	c := NewController(port.AggregatedResource{Kind: resource.Kind, KindConfigs: []port.KindConfig{kindConfig}}, informer, integrationConfig, portClient)
 
 	for _, d := range objects {
 		informer.Informer().GetIndexer().Add(d)
