@@ -1,8 +1,10 @@
 package polling
 
 import (
-	"fmt"
 	_ "github.com/port-labs/port-k8s-exporter/test_utils"
+
+	"testing"
+	"time"
 
 	guuid "github.com/google/uuid"
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
@@ -10,8 +12,6 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/integration"
 	"github.com/stretchr/testify/assert"
-	"testing"
-	"time"
 )
 
 type Fixture struct {
@@ -31,14 +31,10 @@ func (m *MockTicker) GetC() <-chan time.Time {
 
 func NewFixture(t *testing.T, c chan time.Time) *Fixture {
 	stateKey := guuid.NewString()
-	portClient, err := cli.New(config.ApplicationConfig.PortBaseURL, cli.WithHeader("User-Agent", fmt.Sprintf("port-k8s-exporter/0.1 (statekey/%s)", stateKey)),
-		cli.WithClientID(config.ApplicationConfig.PortClientId), cli.WithClientSecret(config.ApplicationConfig.PortClientSecret))
-	if err != nil {
-		t.Errorf("Error building Port client: %s", err.Error())
-	}
+	portClient := cli.New(config.ApplicationConfig)
 
 	_ = integration.DeleteIntegration(portClient, stateKey)
-	err = integration.CreateIntegration(portClient, stateKey, "", &port.IntegrationAppConfig{
+	err := integration.CreateIntegration(portClient, stateKey, "", &port.IntegrationAppConfig{
 		Resources: []port.Resource{},
 	})
 	if err != nil {

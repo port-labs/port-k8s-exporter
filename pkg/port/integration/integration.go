@@ -40,6 +40,13 @@ func GetIntegration(portClient *cli.PortClient, stateKey string) (*port.Integrat
 		return nil, fmt.Errorf("error getting Port integration: %v", err)
 	}
 
+	if apiIntegration.Config != nil {
+		defaultTrue := true
+		if apiIntegration.Config.SendRawDataExamples == nil {
+			apiIntegration.Config.SendRawDataExamples = &defaultTrue
+		}
+	}
+
 	return apiIntegration, nil
 }
 
@@ -65,6 +72,19 @@ func PatchIntegration(portClient *cli.PortClient, stateKey string, integration *
 	err = portClient.PatchIntegration(stateKey, integration)
 	if err != nil {
 		return fmt.Errorf("error updating Port integration: %v", err)
+	}
+	return nil
+}
+
+func PostIntegrationKindExample(portClient *cli.PortClient, stateKey string, kind string, examples []interface{}) error {
+	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
+	if err != nil {
+		return fmt.Errorf("error authenticating with Port: %v", err)
+	}
+
+	err = portClient.PostIntegrationKindExample(stateKey, kind, examples)
+	if err != nil {
+		return err
 	}
 	return nil
 }

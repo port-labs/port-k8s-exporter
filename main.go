@@ -25,9 +25,6 @@ func initiateHandler(exporterConfig *port.Config, k8sClient *k8s.Client, portCli
 
 	}
 
-	cli.WithDeleteDependents(i.Config.DeleteDependents)(portClient)
-	cli.WithCreateMissingRelatedEntities(i.Config.CreateMissingRelatedEntities)(portClient)
-
 	newHandler := handlers.NewControllersHandler(exporterConfig, i.Config, k8sClient, portClient)
 	newHandler.Handle()
 
@@ -50,15 +47,7 @@ func main() {
 	if err != nil {
 		klog.Fatalf("Error building K8s client: %s", err.Error())
 	}
-
-	portClient, err := cli.New(config.ApplicationConfig.PortBaseURL,
-		cli.WithClientID(config.ApplicationConfig.PortClientId), cli.WithClientSecret(config.ApplicationConfig.PortClientSecret),
-		cli.WithHeader("User-Agent", fmt.Sprintf("port-k8s-exporter/0.1 (statekey/%s)", applicationConfig.StateKey)),
-	)
-
-	if err != nil {
-		klog.Fatalf("Error building Port client: %s", err.Error())
-	}
+	portClient := cli.New(config.ApplicationConfig)
 
 	if err := defaults.InitIntegration(portClient, applicationConfig); err != nil {
 		klog.Fatalf("Error initializing Port integration: %s", err.Error())

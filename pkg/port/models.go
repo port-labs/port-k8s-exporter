@@ -221,13 +221,13 @@ type ResponseBody struct {
 }
 
 type EntityMapping struct {
-	Identifier string            `json:"identifier" yaml:"identifier"`
-	Title      string            `json:"title" yaml:"title"`
-	Blueprint  string            `json:"blueprint" yaml:"blueprint"`
-	Icon       string            `json:"icon,omitempty" yaml:"icon,omitempty"`
-	Team       string            `json:"team,omitempty" yaml:"team,omitempty"`
-	Properties map[string]string `json:"properties,omitempty" yaml:"properties,omitempty"`
-	Relations  map[string]string `json:"relations,omitempty" yaml:"relations,omitempty"`
+	Identifier string                 `json:"identifier" yaml:"identifier"`
+	Title      string                 `json:"title" yaml:"title"`
+	Blueprint  string                 `json:"blueprint" yaml:"blueprint"`
+	Icon       string                 `json:"icon,omitempty" yaml:"icon,omitempty"`
+	Team       string                 `json:"team,omitempty" yaml:"team,omitempty"`
+	Properties map[string]string      `json:"properties,omitempty" yaml:"properties,omitempty"`
+	Relations  map[string]interface{} `json:"relations,omitempty" yaml:"relations,omitempty"`
 }
 
 type EntityMappings struct {
@@ -236,11 +236,11 @@ type EntityMappings struct {
 
 type Port struct {
 	Entity       EntityMappings `json:"entity" yaml:"entity"`
-	ItemsToParse string         `json:"itemsToParse" yaml:"itemsToParse"`
+	ItemsToParse string         `json:"itemsToParse,omitempty" yaml:"itemsToParse"`
 }
 
 type Selector struct {
-	Query string
+	Query string `json:"query,omitempty" yaml:"query"`
 }
 
 type Resource struct {
@@ -269,7 +269,8 @@ type IntegrationAppConfig struct {
 	Resources                    []Resource `json:"resources,omitempty" yaml:"resources,omitempty"`
 	CRDSToDiscover               string     `json:"crdsToDiscover,omitempty"`
 	OverwriteCRDsActions         bool       `json:"overwriteCrdsActions,omitempty"`
-	UpdateEntityOnlyOnDiff       bool       `json:"updateEntityOnlyOnDiff,omitempty"`
+	UpdateEntityOnlyOnDiff       *bool      `json:"updateEntityOnlyOnDiff,omitempty"`
+	SendRawDataExamples          *bool      `json:"sendRawDataExamples,omitempty"`
 }
 
 type Config struct {

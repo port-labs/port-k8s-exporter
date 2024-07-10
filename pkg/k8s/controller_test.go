@@ -3,15 +3,16 @@ package k8s
 import (
 	"context"
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/port-labs/port-k8s-exporter/pkg/jq"
+	"github.com/stretchr/testify/assert"
+
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
-	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	_ "github.com/port-labs/port-k8s-exporter/test_utils"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -20,8 +21,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/tools/cache"
 )
@@ -35,33 +35,59 @@ type fixture struct {
 	controller *Controller
 }
 
-func newFixture(t *testing.T, portClientId string, portClientSecret string, userAgent string, resource port.Resource, objects []runtime.Object) *fixture {
+type fixtureConfig struct {
+	portClientId        string
+	portClientSecret    string
+	stateKey            string
+	sendRawDataExamples *bool
+	resource            port.Resource
+	objects             []runtime.Object
+}
+
+func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
+	defaultTrue := true
+	sendRawDataExamples := &defaultTrue
+	if fixtureConfig.sendRawDataExamples != nil {
+		sendRawDataExamples = fixtureConfig.sendRawDataExamples
+	}
+
 	interationConfig := &port.IntegrationAppConfig{
 		DeleteDependents:             true,
 		CreateMissingRelatedEntities: true,
-		Resources:                    []port.Resource{resource},
+		SendRawDataExamples:          sendRawDataExamples,
+		Resources:                    []port.Resource{fixtureConfig.resource},
 	}
 	kubeclient := k8sfake.NewSimpleDynamicClient(runtime.NewScheme())
 
-	if portClientId == "" {
-		portClientId = config.ApplicationConfig.PortClientId
-	}
-	if portClientSecret == "" {
-		portClientSecret = config.ApplicationConfig.PortClientSecret
-	}
-	if userAgent == "" {
-		userAgent = "port-k8s-exporter/0.1"
+	newConfig := &config.ApplicationConfiguration{
+		ConfigFilePath:                  config.ApplicationConfig.ConfigFilePath,
+		ResyncInterval:                  config.ApplicationConfig.ResyncInterval,
+		PortBaseURL:                     config.ApplicationConfig.PortBaseURL,
+		EventListenerType:               config.ApplicationConfig.EventListenerType,
+		CreateDefaultResources:          config.ApplicationConfig.CreateDefaultResources,
+		OverwriteConfigurationOnRestart: config.ApplicationConfig.OverwriteConfigurationOnRestart,
+		Resources:                       config.ApplicationConfig.Resources,
+		DeleteDependents:                config.ApplicationConfig.DeleteDependents,
+		CreateMissingRelatedEntities:    config.ApplicationConfig.CreateMissingRelatedEntities,
+		UpdateEntityOnlyOnDiff:          config.ApplicationConfig.UpdateEntityOnlyOnDiff,
+		PortClientId:                    config.ApplicationConfig.PortClientId,
+		PortClientSecret:                config.ApplicationConfig.PortClientSecret,
+		StateKey:                        config.ApplicationConfig.StateKey,
 	}
 
-	portClient, err := cli.New(config.ApplicationConfig.PortBaseURL, cli.WithHeader("User-Agent", userAgent),
-		cli.WithClientID(portClientId), cli.WithClientSecret(portClientSecret))
-	if err != nil {
-		t.Errorf("Error building Port client: %s", err.Error())
+	if fixtureConfig.portClientId != "" {
+		newConfig.PortClientId = fixtureConfig.portClientId
+	}
+	if fixtureConfig.portClientSecret != "" {
+		newConfig.PortClientSecret = fixtureConfig.portClientSecret
+	}
+	if fixtureConfig.stateKey != "" {
+		newConfig.StateKey = fixtureConfig.stateKey
 	}
 
 	return &fixture{
 		t:          t,
-		controller: newController(resource, objects, portClient, kubeclient, interationConfig),
+		controller: newController(fixtureConfig.resource, fixtureConfig.objects, kubeclient, interationConfig, newConfig),
 	}
 }
 
@@ -84,16 +110,16 @@ func newDeployment() *appsv1.Deployment {
 		"app": "port-k8s-exporter",
 	}
 	return &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
+		ObjectMeta: v1.ObjectMeta{
 			Name:      "port-k8s-exporter",
 			Namespace: "port-k8s-exporter",
 		},
 		Spec: appsv1.DeploymentSpec{
-			Selector: &metav1.LabelSelector{
+			Selector: &v1.LabelSelector{
 				MatchLabels: labels,
 			},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
+				ObjectMeta: v1.ObjectMeta{
 					Labels: labels,
 				},
 				Spec: corev1.PodSpec{
@@ -115,7 +141,7 @@ func newDeploymentWithCustomLabels(generation int64,
 	labels map[string]string,
 ) *appsv1.Deployment {
 	return &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
+		ObjectMeta: v1.ObjectMeta{
 			Name:              "port-k8s-exporter",
 			Namespace:         "port-k8s-exporter",
 			GenerateName:      generateName,
@@ -123,11 +149,11 @@ func newDeploymentWithCustomLabels(generation int64,
 			CreationTimestamp: creationTimestamp,
 		},
 		Spec: appsv1.DeploymentSpec{
-			Selector: &metav1.LabelSelector{
+			Selector: &v1.LabelSelector{
 				MatchLabels: labels,
 			},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
+				ObjectMeta: v1.ObjectMeta{
 					Labels: labels,
 				},
 				Spec: corev1.PodSpec{
@@ -151,13 +177,13 @@ func newUnstructured(obj interface{}) *unstructured.Unstructured {
 	return &unstructured.Unstructured{Object: res}
 }
 
-func newController(resource port.Resource, objects []runtime.Object, portClient *cli.PortClient, kubeclient *k8sfake.FakeDynamicClient, integrationConfig *port.IntegrationAppConfig) *Controller {
+func newController(resource port.Resource, objects []runtime.Object, kubeclient *k8sfake.FakeDynamicClient, integrationConfig *port.IntegrationAppConfig, applicationConfig *config.ApplicationConfiguration) *Controller {
 	k8sI := dynamicinformer.NewDynamicSharedInformerFactory(kubeclient, noResyncPeriodFunc())
 	s := strings.SplitN(resource.Kind, "/", 3)
 	gvr := schema.GroupVersionResource{Group: s[0], Version: s[1], Resource: s[2]}
 	informer := k8sI.ForResource(gvr)
 	kindConfig := port.KindConfig{Selector: resource.Selector, Port: resource.Port}
-	c := NewController(port.AggregatedResource{Kind: resource.Kind, KindConfigs: []port.KindConfig{kindConfig}}, portClient, informer, integrationConfig)
+	c := NewController(port.AggregatedResource{Kind: resource.Kind, KindConfigs: []port.KindConfig{kindConfig}}, informer, integrationConfig, applicationConfig)
 
 	for _, d := range objects {
 		informer.Informer().GetIndexer().Add(d)
@@ -176,8 +202,8 @@ func (f *fixture) runControllerSyncHandler(item EventItem, expectError bool) {
 
 }
 
-func (f *fixture) runControllerGetEntitiesSet(expectedEntitiesSet map[string]interface{}, expectError bool) {
-	entitiesSet, err := f.controller.GetEntitiesSet()
+func (f *fixture) runControllerGetEntitiesSet(expectedEntitiesSet map[string]interface{}, expectedExamples []interface{}, expectError bool) {
+	entitiesSet, examples, err := f.controller.GetEntitiesSet()
 	if !expectError && err != nil {
 		f.t.Errorf("error syncing item: %v", err)
 	} else if expectError && err == nil {
@@ -187,6 +213,11 @@ func (f *fixture) runControllerGetEntitiesSet(expectedEntitiesSet map[string]int
 	eq := reflect.DeepEqual(entitiesSet, expectedEntitiesSet)
 	if !eq {
 		f.t.Errorf("expected entities set: %v, got: %v", expectedEntitiesSet, entitiesSet)
+	}
+
+	eq = reflect.DeepEqual(examples, expectedExamples)
+	if !eq {
+		f.t.Errorf("expected raw data examples: %v, got: %v", expectedExamples, examples)
 	}
 }
 
@@ -215,14 +246,93 @@ func TestCreateDeployment(t *testing.T) {
 				"obj":  ".spec.selector",
 				"arr":  ".spec.template.spec.containers",
 			},
-			Relations: map[string]string{
+			Relations: map[string]interface{}{
 				"k8s-relation": "\"e_AgPMYvq1tAs8TuqM\"",
 			},
 		},
 	})
 	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
 
-	f := newFixture(t, "", "", "", resource, objects)
+	f := newFixture(t, &fixtureConfig{resource: resource, objects: objects})
+	f.runControllerSyncHandler(item, false)
+}
+
+func TestJqSearchRelation(t *testing.T) {
+
+	mapping := []port.EntityMapping{
+		{
+			Identifier: ".metadata.name",
+			Blueprint:  "\"k8s-export-test-bp\"",
+			Icon:       "\"Microservice\"",
+			Team:       "\"Test\"",
+			Properties: map[string]string{},
+			Relations: map[string]interface{}{
+				"k8s-relation": map[string]interface{}{
+					"combinator": "\"or\"",
+					"rules": []interface{}{
+						map[string]interface{}{
+							"property": "\"$identifier\"",
+							"operator": "\"=\"",
+							"value":    "\"e_AgPMYvq1tAs8TuqM\"",
+						},
+					},
+				},
+			},
+		},
+	}
+	res, _ := jq.ParseRelations(mapping[0].Relations, nil)
+	assert.Equal(t, res, map[string]interface{}{
+		"k8s-relation": map[string]interface{}{
+			"combinator": "or",
+			"rules": []interface{}{
+				map[string]interface{}{
+					"property": "$identifier",
+					"operator": "=",
+					"value":    "e_AgPMYvq1tAs8TuqM",
+				},
+			},
+		},
+	})
+
+}
+
+func TestCreateDeploymentWithSearchRelation(t *testing.T) {
+	d := newDeployment()
+	objects := []runtime.Object{newUnstructured(d)}
+	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
+	resource := newResource("", []port.EntityMapping{
+		{
+			Identifier: ".metadata.name",
+			Blueprint:  "\"k8s-export-test-bp\"",
+			Icon:       "\"Microservice\"",
+			Team:       "\"Test\"",
+			Properties: map[string]string{
+				"text": "\"pod\"",
+				"num":  "1",
+				"bool": "true",
+				"obj":  ".spec.selector",
+				"arr":  ".spec.template.spec.containers",
+			},
+			Relations: map[string]interface{}{
+				"k8s-relation": map[string]interface{}{
+					"combinator": "\"or\"",
+					"rules": []interface{}{
+						map[string]interface{}{
+							"property": "\"$identifier\"",
+							"operator": "\"=\"",
+							"value":    "\"e_AgPMYvq1tAs8TuqM\"",
+						},
+						map[string]interface{}{
+							"property": "\"$identifier\"",
+							"operator": "\"=\"",
+							"value":    ".metadata.name",
+						},
+					},
+				},
+			},
+		},
+	})
+	f := newFixture(t, &fixtureConfig{resource: resource, objects: objects})
 	f.runControllerSyncHandler(item, false)
 }
 
@@ -242,14 +352,14 @@ func TestUpdateDeployment(t *testing.T) {
 				"obj":  ".spec.selector",
 				"arr":  ".spec.template.spec.containers",
 			},
-			Relations: map[string]string{
+			Relations: map[string]interface{}{
 				"k8s-relation": "\"e_AgPMYvq1tAs8TuqM\"",
 			},
 		},
 	})
 	item := EventItem{Key: getKey(d, t), ActionType: UpdateAction}
 
-	f := newFixture(t, "", "", "", resource, objects)
+	f := newFixture(t, &fixtureConfig{resource: resource, objects: objects})
 	f.runControllerSyncHandler(item, false)
 }
 
@@ -265,7 +375,7 @@ func TestDeleteDeploymentSameOwner(t *testing.T) {
 	createItem := EventItem{Key: getKey(d, t), ActionType: CreateAction}
 	item := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
 
-	f := newFixture(t, "", "", fmt.Sprintf("port-k8s-exporter/0.1 (statekey/%s)", config.ApplicationConfig.StateKey), resource, objects)
+	f := newFixture(t, &fixtureConfig{stateKey: config.ApplicationConfig.StateKey, resource: resource, objects: objects})
 	f.runControllerSyncHandler(createItem, false)
 
 	f.runControllerSyncHandler(item, false)
@@ -287,7 +397,7 @@ func TestDeleteDeploymentDifferentOwner(t *testing.T) {
 	createItem := EventItem{Key: getKey(d, t), ActionType: CreateAction}
 	item := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
 
-	f := newFixture(t, "", "", fmt.Sprintf("statekey/%s", "non_exist_statekey")+"port-k8s-exporter", resource, objects)
+	f := newFixture(t, &fixtureConfig{stateKey: "non_exist_statekey", resource: resource, objects: objects})
 	f.runControllerSyncHandler(createItem, false)
 
 	f.runControllerSyncHandler(item, false)
@@ -308,7 +418,7 @@ func TestSelectorQueryFilterDeployment(t *testing.T) {
 	})
 	item := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
 
-	f := newFixture(t, "", "", "", resource, objects)
+	f := newFixture(t, &fixtureConfig{resource: resource, objects: objects})
 	f.runControllerSyncHandler(item, false)
 }
 
@@ -323,7 +433,7 @@ func TestFailPortAuth(t *testing.T) {
 	})
 	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
 
-	f := newFixture(t, "wrongclientid", "wrongclientsecret", "", resource, objects)
+	f := newFixture(t, &fixtureConfig{portClientId: "wrongclientid", portClientSecret: "wrongclientsecret", resource: resource, objects: objects})
 	f.runControllerSyncHandler(item, true)
 }
 
@@ -338,13 +448,19 @@ func TestFailDeletePortEntity(t *testing.T) {
 	})
 	item := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
 
-	f := newFixture(t, "", "", "", resource, objects)
+	f := newFixture(t, &fixtureConfig{resource: resource, objects: objects})
 	f.runControllerSyncHandler(item, false)
 }
 
 func TestGetEntitiesSet(t *testing.T) {
-	d := newDeployment()
-	objects := []runtime.Object{newUnstructured(d)}
+	d := newUnstructured(newDeployment())
+	var structuredObj interface{}
+	err := runtime.DefaultUnstructuredConverter.FromUnstructured(d.Object, &structuredObj)
+	if err != nil {
+		t.Errorf("Error from unstructured: %s", err.Error())
+	}
+
+	objects := []runtime.Object{d}
 	resource := newResource("", []port.EntityMapping{
 		{
 			Identifier: ".metadata.name",
@@ -355,8 +471,12 @@ func TestGetEntitiesSet(t *testing.T) {
 		"k8s-export-test-bp;port-k8s-exporter": nil,
 	}
 
-	f := newFixture(t, "", "", "", resource, objects)
-	f.runControllerGetEntitiesSet(expectedEntitiesSet, false)
+	f := newFixture(t, &fixtureConfig{resource: resource, objects: objects})
+	f.runControllerGetEntitiesSet(expectedEntitiesSet, []interface{}{structuredObj}, false)
+
+	sendRawDataExamples := false
+	f = newFixture(t, &fixtureConfig{sendRawDataExamples: &sendRawDataExamples, resource: resource, objects: objects})
+	f.runControllerGetEntitiesSet(expectedEntitiesSet, []interface{}{}, false)
 }
 
 func TestUpdateHandlerWithIndividualPropertyChanges(t *testing.T) {
@@ -379,7 +499,7 @@ func TestUpdateHandlerWithIndividualPropertyChanges(t *testing.T) {
 					"generateName":      ".metadata.generateName",
 					"creationTimestamp": ".metadata.creationTimestamp",
 				},
-				Relations: map[string]string{
+				Relations: map[string]interface{}{
 					"k8s-relation": "\"e_AgPMYvq1tAs8TuqM\"",
 				},
 			},
@@ -392,7 +512,7 @@ func TestUpdateHandlerWithIndividualPropertyChanges(t *testing.T) {
 				Icon:       "\"Microservice\"",
 				Team:       "\"Test\"",
 				Properties: map[string]string{},
-				Relations:  map[string]string{},
+				Relations:  map[string]interface{}{},
 			},
 			{
 				Identifier: ".metadata.name",
@@ -405,7 +525,7 @@ func TestUpdateHandlerWithIndividualPropertyChanges(t *testing.T) {
 					"generateName":      ".metadata.generateName",
 					"creationTimestamp": ".metadata.creationTimestamp",
 				},
-				Relations: map[string]string{
+				Relations: map[string]interface{}{
 					"k8s-relation": "\"e_AgPMYvq1tAs8TuqM\"",
 				},
 			},
@@ -414,7 +534,7 @@ func TestUpdateHandlerWithIndividualPropertyChanges(t *testing.T) {
 
 	for _, mapping := range fullMapping {
 
-		controllerWithFullMapping := newFixture(t, "", "", "", mapping, []runtime.Object{}).controller
+		controllerWithFullMapping := newFixture(t, &fixtureConfig{resource: mapping, objects: []runtime.Object{}}).controller
 
 		// Test changes in each individual property
 		properties := map[string]Property{
