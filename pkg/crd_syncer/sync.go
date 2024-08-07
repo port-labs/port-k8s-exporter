@@ -1,4 +1,4 @@
-package crd
+package crdsyncer
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	crdSyncerV1alpha1 "github.com/port-labs/port-k8s-exporter/pkg/api/v1alpha1"
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
 	"github.com/port-labs/port-k8s-exporter/pkg/jq"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
@@ -348,13 +349,9 @@ func handleCRD(crds []v1.CustomResourceDefinition, portConfig *port.IntegrationA
 			_, err = cli.CreateAction(portClient, act)
 			if err != nil {
 				if strings.Contains(err.Error(), "taken") {
-					if portConfig.OverwriteCRDsActions {
-						_, err = cli.UpdateAction(portClient, act)
-						if err != nil {
-							klog.Errorf("Error updating blueprint action: %s", err.Error())
-						}
-					} else {
-						klog.Infof("Action already exists, if you wish to overwrite it, delete it first or provide the configuration overwriteCrdsActions: true, in the exporter configuration and resync")
+					_, err = cli.UpdateAction(portClient, act)
+					if err != nil {
+						klog.Errorf("Error updating blueprint action: %s", err.Error())
 					}
 				} else {
 					klog.Errorf("Error creating blueprint action: %s", err.Error())
@@ -364,19 +361,15 @@ func handleCRD(crds []v1.CustomResourceDefinition, portConfig *port.IntegrationA
 	}
 }
 
-func AutodiscoverCRDsToActions(portConfig *port.IntegrationAppConfig, apiExtensionsClient apiextensions.ApiextensionsV1Interface, portClient *cli.PortClient) {
-	if portConfig.CRDSToDiscover == "" {
-		klog.Info("Discovering CRDs is disabled")
-		return
-	}
-
-	klog.Infof("Discovering CRDs/XRDs with pattern: %s", portConfig.CRDSToDiscover)
-	crds, err := apiExtensionsClient.CustomResourceDefinitions().List(context.Background(), metav1.ListOptions{})
+func Sync(configurations []crdSyncerV1alpha1.CrdSyncer, apiExtensionsClient apiextensions.ApiextensionsV1Interface, portClient *cli.PortClient, crdName string) {
+	// Get all the CRDS
+	klog.Infof("Trying to export CRD/XRD: %s", crdName)
+	crd, err := apiExtensionsClient.CustomResourceDefinitions().Get(context.Background(), crdName, metav1.GetOptions{})
 
 	if err != nil {
-		klog.Errorf("Error listing CRDs: %s", err.Error())
+		klog.Errorf("Error getting CRD: %s", err.Error())
 		return
 	}
 
-	handleCRD(crds.Items, portConfig, portClient)
+	handleCRD([]v1.CustomResourceDefinition{*crd}, portConfig, portClient)
 }
