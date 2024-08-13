@@ -51,7 +51,7 @@ func (c *PortClient) ReadEntity(ctx context.Context, id string, blueprint string
 	return &pb.Entity, nil
 }
 
-func (c *PortClient) CreateEntity(ctx context.Context, e *port.Entity, runID string, createMissingRelatedEntities bool) (*port.Entity, error) {
+func (c *PortClient) CreateEntity(ctx context.Context, e *port.EntityRequest, runID string, createMissingRelatedEntities bool) (*port.Entity, error) {
 	pb := &port.ResponseBody{}
 	resp, err := c.Client.R().
 		SetBody(e).

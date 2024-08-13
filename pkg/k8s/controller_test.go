@@ -280,7 +280,7 @@ func TestJqSearchRelation(t *testing.T) {
 			},
 		},
 	}
-	res, _ := jq.ParseRelations(mapping[0].Relations, nil)
+	res, _ := jq.ParseMapRecursively(mapping[0].Relations, nil)
 	assert.Equal(t, res, map[string]interface{}{
 		"k8s-relation": map[string]interface{}{
 			"combinator": "or",

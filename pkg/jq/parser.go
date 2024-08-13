@@ -117,7 +117,7 @@ func ParseMapInterface(jqQueries map[string]string, obj interface{}) (map[string
 	return mapInterface, nil
 }
 
-func ParseRelations(jqQueries map[string]interface{}, obj interface{}) (map[string]interface{}, error) {
+func ParseMapRecursively(jqQueries map[string]interface{}, obj interface{}) (map[string]interface{}, error) {
 	mapInterface := make(map[string]interface{}, len(jqQueries))
 
 	for key, jqQuery := range jqQueries {
@@ -127,7 +127,7 @@ func ParseRelations(jqQueries map[string]interface{}, obj interface{}) (map[stri
 			mapInterface = goutils.MergeMaps(mapInterface, queryRes)
 		} else if reflect.TypeOf(jqQuery).Kind() == reflect.Map {
 			for mapKey, mapValue := range jqQuery.(map[string]interface{}) {
-				queryRes, _ := ParseRelations(map[string]interface{}{mapKey: mapValue}, obj)
+				queryRes, _ := ParseMapRecursively(map[string]interface{}{mapKey: mapValue}, obj)
 				for queryKey, queryVal := range queryRes {
 					if mapInterface[key] == nil {
 						mapInterface[key] = make(map[string]interface{})
@@ -139,7 +139,7 @@ func ParseRelations(jqQueries map[string]interface{}, obj interface{}) (map[stri
 			jqArrayValue := reflect.ValueOf(jqQuery)
 			relations := make([]interface{}, jqArrayValue.Len())
 			for i := 0; i < jqArrayValue.Len(); i++ {
-				relation, err := ParseRelations(map[string]interface{}{key: jqArrayValue.Index(i).Interface()}, obj)
+				relation, err := ParseMapRecursively(map[string]interface{}{key: jqArrayValue.Index(i).Interface()}, obj)
 				if err != nil {
 					return nil, err
 				}
