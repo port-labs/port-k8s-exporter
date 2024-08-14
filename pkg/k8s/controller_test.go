@@ -177,12 +177,6 @@ func newDeploymentWithCustomLabels(generation int64,
 	}
 }
 
-func newGvrToListKind() map[schema.GroupVersionResource]string {
-	return map[schema.GroupVersionResource]string{
-		{Group: "apps", Version: "v1", Resource: "deployments"}: "DeploymentList",
-	}
-}
-
 func newUnstructured(obj interface{}) *unstructured.Unstructured {
 	res, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
 	if err != nil {
