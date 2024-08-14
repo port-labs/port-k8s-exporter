@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/entity"
+	"reflect"
 	"time"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
@@ -265,7 +266,7 @@ func (c *Controller) objectHandler(obj interface{}, item EventItem) (*SyncResult
 				entitiesSet = nil
 			}
 
-			if entitiesSet != nil {
+			if entitiesSet != nil && item.ActionType != DeleteAction {
 				entitiesSet[c.portClient.GetEntityIdentifierKey(handledEntity)] = nil
 			}
 		}
@@ -372,6 +373,10 @@ func (c *Controller) entityHandler(portEntity port.EntityRequest, action EventAc
 		klog.V(0).Infof("Successfully upserted entity '%s' of blueprint '%s'", portEntity.Identifier, portEntity.Blueprint)
 		return upsertedEntity, nil
 	case DeleteAction:
+		if reflect.TypeOf(portEntity.Identifier).Kind() != reflect.String {
+			return nil, nil
+		}
+
 		result, err := entity.CheckIfOwnEntity(portEntity, c.portClient)
 		if err != nil {
 			return nil, fmt.Errorf("error checking if entity '%s' of blueprint '%s' is owned by this exporter: %v", portEntity.Identifier, portEntity.Blueprint, err)

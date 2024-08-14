@@ -79,17 +79,17 @@ func (c *ControllersHandler) Handle() {
 	for _, controller := range c.controllers {
 		controller := controller
 
-		klog.Infof("Waiting for informer cache to sync for resource '%s'", controller.Resource.Kind)
-		if err := controller.WaitForCacheSync(c.stopCh); err != nil {
-			klog.Fatalf("Error while waiting for informer cache sync: %s", err.Error())
-		}
-
 		go func() {
 			<-c.stopCh
 			klog.Info("Shutting down controllers")
 			controller.Shutdown()
 			klog.Info("Exporter exiting")
 		}()
+
+		klog.Infof("Waiting for informer cache to sync for resource '%s'", controller.Resource.Kind)
+		if err := controller.WaitForCacheSync(c.stopCh); err != nil {
+			klog.Fatalf("Error while waiting for informer cache sync: %s", err.Error())
+		}
 
 		syncWg.Add(1)
 		go func() {
@@ -116,7 +116,7 @@ func (c *ControllersHandler) Handle() {
 	defer cancelCtx()
 	go func() {
 		<-c.stopCh
-		ctx.Done()
+		cancelCtx()
 	}()
 
 	if shouldDeleteStaleEntities {
