@@ -123,11 +123,17 @@ func ParseMapRecursively(jqQueries map[string]interface{}, obj interface{}) (map
 	for key, jqQuery := range jqQueries {
 
 		if reflect.TypeOf(jqQuery).Kind() == reflect.String {
-			queryRes, _ := ParseMapInterface(map[string]string{key: jqQuery.(string)}, obj)
+			queryRes, err := ParseMapInterface(map[string]string{key: jqQuery.(string)}, obj)
+			if err != nil {
+				return nil, err
+			}
 			mapInterface = goutils.MergeMaps(mapInterface, queryRes)
 		} else if reflect.TypeOf(jqQuery).Kind() == reflect.Map {
 			for mapKey, mapValue := range jqQuery.(map[string]interface{}) {
-				queryRes, _ := ParseMapRecursively(map[string]interface{}{mapKey: mapValue}, obj)
+				queryRes, err := ParseMapRecursively(map[string]interface{}{mapKey: mapValue}, obj)
+				if err != nil {
+					return nil, err
+				}
 				for queryKey, queryVal := range queryRes {
 					if mapInterface[key] == nil {
 						mapInterface[key] = make(map[string]interface{})

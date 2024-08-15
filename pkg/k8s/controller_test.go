@@ -516,3 +516,41 @@ func TestUpdateHandlerWithIndividualPropertyChanges(t *testing.T) {
 		assert.True(t, result, fmt.Sprintf("Expected true when labels changes and feature flag is off"))
 	}
 }
+
+func TestCreateDeploymentWithSearchIdentifier(t *testing.T) {
+	d := newDeployment()
+	ud := newUnstructured(d)
+	objects := []runtime.Object{ud}
+	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
+	resource := newResource("", []port.EntityMapping{
+		{
+			Identifier: map[string]interface{}{
+				"combinator": "\"and\"",
+				"rules": []interface{}{
+					map[string]interface{}{
+						"property": "\"text\"",
+						"operator": "\"=\"",
+						"value":    "\"pod\"",
+					},
+				}},
+			Blueprint: fmt.Sprintf("\"%s\"", blueprint),
+			Icon:      "\"Microservice\"",
+			Team:      "\"Test\"",
+			Properties: map[string]string{
+				"text": "\"pod\"",
+				"num":  "1",
+				"bool": "true",
+				"obj":  ".spec.selector",
+				"arr":  ".spec.template.spec.containers",
+			},
+			Relations: map[string]interface{}{
+				"k8s-relation": "\"e_AgPMYvq1tAs8TuqM\"",
+			},
+		},
+	})
+	f := newFixture(t, &fixtureConfig{resource: resource, objects: objects})
+	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprint, d.Name): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
+
+	deleteItem := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
+	f.runControllerSyncHandler(deleteItem, &SyncResult{EntitiesSet: map[string]interface{}{}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
+}

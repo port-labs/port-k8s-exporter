@@ -2,20 +2,19 @@ package handlers
 
 import (
 	"context"
-	"github.com/port-labs/port-k8s-exporter/pkg/port/integration"
-	"sync"
-	"time"
-
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/crd"
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
 	"github.com/port-labs/port-k8s-exporter/pkg/k8s"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
+	"github.com/port-labs/port-k8s-exporter/pkg/port/integration"
 	"github.com/port-labs/port-k8s-exporter/pkg/signal"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/klog/v2"
+	"sync"
+	"time"
 )
 
 type ControllersHandler struct {
@@ -121,14 +120,14 @@ func (c *ControllersHandler) Handle() {
 
 	if shouldDeleteStaleEntities {
 		klog.Info("Deleting stale entities")
-		c.RunDeleteStaleEntities(ctx, currentEntitiesSets)
+		c.runDeleteStaleEntities(ctx, currentEntitiesSets)
 		klog.Info("Done deleting stale entities")
 	} else {
 		klog.Warning("Skipping delete of stale entities due to a failure in getting all current entities from k8s")
 	}
 }
 
-func (c *ControllersHandler) RunDeleteStaleEntities(ctx context.Context, currentEntitiesSet []map[string]interface{}) {
+func (c *ControllersHandler) runDeleteStaleEntities(ctx context.Context, currentEntitiesSet []map[string]interface{}) {
 	_, err := c.portClient.Authenticate(ctx, c.portClient.ClientID, c.portClient.ClientSecret)
 	if err != nil {
 		klog.Errorf("error authenticating with Port: %v", err)
