@@ -96,3 +96,17 @@ func (c *PortClient) PostIntegrationKindExample(stateKey string, kind string, ex
 	}
 	return nil
 }
+
+func (c *PortClient) GetIntegrationKinds(stateKey string) (map[string]port.IntegrationKind, error) {
+	pb := &port.IntegrationKindsResponse{}
+	resp, err := c.Client.R().
+		SetResult(&pb).
+		Get(fmt.Sprintf("v1/integration/%s/kinds", stateKey))
+	if err != nil {
+		return nil, err
+	}
+	if !pb.OK {
+		return nil, fmt.Errorf("failed to get integration kinds, got: %s", resp.Body())
+	}
+	return pb.Data, nil
+}

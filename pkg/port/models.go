@@ -38,6 +38,15 @@ type (
 		UpdatedAt           *time.Time             `json:"updatedAt,omitempty"`
 	}
 
+	Example struct {
+		Id   string         `json:"_id,omitempty"`
+		Data map[string]any `json:"data,omitempty"`
+	}
+
+	IntegrationKind struct {
+		Examples []Example `json:"examples"`
+	}
+
 	Property struct {
 		Type        string            `json:"type,omitempty"`
 		Title       string            `json:"title,omitempty"`
@@ -220,9 +229,14 @@ type ResponseBody struct {
 	Pages            Page                `json:"pages"`
 }
 
+type IntegrationKindsResponse struct {
+	OK   bool                       `json:"ok"`
+	Data map[string]IntegrationKind `json:"data"`
+}
+
 type EntityMapping struct {
 	Identifier interface{}            `json:"identifier" yaml:"identifier"`
-	Title      string                 `json:"title" yaml:"title"`
+	Title      string                 `json:"title,omitempty" yaml:"title,omitempty"`
 	Blueprint  string                 `json:"blueprint" yaml:"blueprint"`
 	Icon       string                 `json:"icon,omitempty" yaml:"icon,omitempty"`
 	Team       string                 `json:"team,omitempty" yaml:"team,omitempty"`
@@ -232,7 +246,7 @@ type EntityMapping struct {
 
 type EntityRequest struct {
 	Identifier interface{}            `json:"identifier" yaml:"identifier"`
-	Title      string                 `json:"title" yaml:"title"`
+	Title      string                 `json:"title,omitempty" yaml:"title,omitempty"`
 	Blueprint  string                 `json:"blueprint" yaml:"blueprint"`
 	Icon       string                 `json:"icon,omitempty" yaml:"icon,omitempty"`
 	Team       interface{}            `json:"team,omitempty" yaml:"team,omitempty"`

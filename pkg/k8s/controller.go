@@ -167,7 +167,9 @@ func (c *Controller) RunEventsSync(workers int, stopCh <-chan struct{}) {
 
 	for i := 0; i < workers; i++ {
 		go wait.Until(func() {
-			for _, _, shouldContinue := c.processNextWorkItem(c.eventsWorkqueue); shouldContinue; {
+			shouldContinue := true
+			for shouldContinue {
+				_, _, shouldContinue = c.processNextWorkItem(c.eventsWorkqueue)
 			}
 		}, time.Second, stopCh)
 	}
@@ -215,7 +217,7 @@ func (c *Controller) processNextWorkItem(workqueue workqueue.RateLimitingInterfa
 				requeueCounterDiff = 0
 			}
 			workqueue.AddRateLimited(obj)
-			return syncResult, requeueCounterDiff, fmt.Errorf("error syncing '%s' of resource '%s': %s, requeuing", item.Key, c.Resource.Kind, err.Error())
+			return nil, requeueCounterDiff, fmt.Errorf("error syncing '%s' of resource '%s': %s, requeuing", item.Key, c.Resource.Kind, err.Error())
 		}
 
 		workqueue.Forget(obj)
@@ -370,7 +372,7 @@ func (c *Controller) entityHandler(portEntity port.EntityRequest, action EventAc
 		if err != nil {
 			return nil, fmt.Errorf("error upserting Port entity '%s' of blueprint '%s': %v", portEntity.Identifier, portEntity.Blueprint, err)
 		}
-		klog.V(0).Infof("Successfully upserted entity '%s' of blueprint '%s'", portEntity.Identifier, portEntity.Blueprint)
+		klog.V(0).Infof("Successfully upserted entity '%s' of blueprint '%s'", upsertedEntity.Identifier, upsertedEntity.Blueprint)
 		return upsertedEntity, nil
 	case DeleteAction:
 		if reflect.TypeOf(portEntity.Identifier).Kind() != reflect.String {
