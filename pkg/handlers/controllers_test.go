@@ -446,6 +446,9 @@ func TestSuccessfulControllersHandle(t *testing.T) {
 	f := newFixture(t, &fixtureConfig{resources: resources, existingObjects: []runtime.Object{newUnstructured(de), newUnstructured(da)}, stateKey: guuid.NewString()})
 	defer f.portClient.DeleteIntegration(f.controllersHandler.stateKey)
 
+	// To test later that the delete stale entities is working
+	f.portClient.CreateEntity(context.Background(), &port.EntityRequest{Blueprint: blueprint, Identifier: guuid.NewString()}, "", false)
+
 	f.runControllersHandle()
 
 	f.assertObjectsHandled([]struct{ kind, name string }{{kind: deploymentKind, name: de.Name}, {kind: daemonSetKind, name: da.Name}})
