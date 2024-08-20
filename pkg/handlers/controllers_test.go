@@ -36,6 +36,7 @@ import (
 var (
 	blueprint      = "k8s-export-test-bp"
 	deploymentKind = "apps/v1/deployments"
+	daemonSetKind  = "apps/v1/daemonsets"
 )
 
 type fixture struct {
@@ -50,7 +51,7 @@ type fixtureConfig struct {
 	portClientSecret    string
 	stateKey            string
 	sendRawDataExamples *bool
-	resource            port.Resource
+	resources           []port.Resource
 	existingObjects     []runtime.Object
 }
 
@@ -97,7 +98,7 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 		DeleteDependents:             true,
 		CreateMissingRelatedEntities: true,
 		SendRawDataExamples:          sendRawDataExamples,
-		Resources:                    []port.Resource{fixtureConfig.resource},
+		Resources:                    fixtureConfig.resources,
 	}
 
 	applicationConfig := &config.ApplicationConfiguration{
@@ -137,31 +138,55 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 		CreateMissingRelatedEntities:    applicationConfig.CreateMissingRelatedEntities,
 	}
 
-	gvr := getGvr(fixtureConfig.resource.Kind)
+	groups := make([]metav1.APIGroup, 0)
+	resourceMap := make(map[string]*resourceMapEntry)
+
+	for _, resource := range integrationConfig.Resources {
+		gvr := getGvr(resource.Kind)
+		version := metav1.GroupVersionForDiscovery{Version: gvr.Version, GroupVersion: fmt.Sprintf("%s/%s", gvr.Group, gvr.Version)}
+		groupFound := false
+		for i, group := range groups {
+			if group.Name == gvr.Group {
+				groupFound = true
+				versionFound := false
+				for _, v := range group.Versions {
+					if v.Version == gvr.Version {
+						versionFound = true
+						break
+					}
+				}
+				if !versionFound {
+					groups[i].Versions = append(groups[i].Versions, version)
+				}
+			}
+		}
+		if !groupFound {
+			groups = append(groups, metav1.APIGroup{Name: gvr.Group, Versions: []metav1.GroupVersionForDiscovery{version}})
+		}
+		resourceMapKey := fmt.Sprintf("%s/%s", gvr.Group, gvr.Version)
+		apiResource := metav1.APIResource{
+			Name:       gvr.Resource,
+			Namespaced: true,
+			Group:      gvr.Group,
+			Version:    gvr.Version,
+		}
+		if _, ok := resourceMap[resourceMapKey]; ok {
+			resourceMap[resourceMapKey].list.APIResources = append(resourceMap[resourceMapKey].list.APIResources, apiResource)
+		} else {
+			resourceMap[resourceMapKey] = &resourceMapEntry{
+				list: &metav1.APIResourceList{
+					GroupVersion: resourceMapKey,
+					APIResources: []metav1.APIResource{apiResource},
+				},
+			}
+		}
+	}
 
 	fakeD := &fakeDiscovery{
 		groupList: &metav1.APIGroupList{
-			Groups: []metav1.APIGroup{{
-				Name: gvr.Group,
-				Versions: []metav1.GroupVersionForDiscovery{{
-					GroupVersion: fmt.Sprintf("%s/%s", gvr.Group, gvr.Version),
-					Version:      gvr.Version,
-				}},
-			}},
+			Groups: groups,
 		},
-		resourceMap: map[string]*resourceMapEntry{
-			fmt.Sprintf("%s/%s", gvr.Group, gvr.Version): {
-				list: &metav1.APIResourceList{
-					GroupVersion: fmt.Sprintf("%s/%s", gvr.Group, gvr.Version),
-					APIResources: []metav1.APIResource{{
-						Name:       gvr.Resource,
-						Namespaced: true,
-						Group:      gvr.Group,
-						Version:    gvr.Version,
-					}},
-				},
-			},
-		},
+		resourceMap: resourceMap,
 	}
 
 	kClient := fakeclientset.NewSimpleClientset()
@@ -188,9 +213,9 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 	}
 }
 
-func newResource(selectorQuery string, mappings []port.EntityMapping) port.Resource {
+func newResource(selectorQuery string, mappings []port.EntityMapping, kind string) port.Resource {
 	return port.Resource{
-		Kind: deploymentKind,
+		Kind: kind,
 		Selector: port.Selector{
 			Query: selectorQuery,
 		},
@@ -236,6 +261,40 @@ func newDeployment() *appsv1.Deployment {
 	}
 }
 
+func newDaemonSet() *appsv1.DaemonSet {
+	labels := map[string]string{
+		"app": "port-k8s-exporter",
+	}
+	return &appsv1.DaemonSet{
+		TypeMeta: v1.TypeMeta{
+			Kind:       "DaemonSet",
+			APIVersion: "apps/v1",
+		},
+		ObjectMeta: v1.ObjectMeta{
+			Name:      "port-k8s-exporter-ds",
+			Namespace: "port-k8s-exporter",
+		},
+		Spec: appsv1.DaemonSetSpec{
+			Selector: &v1.LabelSelector{
+				MatchLabels: labels,
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: v1.ObjectMeta{
+					Labels: labels,
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "port-k8s-exporter",
+							Image: "port-k8s-exporter:latest",
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
 func newUnstructured(obj interface{}) *unstructured.Unstructured {
 	res, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
 	if err != nil {
@@ -247,6 +306,7 @@ func newUnstructured(obj interface{}) *unstructured.Unstructured {
 func newGvrToListKind() map[schema.GroupVersionResource]string {
 	return map[schema.GroupVersionResource]string{
 		{Group: "apps", Version: "v1", Resource: "deployments"}: "DeploymentList",
+		{Group: "apps", Version: "v1", Resource: "daemonsets"}:  "DaemonSetList",
 	}
 }
 
@@ -255,7 +315,7 @@ func getGvr(kind string) schema.GroupVersionResource {
 	return schema.GroupVersionResource{Group: s[0], Version: s[1], Resource: s[2]}
 }
 
-func getBaseDeploymentResource() port.Resource {
+func getBaseResource(kind string) port.Resource {
 	return newResource("", []port.EntityMapping{
 		{
 			Identifier: ".metadata.name",
@@ -273,7 +333,7 @@ func getBaseDeploymentResource() port.Resource {
 				"k8s-relation": "\"e_AgPMYvq1tAs8TuqM\"",
 			},
 		},
-	})
+	}, kind)
 }
 
 func (f *fixture) createObjects(objects []*unstructured.Unstructured, kind string) {
@@ -312,22 +372,29 @@ func (f *fixture) deleteObjects(objects []struct{ kind, namespace, name string }
 	}
 }
 
-func (f *fixture) assertDeploymentHandled(d *appsv1.Deployment) {
+func (f *fixture) assertObjectsHandled(objects []struct{ kind, name string }) {
 	assert.Eventually(f.t, func() bool {
 		integrationKinds, err := f.portClient.GetIntegrationKinds(f.controllersHandler.stateKey)
 		if err != nil {
 			return false
 		}
 
-		examples := integrationKinds[deploymentKind].Examples
-		for _, example := range examples {
-			if example.Data["metadata"].(map[string]interface{})["name"] == d.GetName() {
-				return true
+		for _, obj := range objects {
+			examples := integrationKinds[obj.kind].Examples
+			found := false
+			for _, example := range examples {
+				if example.Data["metadata"].(map[string]interface{})["name"] == obj.name {
+					found = true
+					continue
+				}
+			}
+			if !found {
+				return false
 			}
 		}
 
-		return false
-	}, time.Second*5, time.Millisecond*500)
+		return true
+	}, time.Second*10, time.Millisecond*500)
 
 	assert.Eventually(f.t, func() bool {
 		entities, err := f.portClient.SearchEntities(context.Background(), port.SearchBody{
@@ -346,8 +413,21 @@ func (f *fixture) assertDeploymentHandled(d *appsv1.Deployment) {
 			Combinator: "and",
 		})
 
-		return err == nil && len(entities) == 1 && entities[0].Identifier == d.GetName()
-	}, time.Second*5, time.Millisecond*500)
+		for _, obj := range objects {
+			found := false
+			for _, entity := range entities {
+				if entity.Identifier == obj.name {
+					found = true
+					continue
+				}
+			}
+			if !found {
+				return false
+			}
+		}
+
+		return err == nil && len(entities) == len(objects)
+	}, time.Second*10, time.Millisecond*500)
 }
 
 func (f *fixture) runControllersHandle() {
@@ -355,46 +435,67 @@ func (f *fixture) runControllersHandle() {
 }
 
 func TestSuccessfulControllersHandle(t *testing.T) {
-	id := guuid.NewString()
-	d := newDeployment()
-	d.Name = id
-	ud := newUnstructured(d)
-	resource := getBaseDeploymentResource()
-	f := newFixture(t, &fixtureConfig{resource: resource, existingObjects: []runtime.Object{ud}})
+	de := newDeployment()
+	de.Name = guuid.NewString()
+	da := newDaemonSet()
+	da.Name = guuid.NewString()
+	resources := []port.Resource{getBaseResource(deploymentKind), getBaseResource(daemonSetKind)}
+	f := newFixture(t, &fixtureConfig{resources: resources, existingObjects: []runtime.Object{newUnstructured(de), newUnstructured(da)}})
 
 	f.runControllersHandle()
 
-	f.assertDeploymentHandled(d)
+	f.assertObjectsHandled([]struct{ kind, name string }{{kind: deploymentKind, name: de.Name}, {kind: daemonSetKind, name: da.Name}})
 
-	nid := guuid.NewString()
-	nd := newDeployment()
-	nd.Name = nid
-	f.createObjects([]*unstructured.Unstructured{newUnstructured(nd)}, deploymentKind)
+	nde := newDeployment()
+	nde.Name = guuid.NewString()
+	f.createObjects([]*unstructured.Unstructured{newUnstructured(nde)}, deploymentKind)
 
-	assert.Eventually(t, func() bool {
-		_, err := f.portClient.ReadEntity(context.Background(), nid, blueprint)
-		return err == nil
-	}, time.Second*5, time.Millisecond*500)
-
-	nd.Spec.Selector.MatchLabels["app"] = "new-label"
-	f.updateObjects([]*unstructured.Unstructured{newUnstructured(nd)}, deploymentKind)
+	nda := newDaemonSet()
+	nda.Name = guuid.NewString()
+	f.createObjects([]*unstructured.Unstructured{newUnstructured(nda)}, daemonSetKind)
 
 	assert.Eventually(t, func() bool {
-		entity, err := f.portClient.ReadEntity(context.Background(), nid, blueprint)
-		return err == nil && entity.Properties["obj"].(map[string]interface{})["matchLabels"].(map[string]interface{})["app"] == nd.Spec.Selector.MatchLabels["app"]
-	}, time.Second*5, time.Millisecond*500)
+		for _, eid := range []string{nde.Name, nda.Name} {
+			_, err := f.portClient.ReadEntity(context.Background(), eid, blueprint)
+			if err != nil {
+				return false
+			}
+		}
+		return true
+	}, time.Second*10, time.Millisecond*500)
 
-	f.deleteObjects([]struct{ kind, namespace, name string }{{kind: deploymentKind, namespace: nd.Namespace, name: nd.Name}})
+	nde.Spec.Selector.MatchLabels["app"] = "new-label"
+	f.updateObjects([]*unstructured.Unstructured{newUnstructured(nde)}, deploymentKind)
+	da.Spec.Selector.MatchLabels["app"] = "new-label"
+	f.updateObjects([]*unstructured.Unstructured{newUnstructured(da)}, daemonSetKind)
 
 	assert.Eventually(t, func() bool {
-		_, err := f.portClient.ReadEntity(context.Background(), nid, blueprint)
-		return err != nil && strings.Contains(err.Error(), "was not found")
-	}, time.Second*5, time.Millisecond*500)
+		entity, err := f.portClient.ReadEntity(context.Background(), nde.Name, blueprint)
+		if err != nil || entity.Properties["obj"].(map[string]interface{})["matchLabels"].(map[string]interface{})["app"] != nde.Spec.Selector.MatchLabels["app"] {
+			return false
+		}
+		entity, err = f.portClient.ReadEntity(context.Background(), da.Name, blueprint)
+		return err == nil && entity.Properties["obj"].(map[string]interface{})["matchLabels"].(map[string]interface{})["app"] == nde.Spec.Selector.MatchLabels["app"]
+	}, time.Second*10, time.Millisecond*500)
+
+	f.deleteObjects([]struct{ kind, namespace, name string }{
+		{kind: deploymentKind, namespace: de.Namespace, name: de.Name}, {kind: daemonSetKind, namespace: da.Namespace, name: da.Name},
+		{kind: deploymentKind, namespace: nde.Namespace, name: nde.Name}, {kind: daemonSetKind, namespace: nda.Namespace, name: nda.Name}})
+
+	assert.Eventually(t, func() bool {
+		for _, eid := range []string{de.Name, da.Name, nde.Name, nda.Name} {
+			_, err := f.portClient.ReadEntity(context.Background(), eid, blueprint)
+			if err == nil || !strings.Contains(err.Error(), "was not found") {
+				return false
+			}
+		}
+		return true
+	}, time.Second*10, time.Millisecond*500)
 }
 
 func TestControllersHandleTolerateFailure(t *testing.T) {
-	resource := getBaseDeploymentResource()
-	f := newFixture(t, &fixtureConfig{resource: resource, existingObjects: []runtime.Object{}})
+	resources := []port.Resource{getBaseResource(deploymentKind)}
+	f := newFixture(t, &fixtureConfig{resources: resources, existingObjects: []runtime.Object{}})
 
 	f.runControllersHandle()
 

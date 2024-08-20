@@ -248,47 +248,47 @@ func getBaseDeploymentResource() port.Resource {
 	})
 }
 
-func (f *fixture) createObjects(t *testing.T, objects []*unstructured.Unstructured) {
+func (f *fixture) createObjects(objects []*unstructured.Unstructured) {
 	gvr := getGvr(f.controller.Resource.Kind)
 	currentNumEventsInQueue := f.controller.eventsWorkqueue.Len()
 	if objects != nil {
 		for _, d := range objects {
 			_, err := f.kubeClient.Resource(gvr).Namespace(d.GetNamespace()).Create(context.TODO(), d, metav1.CreateOptions{})
 			if err != nil {
-				t.Errorf("error creating object %s: %v", d.GetName(), err)
+				f.t.Errorf("error creating object %s: %v", d.GetName(), err)
 			}
 		}
 
-		assert.Eventually(t, func() bool {
+		assert.Eventually(f.t, func() bool {
 			return f.controller.eventsWorkqueue.Len() == currentNumEventsInQueue+len(objects)
 		}, time.Second*2, time.Millisecond*100)
 	}
 }
 
-func (f *fixture) updateObjects(t *testing.T, objects []*unstructured.Unstructured) {
+func (f *fixture) updateObjects(objects []*unstructured.Unstructured) {
 	gvr := getGvr(f.controller.Resource.Kind)
 	currentNumEventsInQueue := f.controller.eventsWorkqueue.Len()
 	if objects != nil {
 		for _, d := range objects {
 			_, err := f.kubeClient.Resource(gvr).Namespace(d.GetNamespace()).Update(context.TODO(), d, metav1.UpdateOptions{})
 			if err != nil {
-				t.Errorf("error updating object %s: %v", d.GetName(), err)
+				f.t.Errorf("error updating object %s: %v", d.GetName(), err)
 			}
 		}
 
-		assert.Eventually(t, func() bool {
+		assert.Eventually(f.t, func() bool {
 			return f.controller.eventsWorkqueue.Len() == currentNumEventsInQueue+len(objects)
 		}, time.Second*2, time.Millisecond*100)
 	}
 }
 
-func (f *fixture) deleteObjects(t *testing.T, objects []struct{ namespace, name string }) {
+func (f *fixture) deleteObjects(objects []struct{ namespace, name string }) {
 	gvr := getGvr(f.controller.Resource.Kind)
 	if objects != nil {
 		for _, d := range objects {
 			err := f.kubeClient.Resource(gvr).Namespace(d.namespace).Delete(context.TODO(), d.name, metav1.DeleteOptions{})
 			if err != nil {
-				t.Errorf("error deleting object %s: %v", d.name, err)
+				f.t.Errorf("error deleting object %s: %v", d.name, err)
 			}
 		}
 	}
@@ -322,10 +322,15 @@ func (f *fixture) runControllerEventsSync() {
 }
 
 func TestSuccessfulRunInitialSync(t *testing.T) {
-	d := newDeployment()
-	ud := newUnstructured(d)
-	f := newFixture(t, &fixtureConfig{resource: getBaseDeploymentResource(), existingObjects: []runtime.Object{ud}})
-	f.runControllerInitialSync(&SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprint, d.Name): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true})
+	ud1 := newUnstructured(newDeployment())
+	ud1.SetName("deployment1")
+	ud2 := newUnstructured(newDeployment())
+	ud2.SetName("deployment2")
+	f := newFixture(t, &fixtureConfig{resource: getBaseDeploymentResource(), existingObjects: []runtime.Object{ud1, ud2}})
+	f.runControllerInitialSync(&SyncResult{
+		EntitiesSet:     map[string]interface{}{fmt.Sprintf("%s;%s", blueprint, ud1.GetName()): nil, fmt.Sprintf("%s;%s", blueprint, ud2.GetName()): nil},
+		RawDataExamples: []interface{}{ud1.Object, ud2.Object}, ShouldDeleteStaleEntities: true,
+	})
 }
 
 func TestRunInitialSyncWithSelectorQuery(t *testing.T) {
@@ -376,7 +381,7 @@ func TestRunEventsSyncWithCreateEvent(t *testing.T) {
 	})
 	f := newFixture(t, &fixtureConfig{stateKey: config.ApplicationConfig.StateKey, resource: resource, existingObjects: []runtime.Object{}})
 
-	f.createObjects(t, []*unstructured.Unstructured{ud})
+	f.createObjects([]*unstructured.Unstructured{ud})
 	defer f.controller.portClient.DeleteEntity(context.Background(), id, blueprint, true)
 	f.runControllerEventsSync()
 
@@ -403,7 +408,7 @@ func TestRunEventsSyncWithUpdateEvent(t *testing.T) {
 	}, time.Second*5, time.Millisecond*500)
 
 	d.Spec.Selector.MatchLabels["app"] = "new-label"
-	f.updateObjects(t, []*unstructured.Unstructured{newUnstructured(d)})
+	f.updateObjects([]*unstructured.Unstructured{newUnstructured(d)})
 	f.runControllerEventsSync()
 
 	assert.Eventually(t, func() bool {
@@ -424,7 +429,7 @@ func TestRunEventsSyncWithDeleteEvent(t *testing.T) {
 	f := newFixture(t, &fixtureConfig{stateKey: config.ApplicationConfig.StateKey, resource: resource, existingObjects: []runtime.Object{ud}})
 
 	f.runControllerInitialSync(&SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprint, "entityToBeDeleted"): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true})
-	f.deleteObjects(t, []struct{ namespace, name string }{{namespace: d.Namespace, name: d.Name}})
+	f.deleteObjects([]struct{ namespace, name string }{{namespace: d.Namespace, name: d.Name}})
 
 	assert.Eventually(t, func() bool {
 		_, err := f.controller.portClient.ReadEntity(context.Background(), "entityToBeDeleted", blueprint)
