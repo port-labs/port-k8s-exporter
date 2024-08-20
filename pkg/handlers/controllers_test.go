@@ -101,6 +101,12 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 		Resources:                    fixtureConfig.resources,
 	}
 
+	if fixtureConfig.stateKey != "" {
+		config.ApplicationConfig.StateKey = fixtureConfig.stateKey
+	} else {
+		config.ApplicationConfig.StateKey = "my-k8s-exporter"
+	}
+
 	applicationConfig := &config.ApplicationConfiguration{
 		ConfigFilePath:                  config.ApplicationConfig.ConfigFilePath,
 		ResyncInterval:                  config.ApplicationConfig.ResyncInterval,
@@ -122,9 +128,6 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 	}
 	if fixtureConfig.portClientSecret != "" {
 		applicationConfig.PortClientSecret = fixtureConfig.portClientSecret
-	}
-	if fixtureConfig.stateKey != "" {
-		applicationConfig.StateKey = fixtureConfig.stateKey
 	}
 
 	exporterConfig := &port.Config{
@@ -440,7 +443,8 @@ func TestSuccessfulControllersHandle(t *testing.T) {
 	da := newDaemonSet()
 	da.Name = guuid.NewString()
 	resources := []port.Resource{getBaseResource(deploymentKind), getBaseResource(daemonSetKind)}
-	f := newFixture(t, &fixtureConfig{resources: resources, existingObjects: []runtime.Object{newUnstructured(de), newUnstructured(da)}})
+	f := newFixture(t, &fixtureConfig{resources: resources, existingObjects: []runtime.Object{newUnstructured(de), newUnstructured(da)}, stateKey: guuid.NewString()})
+	defer f.portClient.DeleteIntegration(f.controllersHandler.stateKey)
 
 	f.runControllersHandle()
 
