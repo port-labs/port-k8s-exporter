@@ -51,3 +51,34 @@ func TestJqSearchRelation(t *testing.T) {
 	})
 
 }
+
+func TestJqSearchIdentifier(t *testing.T) {
+
+	mapping := []port.EntityMapping{
+		{
+			Identifier: map[string]interface{}{
+				"combinator": "\"and\"",
+				"rules": []interface{}{
+					map[string]interface{}{
+						"property": "\"prop1\"",
+						"operator": "\"in\"",
+						"value":    ".values",
+					},
+				},
+			},
+			Blueprint: fmt.Sprintf("\"%s\"", blueprint),
+		},
+	}
+	res, _ := ParseMapRecursively(mapping[0].Identifier.(map[string]interface{}), map[string]interface{}{"values": []string{"val1", "val2"}})
+	assert.Equal(t, res, map[string]interface{}{
+		"combinator": "and",
+		"rules": []interface{}{
+			map[string]interface{}{
+				"property": "prop1",
+				"operator": "in",
+				"value":    []string{"val1", "val2"},
+			},
+		},
+	})
+
+}

@@ -152,6 +152,8 @@ func ParseMapRecursively(jqQueries map[string]interface{}, obj interface{}) (map
 				relations[i] = relation[key]
 			}
 			mapInterface[key] = relations
+		} else {
+			return nil, fmt.Errorf("invalid jq query type '%T'", jqQuery)
 		}
 	}
 

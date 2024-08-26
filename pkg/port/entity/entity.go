@@ -87,6 +87,8 @@ func newEntityRequest(obj interface{}, mapping port.EntityMapping) (*port.Entity
 		entity.Identifier, err = jq.ParseString(mapping.Identifier.(string), obj)
 	} else if reflect.TypeOf(mapping.Identifier).Kind() == reflect.Map {
 		entity.Identifier, err = jq.ParseMapRecursively(mapping.Identifier.(map[string]interface{}), obj)
+	} else {
+		return nil, fmt.Errorf("invalid identifier type '%T'", mapping.Identifier)
 	}
 
 	if err != nil {
