@@ -23,6 +23,7 @@ type ControllersHandler struct {
 	stateKey         string
 	portClient       *cli.PortClient
 	stopCh           chan struct{}
+	isStopped        bool
 }
 
 func NewControllersHandler(exporterConfig *port.Config, portConfig *port.IntegrationAppConfig, k8sClient *k8s.Client, portClient *cli.PortClient) *ControllersHandler {
@@ -140,6 +141,11 @@ func (c *ControllersHandler) runDeleteStaleEntities(ctx context.Context, current
 }
 
 func (c *ControllersHandler) Stop() {
+	if c.isStopped {
+		return
+	}
+
 	klog.Info("Stopping controllers")
 	close(c.stopCh)
+	c.isStopped = true
 }

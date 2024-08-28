@@ -75,10 +75,8 @@ func (h *Handler) Run(resync func()) {
 			klog.Infof("Polling event listener iteration after %d seconds. Checking for changes...", h.pollingRate)
 			configuration, err := integration.GetIntegration(h.portClient, h.stateKey)
 			if err != nil {
-				klog.Errorf("error resyncing: %s", err.Error())
-			}
-
-			if reflect.DeepEqual(currentState, configuration) != true {
+				klog.Errorf("error getting integration: %s", err.Error())
+			} else if reflect.DeepEqual(currentState, configuration) != true {
 				klog.Infof("Changes detected. Resyncing...")
 				currentState = configuration
 				resync()

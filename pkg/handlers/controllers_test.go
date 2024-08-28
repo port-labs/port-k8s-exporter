@@ -527,3 +527,14 @@ func TestControllersHandleTolerateFailure(t *testing.T) {
 		return err != nil && strings.Contains(err.Error(), "was not found")
 	}, time.Second*5, time.Millisecond*500)
 }
+
+func TestControllersHandler_Stop(t *testing.T) {
+	resources := []port.Resource{getBaseResource(deploymentKind)}
+	f := newFixture(t, &fixtureConfig{resources: resources, existingObjects: []runtime.Object{}})
+
+	f.controllersHandler.Stop()
+	assert.True(t, f.controllersHandler.isStopped)
+	f.controllersHandler.Stop()
+	assert.True(t, f.controllersHandler.isStopped)
+	assert.Panics(t, func() { close(f.controllersHandler.stopCh) })
+}
