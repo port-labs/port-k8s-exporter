@@ -2,6 +2,7 @@ package event_handler
 
 import (
 	"fmt"
+	"github.com/port-labs/port-k8s-exporter/pkg/handlers"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/klog/v2"
 )
@@ -22,7 +23,7 @@ func Start(eventListener IListener, initControllerHandler func() (IStoppableRsyn
 
 	return eventListener.Run(func() {
 		klog.Infof("Resync request received. Recreating controllers for the new port configuration")
-		if controllerHandler != nil {
+		if controllerHandler != (*handlers.ControllersHandler)(nil) {
 			controllerHandler.Stop()
 		}
 

@@ -3,22 +3,18 @@ package k8s
 import (
 	"context"
 	"fmt"
+	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
+	"github.com/port-labs/port-k8s-exporter/pkg/port/entity"
+	"reflect"
 	"time"
-
-	"hash/fnv"
-	"strconv"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/jq"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
-	"github.com/port-labs/port-k8s-exporter/pkg/port/mapping"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
-
-	"encoding/json"
 
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -42,13 +38,22 @@ type EventItem struct {
 	ActionType EventActionType
 }
 
+type SyncResult struct {
+	EntitiesSet               map[string]interface{}
+	RawDataExamples           []interface{}
+	ShouldDeleteStaleEntities bool
+}
+
 type Controller struct {
-	Resource          port.AggregatedResource
-	portClient        *cli.PortClient
-	integrationConfig *port.IntegrationAppConfig
-	informer          cache.SharedIndexInformer
-	lister            cache.GenericLister
-	workqueue         workqueue.RateLimitingInterface
+	Resource             port.AggregatedResource
+	portClient           *cli.PortClient
+	integrationConfig    *port.IntegrationAppConfig
+	informer             cache.SharedIndexInformer
+	lister               cache.GenericLister
+	eventHandler         cache.ResourceEventHandlerRegistration
+	eventsWorkqueue      workqueue.RateLimitingInterface
+	initialSyncWorkqueue workqueue.RateLimitingInterface
+	isInitialSyncDone    bool
 }
 
 func NewController(resource port.AggregatedResource, informer informers.GenericInformer, integrationConfig *port.IntegrationAppConfig, applicationConfig *config.ApplicationConfiguration) *Controller {
@@ -58,22 +63,32 @@ func NewController(resource port.AggregatedResource, informer informers.GenericI
 	cli.WithDeleteDependents(integrationConfig.DeleteDependents)(portClient)
 	cli.WithCreateMissingRelatedEntities(integrationConfig.CreateMissingRelatedEntities)(portClient)
 	controller := &Controller{
-		Resource:          resource,
-		portClient:        portClient,
-		integrationConfig: integrationConfig,
-		informer:          informer.Informer(),
-		lister:            informer.Lister(),
-		workqueue:         workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		Resource:             resource,
+		portClient:           portClient,
+		integrationConfig:    integrationConfig,
+		informer:             informer.Informer(),
+		lister:               informer.Lister(),
+		initialSyncWorkqueue: workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		eventsWorkqueue:      workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 	}
 
-	controller.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	controller.eventHandler, _ = controller.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			var err error
 			var item EventItem
 			item.ActionType = CreateAction
 			item.Key, err = cache.MetaNamespaceKeyFunc(obj)
-			if err == nil {
-				controller.workqueue.Add(item)
+			if err != nil {
+				return
+			}
+
+			if controller.isInitialSyncDone || controller.eventHandler.HasSynced() {
+				if !controller.isInitialSyncDone {
+					controller.isInitialSyncDone = true
+				}
+				controller.eventsWorkqueue.Add(item)
+			} else {
+				controller.initialSyncWorkqueue.Add(item)
 			}
 		},
 		UpdateFunc: func(old interface{}, new interface{}) {
@@ -81,11 +96,12 @@ func NewController(resource port.AggregatedResource, informer informers.GenericI
 			var item EventItem
 			item.ActionType = UpdateAction
 			item.Key, err = cache.MetaNamespaceKeyFunc(new)
-			if err == nil {
+			if err != nil {
+				return
+			}
 
-				if controller.shouldSendUpdateEvent(old, new, integrationConfig.UpdateEntityOnlyOnDiff == nil || *(integrationConfig.UpdateEntityOnlyOnDiff)) {
-					controller.workqueue.Add(item)
-				}
+			if controller.shouldSendUpdateEvent(old, new, integrationConfig.UpdateEntityOnlyOnDiff == nil || *(integrationConfig.UpdateEntityOnlyOnDiff)) {
+				controller.eventsWorkqueue.Add(item)
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
@@ -93,11 +109,13 @@ func NewController(resource port.AggregatedResource, informer informers.GenericI
 			var item EventItem
 			item.ActionType = DeleteAction
 			item.Key, err = cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
-			if err == nil {
-				err = controller.objectHandler(obj, item)
-				if err != nil {
-					klog.Errorf("Error deleting item '%s' of resource '%s': %s", item.Key, resource.Kind, err.Error())
-				}
+			if err != nil {
+				return
+			}
+
+			_, err = controller.objectHandler(obj, item)
+			if err != nil {
+				klog.Errorf("Error deleting item '%s' of resource '%s': %s", item.Key, resource.Kind, err.Error())
 			}
 		},
 	})
@@ -106,13 +124,11 @@ func NewController(resource port.AggregatedResource, informer informers.GenericI
 }
 
 func (c *Controller) Shutdown() {
-	klog.Infof("Shutting down controller for resource '%s'", c.Resource.Kind)
-	c.workqueue.ShutDown()
-	klog.Infof("Closed controller for resource '%s'", c.Resource.Kind)
+	c.initialSyncWorkqueue.ShutDown()
+	c.eventsWorkqueue.ShutDown()
 }
 
 func (c *Controller) WaitForCacheSync(stopCh <-chan struct{}) error {
-	klog.Infof("Waiting for informer cache to sync for resource '%s'", c.Resource.Kind)
 	if ok := cache.WaitForCacheSync(stopCh, c.informer.HasSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
@@ -120,106 +136,154 @@ func (c *Controller) WaitForCacheSync(stopCh <-chan struct{}) error {
 	return nil
 }
 
-func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
+func (c *Controller) RunInitialSync() *SyncResult {
+	entitiesSet := make(map[string]interface{})
+	rawDataExamples := make([]interface{}, 0)
+	shouldDeleteStaleEntities := true
+	shouldContinue := true
+	requeueCounter := 0
+	var requeueCounterDiff int
+	var syncResult *SyncResult
+	for shouldContinue && (requeueCounter > 0 || c.initialSyncWorkqueue.Len() > 0 || !c.eventHandler.HasSynced()) {
+		syncResult, requeueCounterDiff, shouldContinue = c.processNextWorkItem(c.initialSyncWorkqueue)
+		requeueCounter += requeueCounterDiff
+		if syncResult != nil {
+			entitiesSet = goutils.MergeMaps(entitiesSet, syncResult.EntitiesSet)
+			amountOfExamplesToAdd := min(len(syncResult.RawDataExamples), MaxRawDataExamplesToSend-len(rawDataExamples))
+			rawDataExamples = append(rawDataExamples, syncResult.RawDataExamples[:amountOfExamplesToAdd]...)
+			shouldDeleteStaleEntities = shouldDeleteStaleEntities && syncResult.ShouldDeleteStaleEntities
+		}
+	}
+
+	return &SyncResult{
+		EntitiesSet:               entitiesSet,
+		RawDataExamples:           rawDataExamples,
+		ShouldDeleteStaleEntities: shouldDeleteStaleEntities,
+	}
+}
+
+func (c *Controller) RunEventsSync(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 
-	klog.Infof("Starting workers for resource '%s'", c.Resource.Kind)
 	for i := 0; i < workers; i++ {
-		go wait.Until(c.runWorker, time.Second, stopCh)
+		go wait.Until(func() {
+			shouldContinue := true
+			for shouldContinue {
+				_, _, shouldContinue = c.processNextWorkItem(c.eventsWorkqueue)
+			}
+		}, time.Second, stopCh)
 	}
-	klog.Infof("Started workers for resource '%s'", c.Resource.Kind)
 }
 
-func (c *Controller) runWorker() {
-	for c.processNextWorkItem() {
+func (c *Controller) processNextWorkItem(workqueue workqueue.RateLimitingInterface) (*SyncResult, int, bool) {
+	permanentErrorSyncResult := &SyncResult{
+		EntitiesSet:               make(map[string]interface{}),
+		RawDataExamples:           make([]interface{}, 0),
+		ShouldDeleteStaleEntities: false,
 	}
-}
 
-func (c *Controller) processNextWorkItem() bool {
-	obj, shutdown := c.workqueue.Get()
+	obj, shutdown := workqueue.Get()
 
 	if shutdown {
-		return false
+		return permanentErrorSyncResult, 0, false
 	}
 
-	err := func(obj interface{}) error {
-		defer c.workqueue.Done(obj)
+	syncResult, requeueCounterDiff, err := func(obj interface{}) (*SyncResult, int, error) {
+		defer workqueue.Done(obj)
+
+		numRequeues := workqueue.NumRequeues(obj)
+		requeueCounterDiff := 0
+		if numRequeues > 0 {
+			requeueCounterDiff = -1
+		}
 
 		item, ok := obj.(EventItem)
 
 		if !ok {
-			c.workqueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected event item of resource '%s' in workqueue but got %#v", c.Resource.Kind, obj))
-			return nil
+			workqueue.Forget(obj)
+			return permanentErrorSyncResult, requeueCounterDiff, fmt.Errorf("expected event item of resource '%s' in workqueue but got %#v", c.Resource.Kind, obj)
 		}
 
-		if err := c.syncHandler(item); err != nil {
-			if c.workqueue.NumRequeues(obj) >= MaxNumRequeues {
-				utilruntime.HandleError(fmt.Errorf("error syncing '%s' of resource '%s': %s, give up after %d requeues", item.Key, c.Resource.Kind, err.Error(), MaxNumRequeues))
-				return nil
+		syncResult, err := c.syncHandler(item)
+		if err != nil {
+			if numRequeues >= MaxNumRequeues {
+				workqueue.Forget(obj)
+				return syncResult, requeueCounterDiff, fmt.Errorf("error syncing '%s' of resource '%s': %s, give up after %d requeues", item.Key, c.Resource.Kind, err.Error(), MaxNumRequeues)
 			}
 
-			c.workqueue.AddRateLimited(obj)
-			return fmt.Errorf("error syncing '%s' of resource '%s': %s, requeuing", item.Key, c.Resource.Kind, err.Error())
+			if numRequeues == 0 {
+				requeueCounterDiff = 1
+			} else {
+				requeueCounterDiff = 0
+			}
+			workqueue.AddRateLimited(obj)
+			return nil, requeueCounterDiff, fmt.Errorf("error syncing '%s' of resource '%s': %s, requeuing", item.Key, c.Resource.Kind, err.Error())
 		}
 
-		c.workqueue.Forget(obj)
-		return nil
+		workqueue.Forget(obj)
+		return syncResult, requeueCounterDiff, nil
 	}(obj)
 
 	if err != nil {
 		utilruntime.HandleError(err)
-		return true
 	}
 
-	return true
+	return syncResult, requeueCounterDiff, true
 }
 
-func (c *Controller) syncHandler(item EventItem) error {
+func (c *Controller) syncHandler(item EventItem) (*SyncResult, error) {
 	obj, exists, err := c.informer.GetIndexer().GetByKey(item.Key)
 	if err != nil {
-		return fmt.Errorf("error fetching object with key '%s' from informer cache: %v", item.Key, err)
+		return nil, fmt.Errorf("error fetching object with key '%s' from informer cache: %v", item.Key, err)
 	}
 	if !exists {
 		utilruntime.HandleError(fmt.Errorf("'%s' in work queue no longer exists", item.Key))
-		return nil
+		return nil, nil
 	}
 
-	err = c.objectHandler(obj, item)
-	if err != nil {
-		return fmt.Errorf("error handling object with key '%s': %v", item.Key, err)
-	}
-
-	return nil
+	return c.objectHandler(obj, item)
 }
 
-func (c *Controller) objectHandler(obj interface{}, item EventItem) error {
-	_, err := c.portClient.Authenticate(context.Background(), c.portClient.ClientID, c.portClient.ClientSecret)
-	if err != nil {
-		return fmt.Errorf("error authenticating with Port: %v", err)
-	}
-
+func (c *Controller) objectHandler(obj interface{}, item EventItem) (*SyncResult, error) {
 	errors := make([]error, 0)
+	entitiesSet := make(map[string]interface{})
+	rawDataExamplesToReturn := make([]interface{}, 0)
 	for _, kindConfig := range c.Resource.KindConfigs {
-		portEntities, _, err := c.getObjectEntities(obj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
+		portEntities, rawDataExamples, err := c.getObjectEntities(obj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
 		if err != nil {
+			entitiesSet = nil
 			utilruntime.HandleError(fmt.Errorf("error getting entities for object key '%s': %v", item.Key, err))
 			continue
 		}
 
+		if rawDataExamplesToReturn != nil {
+			amountOfExamplesToAdd := min(len(rawDataExamples), MaxRawDataExamplesToSend-len(rawDataExamplesToReturn))
+			rawDataExamplesToReturn = append(rawDataExamplesToReturn, rawDataExamples[:amountOfExamplesToAdd]...)
+		}
+
 		for _, portEntity := range portEntities {
-			err = c.entityHandler(portEntity, item.ActionType)
+			handledEntity, err := c.entityHandler(portEntity, item.ActionType)
 			if err != nil {
 				errors = append(errors, err)
+				entitiesSet = nil
+			}
+
+			if entitiesSet != nil && item.ActionType != DeleteAction {
+				entitiesSet[c.portClient.GetEntityIdentifierKey(handledEntity)] = nil
 			}
 		}
 	}
 
+	var err error
 	if len(errors) > 0 {
-		return fmt.Errorf("error handling entity for object key '%s': %v", item.Key, errors)
+		err = fmt.Errorf("error handling entity for object key '%s': %v", item.Key, errors)
 	}
 
-	return nil
+	return &SyncResult{
+		EntitiesSet:               entitiesSet,
+		RawDataExamples:           rawDataExamplesToReturn,
+		ShouldDeleteStaleEntities: entitiesSet != nil,
+	}, err
 }
 
 func isPassSelector(obj interface{}, selector port.Selector) (bool, error) {
@@ -235,20 +299,7 @@ func isPassSelector(obj interface{}, selector port.Selector) (bool, error) {
 	return selectorResult, err
 }
 
-func mapEntities(obj interface{}, mappings []port.EntityMapping) ([]port.Entity, error) {
-	entities := make([]port.Entity, 0, len(mappings))
-	for _, entityMapping := range mappings {
-		portEntity, err := mapping.NewEntity(obj, entityMapping)
-		if err != nil {
-			return nil, fmt.Errorf("invalid entity mapping '%#v': %v", entityMapping, err)
-		}
-		entities = append(entities, *portEntity)
-	}
-
-	return entities, nil
-}
-
-func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, mappings []port.EntityMapping, itemsToParse string) ([]port.Entity, []interface{}, error) {
+func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, mappings []port.EntityMapping, itemsToParse string) ([]port.EntityRequest, []interface{}, error) {
 	unstructuredObj, ok := obj.(*unstructured.Unstructured)
 	if !ok {
 		return nil, nil, fmt.Errorf("error casting to unstructured")
@@ -259,7 +310,7 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 		return nil, nil, fmt.Errorf("error converting from unstructured: %v", err)
 	}
 
-	entities := make([]port.Entity, 0, len(mappings))
+	entities := make([]port.EntityRequest, 0, len(mappings))
 	objectsToMap := make([]interface{}, 0)
 
 	if itemsToParse == "" {
@@ -297,7 +348,7 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 			if *c.integrationConfig.SendRawDataExamples && len(rawDataExamples) < MaxRawDataExamplesToSend {
 				rawDataExamples = append(rawDataExamples, objectToMap)
 			}
-			currentEntities, err := mapEntities(objectToMap, mappings)
+			currentEntities, err := entity.MapEntities(objectToMap, mappings)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -309,117 +360,42 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 	return entities, rawDataExamples, nil
 }
 
-func checkIfOwnEntity(entity port.Entity, portClient *cli.PortClient) (*bool, error) {
-	portEntities, err := portClient.SearchEntities(context.Background(), port.SearchBody{
-		Rules: []port.Rule{
-			{
-				Property: "$datasource",
-				Operator: "contains",
-				Value:    "port-k8s-exporter",
-			},
-			{
-				Property: "$identifier",
-				Operator: "=",
-				Value:    entity.Identifier,
-			},
-			{
-				Property: "$datasource",
-				Operator: "contains",
-				Value:    fmt.Sprintf("statekey/%s", config.ApplicationConfig.StateKey),
-			},
-			{
-				Property: "$blueprint",
-				Operator: "=",
-				Value:    entity.Blueprint,
-			},
-		},
-		Combinator: "and",
-	})
+func (c *Controller) entityHandler(portEntity port.EntityRequest, action EventActionType) (*port.Entity, error) {
+	_, err := c.portClient.Authenticate(context.Background(), c.portClient.ClientID, c.portClient.ClientSecret)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error authenticating with Port: %v", err)
 	}
 
-	if len(portEntities) > 0 {
-		result := true
-		return &result, nil
-	}
-	result := false
-	return &result, nil
-}
-
-func (c *Controller) entityHandler(portEntity port.Entity, action EventActionType) error {
 	switch action {
 	case CreateAction, UpdateAction:
-		_, err := c.portClient.CreateEntity(context.Background(), &portEntity, "", c.portClient.CreateMissingRelatedEntities)
+		upsertedEntity, err := c.portClient.CreateEntity(context.Background(), &portEntity, "", c.portClient.CreateMissingRelatedEntities)
 		if err != nil {
-			return fmt.Errorf("error upserting Port entity '%s' of blueprint '%s': %v", portEntity.Identifier, portEntity.Blueprint, err)
+			return nil, fmt.Errorf("error upserting Port entity '%s' of blueprint '%s': %v", portEntity.Identifier, portEntity.Blueprint, err)
 		}
-		klog.V(0).Infof("Successfully upserted entity '%s' of blueprint '%s'", portEntity.Identifier, portEntity.Blueprint)
+		klog.V(0).Infof("Successfully upserted entity '%s' of blueprint '%s'", upsertedEntity.Identifier, upsertedEntity.Blueprint)
+		return upsertedEntity, nil
 	case DeleteAction:
-		result, err := checkIfOwnEntity(portEntity, c.portClient)
+		if reflect.TypeOf(portEntity.Identifier).Kind() != reflect.String {
+			return nil, nil
+		}
+
+		result, err := entity.CheckIfOwnEntity(portEntity, c.portClient)
 		if err != nil {
-			return fmt.Errorf("error checking if entity '%s' of blueprint '%s' is owned by this exporter: %v", portEntity.Identifier, portEntity.Blueprint, err)
+			return nil, fmt.Errorf("error checking if entity '%s' of blueprint '%s' is owned by this exporter: %v", portEntity.Identifier, portEntity.Blueprint, err)
 		}
 
 		if *result {
-			err := c.portClient.DeleteEntity(context.Background(), portEntity.Identifier, portEntity.Blueprint, c.portClient.DeleteDependents)
+			err := c.portClient.DeleteEntity(context.Background(), portEntity.Identifier.(string), portEntity.Blueprint, c.portClient.DeleteDependents)
 			if err != nil {
-				return fmt.Errorf("error deleting Port entity '%s' of blueprint '%s': %v", portEntity.Identifier, portEntity.Blueprint, err)
+				return nil, fmt.Errorf("error deleting Port entity '%s' of blueprint '%s': %v", portEntity.Identifier, portEntity.Blueprint, err)
 			}
 			klog.V(0).Infof("Successfully deleted entity '%s' of blueprint '%s'", portEntity.Identifier, portEntity.Blueprint)
 		} else {
 			klog.Warningf("trying to delete entity but didn't find it in port with this exporter ownership, entity id: '%s', blueprint:'%s'", portEntity.Identifier, portEntity.Blueprint)
 		}
-
 	}
 
-	return nil
-}
-
-func (c *Controller) GetEntitiesSet() (map[string]interface{}, []interface{}, error) {
-	k8sEntitiesSet := map[string]interface{}{}
-	objects, err := c.lister.List(labels.Everything())
-	if err != nil {
-		return nil, nil, fmt.Errorf("error listing K8s objects of resource '%s': %v", c.Resource.Kind, err)
-	}
-
-	rawDataExamples := make([]interface{}, 0)
-	for _, obj := range objects {
-		for _, kindConfig := range c.Resource.KindConfigs {
-			mappings := make([]port.EntityMapping, 0, len(kindConfig.Port.Entity.Mappings))
-			for _, m := range kindConfig.Port.Entity.Mappings {
-				mappings = append(mappings, port.EntityMapping{
-					Identifier: m.Identifier,
-					Blueprint:  m.Blueprint,
-				})
-			}
-			entities, examples, err := c.getObjectEntities(obj, kindConfig.Selector, mappings, kindConfig.Port.ItemsToParse)
-			if err != nil {
-				return nil, nil, fmt.Errorf("error getting entities of object: %v", err)
-			}
-			for _, entity := range entities {
-				k8sEntitiesSet[c.portClient.GetEntityIdentifierKey(&entity)] = nil
-			}
-			rawDataExamples = append(rawDataExamples, examples[:min(len(examples), MaxRawDataExamplesToSend-len(rawDataExamples))]...)
-		}
-	}
-
-	return k8sEntitiesSet, rawDataExamples, nil
-}
-
-func hashAllEntities(entities []port.Entity) (string, error) {
-	h := fnv.New64a()
-	for _, entity := range entities {
-		entityBytes, err := json.Marshal(entity)
-		if err != nil {
-			return "", err
-		}
-		_, err = h.Write(entityBytes)
-		if err != nil {
-			return "", err
-		}
-	}
-	return strconv.FormatUint(h.Sum64(), 10), nil
+	return nil, nil
 }
 
 func (c *Controller) shouldSendUpdateEvent(old interface{}, new interface{}, updateEntityOnlyOnDiff bool) bool {
@@ -438,12 +414,12 @@ func (c *Controller) shouldSendUpdateEvent(old interface{}, new interface{}, upd
 			klog.Errorf("Error getting new entities: %v", err)
 			return true
 		}
-		oldEntitiesHash, err := hashAllEntities(oldEntities)
+		oldEntitiesHash, err := entity.HashAllEntities(oldEntities)
 		if err != nil {
 			klog.Errorf("Error hashing old entities: %v", err)
 			return true
 		}
-		newEntitiesHash, err := hashAllEntities(newEntities)
+		newEntitiesHash, err := entity.HashAllEntities(newEntities)
 		if err != nil {
 			klog.Errorf("Error hashing new entities: %v", err)
 			return true
