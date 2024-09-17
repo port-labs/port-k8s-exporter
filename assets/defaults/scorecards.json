@@ -22,7 +22,7 @@
             }
           },
           {
-            "identifier": "hasLimits",
+            "identifier": "hasLimitsRule",
             "title": "All containers have CPU and Memory limits",
             "level": "Bronze",
             "query": {
