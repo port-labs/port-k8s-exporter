@@ -1,5 +1,7 @@
 FROM alpine:3.20
 
+RUN apk upgrade libssl3 libcrypto3
+
 COPY assets/ /assets
 
 ENTRYPOINT ["/usr/bin/port-k8s-exporter"]
