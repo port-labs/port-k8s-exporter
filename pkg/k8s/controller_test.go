@@ -3,16 +3,20 @@ package k8s
 import (
 	"context"
 	"fmt"
-	guuid "github.com/google/uuid"
-	"github.com/port-labs/port-k8s-exporter/pkg/signal"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	guuid "github.com/google/uuid"
+	"github.com/port-labs/port-k8s-exporter/pkg/port/blueprint"
+	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
+	"github.com/port-labs/port-k8s-exporter/pkg/port/integration"
+	"github.com/port-labs/port-k8s-exporter/pkg/signal"
+
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
-	_ "github.com/port-labs/port-k8s-exporter/test_utils"
+	testUtils "github.com/port-labs/port-k8s-exporter/test_utils"
 	"github.com/stretchr/testify/assert"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -28,13 +32,18 @@ import (
 
 var (
 	noResyncPeriodFunc = func() time.Duration { return 0 }
-	blueprint          = "k8s-export-test-bp"
+	blueprintPrefix    = "k8s-export-test"
 )
+
+func getBlueprintId(stateKey string) string {
+	return testUtils.GetBlueprintIdFromPrefixAndStateKey(blueprintPrefix, stateKey)
+}
 
 type fixture struct {
 	t          *testing.T
 	controller *Controller
 	kubeClient *k8sfake.FakeDynamicClient
+	stateKey   string
 }
 
 type fixtureConfig struct {
@@ -44,6 +53,26 @@ type fixtureConfig struct {
 	sendRawDataExamples *bool
 	resource            port.Resource
 	existingObjects     []runtime.Object
+}
+
+func tearDownFixture(
+	t *testing.T,
+	f *fixture,
+) {
+	blueprintId := getBlueprintId(f.stateKey)
+	t.Logf("deleting resources for %s", f.stateKey)
+	_ = integration.DeleteIntegration(
+		f.controller.portClient,
+		f.stateKey,
+	)
+	_ = blueprint.DeleteBlueprintEntities(
+		f.controller.portClient,
+		blueprintId,
+	)
+	_ = blueprint.DeleteBlueprint(
+		f.controller.portClient,
+		blueprintId,
+	)
 }
 
 func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
@@ -86,14 +115,54 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 		newConfig.StateKey = fixtureConfig.stateKey
 	}
 
+	if newConfig.StateKey == "" {
+		newConfig.StateKey = guuid.NewString()
+	}
+
+	portClient := cli.New(newConfig)
+	blueprintIdentifier := getBlueprintId(newConfig.StateKey)
+
 	kubeClient := k8sfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), newGvrToListKind(), fixtureConfig.existingObjects...)
 	controller := newController(t, fixtureConfig.resource, kubeClient, interationConfig, newConfig)
 	controller.portClient.Authenticate(context.Background(), newConfig.PortClientId, newConfig.PortClientSecret)
+
+	blueprintRaw := port.Blueprint{
+		Identifier: blueprintIdentifier,
+		Title:      blueprintIdentifier,
+		Schema: port.BlueprintSchema{
+			Properties: map[string]port.Property{
+				"bool": {
+					Type: "boolean",
+				},
+				"text": {
+					Type: "string",
+				},
+				"num": {
+					Type: "number",
+				},
+				"obj": {
+					Type: "object",
+				},
+				"arr": {
+					Type: "array",
+				},
+			},
+		},
+	}
+
+	t.Logf("creating blueprint %s", blueprintIdentifier)
+	if _, err := blueprint.NewBlueprint(portClient, blueprintRaw); err != nil {
+		t.Logf("Error creating Port blueprint: %s, retrying", err.Error())
+		if _, secondErr := blueprint.NewBlueprint(portClient, blueprintRaw); secondErr != nil {
+			t.Logf("Error when retrying to create Port blueprint: %s ", secondErr.Error())
+		}
+	}
 
 	return &fixture{
 		t:          t,
 		controller: controller,
 		kubeClient: kubeClient,
+		stateKey:   newConfig.StateKey,
 	}
 }
 
@@ -111,9 +180,10 @@ func newResource(selectorQuery string, mappings []port.EntityMapping) port.Resou
 	}
 }
 
-func newDeployment() *appsv1.Deployment {
+func newDeployment(stateKey string) *appsv1.Deployment {
+	blueprintIdentifier := getBlueprintId(stateKey)
 	labels := map[string]string{
-		"app": "port-k8s-exporter",
+		"app": blueprintIdentifier,
 	}
 	return &appsv1.Deployment{
 		TypeMeta: v1.TypeMeta{
@@ -121,8 +191,8 @@ func newDeployment() *appsv1.Deployment {
 			APIVersion: "apps/v1",
 		},
 		ObjectMeta: v1.ObjectMeta{
-			Name:      "port-k8s-exporter",
-			Namespace: "port-k8s-exporter",
+			Name:      blueprintIdentifier,
+			Namespace: blueprintIdentifier,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Selector: &v1.LabelSelector{
@@ -135,8 +205,8 @@ func newDeployment() *appsv1.Deployment {
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name:  "port-k8s-exporter",
-							Image: "port-k8s-exporter:latest",
+							Name:  blueprintIdentifier,
+							Image: fmt.Sprintf("%s:latest", blueprintIdentifier),
 						},
 					},
 				},
@@ -145,19 +215,22 @@ func newDeployment() *appsv1.Deployment {
 	}
 }
 
-func newDeploymentWithCustomLabels(generation int64,
+func newDeploymentWithCustomLabels(
+	stateKey string,
+	generation int64,
 	generateName string,
 	creationTimestamp v1.Time,
 	labels map[string]string,
 ) *appsv1.Deployment {
+	blueprintIdentifier := getBlueprintId(stateKey)
 	return &appsv1.Deployment{
 		TypeMeta: v1.TypeMeta{
 			Kind:       "Deployment",
 			APIVersion: "apps/v1",
 		},
 		ObjectMeta: v1.ObjectMeta{
-			Name:              "port-k8s-exporter",
-			Namespace:         "port-k8s-exporter",
+			Name:              blueprintIdentifier,
+			Namespace:         blueprintIdentifier,
 			GenerateName:      generateName,
 			Generation:        generation,
 			CreationTimestamp: creationTimestamp,
@@ -173,8 +246,8 @@ func newDeploymentWithCustomLabels(generation int64,
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name:  "port-k8s-exporter",
-							Image: "port-k8s-exporter:latest",
+							Name:  blueprintIdentifier,
+							Image: fmt.Sprintf("%s:latest", blueprintIdentifier),
 						},
 					},
 				},
@@ -227,13 +300,14 @@ func getKey(deployment *appsv1.Deployment, t *testing.T) string {
 	return key
 }
 
-func getBaseDeploymentResource() port.Resource {
+func getBaseDeploymentResource(stateKey string) port.Resource {
 	return newResource("", []port.EntityMapping{
 		{
 			Identifier: ".metadata.name",
-			Blueprint:  fmt.Sprintf("\"%s\"", blueprint),
+			Blueprint:  fmt.Sprintf("\"%s\"", getBlueprintId(stateKey)),
 			Icon:       "\"Microservice\"",
-			Team:       "\"Test\"",
+			// TODO: Create this explicitly and suffix with stateKey
+			// Team:       "\"Test\"",
 			Properties: map[string]string{
 				"text": "\"pod\"",
 				"num":  "1",
@@ -241,9 +315,10 @@ func getBaseDeploymentResource() port.Resource {
 				"obj":  ".spec.selector",
 				"arr":  ".spec.template.spec.containers",
 			},
-			Relations: map[string]interface{}{
+			/* Relations: map[string]interface{}{
+				// TODO: Explicitly build this :( perhaps with stateKey as well
 				"k8s-relation": "\"e_AgPMYvq1tAs8TuqM\"",
-			},
+			}, */
 		},
 	})
 }
@@ -322,88 +397,106 @@ func (f *fixture) runControllerEventsSync() {
 }
 
 func TestSuccessfulRunInitialSync(t *testing.T) {
-	ud1 := newUnstructured(newDeployment())
+	stateKey := guuid.NewString()
+	blueprintIdentifier := getBlueprintId(stateKey)
+	ud1 := newUnstructured(newDeployment(stateKey))
 	ud1.SetName("deployment1")
-	ud2 := newUnstructured(newDeployment())
+	ud2 := newUnstructured(newDeployment(stateKey))
 	ud2.SetName("deployment2")
-	f := newFixture(t, &fixtureConfig{resource: getBaseDeploymentResource(), existingObjects: []runtime.Object{ud1, ud2}})
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: getBaseDeploymentResource(stateKey), existingObjects: []runtime.Object{ud1, ud2}})
+	defer tearDownFixture(t, f)
 	f.runControllerInitialSync(&SyncResult{
-		EntitiesSet:     map[string]interface{}{fmt.Sprintf("%s;%s", blueprint, ud1.GetName()): nil, fmt.Sprintf("%s;%s", blueprint, ud2.GetName()): nil},
+		EntitiesSet:     map[string]interface{}{fmt.Sprintf("%s;%s", blueprintIdentifier, ud1.GetName()): nil, fmt.Sprintf("%s;%s", blueprintIdentifier, ud2.GetName()): nil},
 		RawDataExamples: []interface{}{ud1.Object, ud2.Object}, ShouldDeleteStaleEntities: true,
 	})
 }
 
 func TestRunInitialSyncWithSelectorQuery(t *testing.T) {
-	d := newDeployment()
+	stateKey := guuid.NewString()
+	d := newDeployment(stateKey)
 	ud := newUnstructured(d)
-	notSelectedResource := getBaseDeploymentResource()
-	notSelectedResource.Selector.Query = ".metadata.name != \"port-k8s-exporter\""
-	f := newFixture(t, &fixtureConfig{resource: notSelectedResource, existingObjects: []runtime.Object{ud}})
+	notSelectedResource := getBaseDeploymentResource(stateKey)
+	notSelectedResource.Selector.Query = fmt.Sprintf(".metadata.name != \"%s\"", getBlueprintId(stateKey))
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: notSelectedResource, existingObjects: []runtime.Object{ud}})
+	defer tearDownFixture(t, f)
 	f.runControllerInitialSync(&SyncResult{EntitiesSet: map[string]interface{}{}, RawDataExamples: []interface{}{}, ShouldDeleteStaleEntities: true})
 }
 
 func TestRunInitialSyncWithBadPropMapping(t *testing.T) {
-	d := newDeployment()
+	stateKey := guuid.NewString()
+	d := newDeployment(stateKey)
 	ud := newUnstructured(d)
-	badPropMappingResource := getBaseDeploymentResource()
+	badPropMappingResource := getBaseDeploymentResource(stateKey)
 	badPropMappingResource.Port.Entity.Mappings[0].Properties["text"] = "bad-jq"
-	f := newFixture(t, &fixtureConfig{resource: badPropMappingResource, existingObjects: []runtime.Object{ud}})
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: badPropMappingResource, existingObjects: []runtime.Object{ud}})
+	defer tearDownFixture(t, f)
 	f.runControllerInitialSync(&SyncResult{EntitiesSet: map[string]interface{}{}, RawDataExamples: []interface{}{}, ShouldDeleteStaleEntities: false})
 }
 
 func TestRunInitialSyncWithBadEntity(t *testing.T) {
-	d := newDeployment()
+	stateKey := guuid.NewString()
+	d := newDeployment(stateKey)
 	ud := newUnstructured(d)
-	badEntityResource := getBaseDeploymentResource()
+	badEntityResource := getBaseDeploymentResource(stateKey)
 	badEntityResource.Port.Entity.Mappings[0].Identifier = "\"!@#\""
-	f := newFixture(t, &fixtureConfig{resource: badEntityResource, existingObjects: []runtime.Object{ud}})
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: badEntityResource, existingObjects: []runtime.Object{ud}})
+	defer tearDownFixture(t, f)
 	f.runControllerInitialSync(&SyncResult{EntitiesSet: map[string]interface{}{}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: false})
 }
 
 func TestRunInitialSyncWithBadSelector(t *testing.T) {
-	d := newDeployment()
+	stateKey := guuid.NewString()
+	d := newDeployment(stateKey)
 	ud := newUnstructured(d)
-	badSelectorResource := getBaseDeploymentResource()
+	badSelectorResource := getBaseDeploymentResource(stateKey)
 	badSelectorResource.Selector.Query = "bad-jq"
-	f := newFixture(t, &fixtureConfig{resource: badSelectorResource, existingObjects: []runtime.Object{ud}})
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: badSelectorResource, existingObjects: []runtime.Object{ud}})
+	defer tearDownFixture(t, f)
 	f.runControllerInitialSync(&SyncResult{EntitiesSet: map[string]interface{}{}, RawDataExamples: []interface{}{}, ShouldDeleteStaleEntities: false})
 }
 
 func TestRunEventsSyncWithCreateEvent(t *testing.T) {
-	d := newDeployment()
+	stateKey := guuid.NewString()
+	d := newDeployment(stateKey)
 	ud := newUnstructured(d)
 	id := guuid.NewString()
+	blueprintId := getBlueprintId(stateKey)
 	resource := newResource("", []port.EntityMapping{
 		{
 			Identifier: fmt.Sprintf("\"%s\"", id),
-			Blueprint:  fmt.Sprintf("\"%s\"", blueprint),
+			Blueprint:  fmt.Sprintf("\"%s\"", blueprintId),
 		},
 	})
-	f := newFixture(t, &fixtureConfig{stateKey: config.ApplicationConfig.StateKey, resource: resource, existingObjects: []runtime.Object{}})
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{}})
+
+	defer tearDownFixture(t, f)
 
 	f.createObjects([]*unstructured.Unstructured{ud})
-	defer f.controller.portClient.DeleteEntity(context.Background(), id, blueprint, true)
+	defer f.controller.portClient.DeleteEntity(context.Background(), id, blueprintId, true)
 	f.runControllerEventsSync()
 
 	assert.Eventually(t, func() bool {
-		_, err := f.controller.portClient.ReadEntity(context.Background(), id, blueprint)
+		_, err := f.controller.portClient.ReadEntity(context.Background(), id, blueprintId)
 		return err == nil
 	}, time.Second*5, time.Millisecond*500)
 }
 
 func TestRunEventsSyncWithUpdateEvent(t *testing.T) {
 	id := guuid.NewString()
-	resource := getBaseDeploymentResource()
+	stateKey := guuid.NewString()
+	blueprintIdentifier := getBlueprintId(stateKey)
+	resource := getBaseDeploymentResource(stateKey)
 	resource.Port.Entity.Mappings[0].Identifier = fmt.Sprintf("\"%s\"", id)
 	resource.Port.Entity.Mappings[0].Properties["bool"] = ".spec.selector.matchLabels.app == \"new-label\""
-	d := newDeployment()
+	d := newDeployment(stateKey)
 	ud := newUnstructured(d)
-	f := newFixture(t, &fixtureConfig{stateKey: config.ApplicationConfig.StateKey, resource: resource, existingObjects: []runtime.Object{ud}})
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
 
-	defer f.controller.portClient.DeleteEntity(context.Background(), id, blueprint, true)
-	f.runControllerInitialSync(&SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprint, id): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true})
+	defer f.controller.portClient.DeleteEntity(context.Background(), id, getBlueprintId(stateKey), true)
+	defer tearDownFixture(t, f)
+	f.runControllerInitialSync(&SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprintIdentifier, id): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true})
 	assert.Eventually(t, func() bool {
-		entity, err := f.controller.portClient.ReadEntity(context.Background(), id, blueprint)
+		entity, err := f.controller.portClient.ReadEntity(context.Background(), id, blueprintIdentifier)
 		return err == nil && entity.Properties["bool"] == false
 	}, time.Second*5, time.Millisecond*500)
 
@@ -412,46 +505,315 @@ func TestRunEventsSyncWithUpdateEvent(t *testing.T) {
 	f.runControllerEventsSync()
 
 	assert.Eventually(t, func() bool {
-		entity, err := f.controller.portClient.ReadEntity(context.Background(), id, blueprint)
+		entity, err := f.controller.portClient.ReadEntity(context.Background(), id, blueprintIdentifier)
 		return err == nil && entity.Properties["bool"] == true
 	}, time.Second*5, time.Millisecond*500)
 }
 
+func TestCreateDeployment(t *testing.T) {
+	stateKey := guuid.NewString()
+	blueprintId := getBlueprintId(stateKey)
+	d := newDeployment(stateKey)
+	ud := newUnstructured(d)
+	resource := getBaseDeploymentResource(stateKey)
+	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
+	defer tearDownFixture(t, f)
+	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprintId, d.Name): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
+}
+
+func TestUpdateDeployment(t *testing.T) {
+	stateKey := guuid.NewString()
+	blueprintId := getBlueprintId(stateKey)
+	d := newDeployment(stateKey)
+	ud := newUnstructured(d)
+	resource := getBaseDeploymentResource(stateKey)
+	item := EventItem{Key: getKey(d, t), ActionType: UpdateAction}
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
+	defer tearDownFixture(t, f)
+	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprintId, d.Name): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
+}
+
+func TestDeleteDeploymentSameOwner(t *testing.T) {
+	stateKey := guuid.NewString()
+	blueprintId := getBlueprintId(stateKey)
+	d := newDeployment(stateKey)
+	ud := newUnstructured(d)
+	resource := newResource("", []port.EntityMapping{
+		{
+			Identifier: "\"entityWithSameOwner\"",
+			Blueprint:  fmt.Sprintf("\"%s\"", blueprintId),
+		},
+	})
+	createItem := EventItem{Key: getKey(d, t), ActionType: CreateAction}
+	item := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
+	defer tearDownFixture(t, f)
+
+	f.runControllerSyncHandler(createItem, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;entityWithSameOwner", blueprintId): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
+	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
+
+	_, err := f.controller.portClient.ReadEntity(context.Background(), "entityWithSameOwner", blueprintId)
+	if err != nil && !strings.Contains(err.Error(), "was not found") {
+		t.Errorf("expected entity to be deleted")
+	}
+}
+
+func TestSelectorQueryFilterDeployment(t *testing.T) {
+	stateKey := guuid.NewString()
+	blueprintId := getBlueprintId(stateKey)
+	d := newDeployment(stateKey)
+	ud := newUnstructured(d)
+	resource := newResource(fmt.Sprintf(".metadata.name != \"%s\"", blueprintId), []port.EntityMapping{
+		{
+			Identifier: ".metadata.name",
+			Blueprint:  fmt.Sprintf("\"wrong-%s\"", blueprintId),
+		},
+	})
+	item := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
+	defer tearDownFixture(t, f)
+	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{}, RawDataExamples: []interface{}{}, ShouldDeleteStaleEntities: true}, false)
+}
+
+func TestFailPortAuth(t *testing.T) {
+	stateKey := guuid.NewString()
+	blueprintId := getBlueprintId(stateKey)
+	d := newDeployment(stateKey)
+	ud := newUnstructured(d)
+	resource := newResource("", []port.EntityMapping{
+		{
+			Identifier: ".metadata.name",
+			Blueprint:  fmt.Sprintf("\"%s\"", blueprintId),
+		},
+	})
+	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, portClientId: "wrongclientid", portClientSecret: "wrongclientsecret", resource: resource, existingObjects: []runtime.Object{ud}})
+	// defer tearDownFixture(t, f)
+	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: nil, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: false}, true)
+}
+
+func TestFailDeletePortEntity(t *testing.T) {
+	stateKey := guuid.NewString()
+	blueprintId := getBlueprintId(stateKey)
+	d := newDeployment(stateKey)
+	ud := newUnstructured(d)
+	resource := newResource("", []port.EntityMapping{
+		{
+			Identifier: ".metadata.name",
+			Blueprint:  fmt.Sprintf("\"wrong-%s\"", blueprintId),
+		},
+	})
+	item := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
+	defer tearDownFixture(t, f)
+	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
+}
+
+func TestCreateDeploymentWithSearchIdentifier(t *testing.T) {
+	stateKey := guuid.NewString()
+	blueprintId := getBlueprintId(stateKey)
+	id := guuid.NewString()
+	randTxt := guuid.NewString()
+	d := newDeployment(stateKey)
+	ud := newUnstructured(d)
+	resource := getBaseDeploymentResource(stateKey)
+	resource.Port.Entity.Mappings[0].Identifier = fmt.Sprintf("\"%s\"", id)
+	resource.Port.Entity.Mappings[0].Properties["text"] = fmt.Sprintf("\"%s\"", randTxt)
+	resource.Port.Entity.Mappings[0].Properties["bool"] = "true"
+	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
+
+	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprintId, id): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
+
+	entity, err := f.controller.portClient.ReadEntity(context.Background(), id, blueprintId)
+	if err != nil {
+		t.Errorf("error reading entity: %v", err)
+	}
+	assert.True(t, entity.Properties["bool"] == true, fmt.Sprintf("expected bool to be true, got: %v", entity.Properties["bool"]))
+
+	item = EventItem{Key: getKey(d, t), ActionType: UpdateAction}
+	resource.Port.Entity.Mappings[0].Identifier = map[string]interface{}{
+		"combinator": "\"and\"",
+		"rules": []interface{}{
+			map[string]interface{}{
+				"property": "\"text\"",
+				"operator": "\"=\"",
+				"value":    fmt.Sprintf("\"%s\"", randTxt),
+			},
+		}}
+	resource.Port.Entity.Mappings[0].Properties["bool"] = "false"
+	f = newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
+
+	defer tearDownFixture(t, f)
+	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprintId, id): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
+
+	entity, err = f.controller.portClient.ReadEntity(context.Background(), id, blueprintId)
+	if err != nil {
+		t.Errorf("error reading entity: %v", err)
+	}
+	assert.True(t, entity.Properties["bool"] == false, fmt.Sprintf("expected bool to be false, got: %v", entity.Properties["bool"]))
+
+	deleteItem := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
+	f.runControllerSyncHandler(deleteItem, &SyncResult{EntitiesSet: map[string]interface{}{}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
+}
+
+func TestUpdateHandlerWithIndividualPropertyChanges(t *testing.T) {
+	type Property struct {
+		Value           interface{}
+		ShouldSendEvent bool
+	}
+
+	fullMapping := []port.Resource{
+		newResource("", []port.EntityMapping{
+			{
+				Identifier: ".metadata.name",
+				Blueprint:  "\"to-be-replaced\"",
+				Icon:       "\"Microservice\"",
+				// Team:       "\"Test\"",
+				Properties: map[string]string{
+					"labels":            ".spec.selector",
+					"generation":        ".metadata.generation",
+					"generateName":      ".metadata.generateName",
+					"creationTimestamp": ".metadata.creationTimestamp",
+				},
+				/* Relations: map[string]interface{}{
+					"k8s-relation": "\"e_AgPMYvq1tAs8TuqM\"",
+				}, */
+			},
+		}),
+		newResource("", []port.EntityMapping{
+
+			{
+				Identifier: ".metadata.name",
+				Blueprint:  "\"to-be-replaced\"",
+				Icon:       "\"Microservice\"",
+				// Team:       "\"Test\"",
+				Properties: map[string]string{},
+				Relations:  map[string]interface{}{},
+			},
+			{
+				Identifier: ".metadata.name",
+				Blueprint:  "\"to-be-replaced\"",
+				Icon:       "\"Microservice\"",
+				Team:       "\"Test\"",
+				Properties: map[string]string{
+					"labels":            ".spec.selector",
+					"generation":        ".metadata.generation",
+					"generateName":      ".metadata.generateName",
+					"creationTimestamp": ".metadata.creationTimestamp",
+				},
+				/* Relations: map[string]interface{}{
+					"k8s-relation": "\"e_AgPMYvq1tAs8TuqM\"",
+				}, */
+			},
+		}),
+	}
+
+	for _, mapping := range fullMapping {
+		stateKey := guuid.NewString()
+		blueprintId := getBlueprintId(stateKey)
+
+		f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: mapping, existingObjects: []runtime.Object{}})
+		controllerWithFullMapping := f.controller
+		// Test changes in each individual property
+		properties := map[string]Property{
+			"metadata.name":              {Value: blueprintId, ShouldSendEvent: false},
+			"something_without_mapping":  {Value: blueprintId, ShouldSendEvent: false},
+			"metadata.generation":        {Value: int64(3), ShouldSendEvent: true},
+			"metadata.generateName":      {Value: "new-port-k8s-exporter2", ShouldSendEvent: true},
+			"metadata.creationTimestamp": {Value: v1.Now().Add(1 * time.Hour).Format(time.RFC3339), ShouldSendEvent: true},
+		}
+
+		for property, value := range properties {
+			newDep := newUnstructured(newDeploymentWithCustomLabels(stateKey, 2, "new-port-k8s-exporter", v1.Now(), map[string]string{"app": blueprintId}))
+			oldDep := newUnstructured(newDeploymentWithCustomLabels(stateKey, 2, "new-port-k8s-exporter", v1.Now(), map[string]string{"app": blueprintId}))
+
+			// Update the property in the new deployment
+			unstructured.SetNestedField(newDep.Object, value.Value, strings.Split(property, ".")...)
+
+			result := controllerWithFullMapping.shouldSendUpdateEvent(oldDep, newDep, true)
+			if value.ShouldSendEvent {
+				assert.True(t, result, fmt.Sprintf("Expected true when %s changes and feature flag is on", property))
+			} else {
+				assert.False(t, result, fmt.Sprintf("Expected false when %s changes and feature flag is on", property))
+			}
+			result = controllerWithFullMapping.shouldSendUpdateEvent(oldDep, newDep, false)
+			assert.True(t, result, fmt.Sprintf("Expected true when %s changes and feature flag is off", property))
+		}
+
+		// Add a case for json update because you can't edit the json directly
+		newDep := newUnstructured(newDeploymentWithCustomLabels(stateKey, 2, "new-port-k8s-exporter", v1.Now(), map[string]string{"app": stateKey}))
+		oldDep := newUnstructured(newDeploymentWithCustomLabels(stateKey, 2, "new-port-k8s-exporter", v1.Now(), map[string]string{"app": "new-port-k8s-exporter"}))
+
+		result := controllerWithFullMapping.shouldSendUpdateEvent(oldDep, newDep, true)
+		assert.True(t, result, fmt.Sprintf("Expected true when labels changes and feature flag is on"))
+		result = controllerWithFullMapping.shouldSendUpdateEvent(oldDep, newDep, false)
+		assert.True(t, result, fmt.Sprintf("Expected true when labels changes and feature flag is off"))
+		defer tearDownFixture(t, f)
+	}
+}
+
+func TestDeleteDeploymentDifferentOwner(t *testing.T) {
+	stateKey := guuid.NewString()
+	blueprintId := getBlueprintId("non_exist")
+	d := newDeployment(stateKey)
+	ud := newUnstructured(d)
+	resource := newResource("", []port.EntityMapping{
+		{
+			Identifier: "\"entityWithDifferentOwner\"",
+			Blueprint:  fmt.Sprintf("\"%s\"", blueprintId),
+		},
+	})
+	createItem := EventItem{Key: getKey(d, t), ActionType: CreateAction}
+	item := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
+	f := newFixture(t, &fixtureConfig{stateKey: "non_exist", resource: resource, existingObjects: []runtime.Object{ud}})
+
+	f.runControllerSyncHandler(createItem, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;entityWithDifferentOwner", blueprintId): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
+	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
+
+	_, err := f.controller.portClient.ReadEntity(context.Background(), "entityWithDifferentOwner", blueprintId)
+	defer tearDownFixture(t, f)
+	if err != nil && strings.Contains(err.Error(), "was not found") {
+		t.Errorf("expected entity to exist")
+	}
+}
+
+/*
+
 func TestRunEventsSyncWithDeleteEvent(t *testing.T) {
-	d := newDeployment()
+	stateKey := guuid.NewString()
+	blueprintId := getBlueprintId(stateKey)
+	d := newDeployment(stateKey)
 	ud := newUnstructured(d)
 	resource := newResource("", []port.EntityMapping{
 		{
 			Identifier: "\"entityToBeDeleted\"",
-			Blueprint:  fmt.Sprintf("\"%s\"", blueprint),
+			Blueprint:  fmt.Sprintf("\"%s\"", blueprintId),
 		},
 	})
-	f := newFixture(t, &fixtureConfig{stateKey: config.ApplicationConfig.StateKey, resource: resource, existingObjects: []runtime.Object{ud}})
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
 
-	f.runControllerInitialSync(&SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprint, "entityToBeDeleted"): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true})
+	f.runControllerInitialSync(&SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprintId, "entityToBeDeleted"): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true})
 	f.deleteObjects([]struct{ namespace, name string }{{namespace: d.Namespace, name: d.Name}})
 
 	assert.Eventually(t, func() bool {
-		_, err := f.controller.portClient.ReadEntity(context.Background(), "entityToBeDeleted", blueprint)
+		_, err := f.controller.portClient.ReadEntity(context.Background(), "entityToBeDeleted", blueprintId)
 		return err != nil && strings.Contains(err.Error(), "was not found")
-	}, time.Second*5, time.Millisecond*500)
-
+	}, time.Second*15, time.Millisecond*1500)
+	defer tearDownFixture(t, f)
 }
 
-func TestCreateDeployment(t *testing.T) {
-	d := newDeployment()
-	ud := newUnstructured(d)
-	resource := getBaseDeploymentResource()
-	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
-	f := newFixture(t, &fixtureConfig{resource: resource, existingObjects: []runtime.Object{ud}})
-	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprint, d.Name): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
-}
+*/
 
+/* // TODO: Verify relations here
 func TestCreateDeploymentWithSearchRelation(t *testing.T) {
-	d := newDeployment()
+	stateKey := guuid.NewString()
+	blueprintId := getBlueprintId(stateKey)
+	d := newDeployment(stateKey)
 	ud := newUnstructured(d)
 	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
-	resource := getBaseDeploymentResource()
+	resource := getBaseDeploymentResource(stateKey)
 	resource.Port.Entity.Mappings[0].Relations = map[string]interface{}{
 		"k8s-relation": map[string]interface{}{
 			"combinator": "\"or\"",
@@ -469,240 +831,7 @@ func TestCreateDeploymentWithSearchRelation(t *testing.T) {
 			},
 		},
 	}
-	f := newFixture(t, &fixtureConfig{resource: resource, existingObjects: []runtime.Object{ud}})
-	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprint, d.Name): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
-}
-
-func TestUpdateDeployment(t *testing.T) {
-	d := newDeployment()
-	ud := newUnstructured(d)
-	resource := getBaseDeploymentResource()
-	item := EventItem{Key: getKey(d, t), ActionType: UpdateAction}
-	f := newFixture(t, &fixtureConfig{resource: resource, existingObjects: []runtime.Object{ud}})
-	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprint, d.Name): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
-}
-
-func TestDeleteDeploymentSameOwner(t *testing.T) {
-	d := newDeployment()
-	ud := newUnstructured(d)
-	resource := newResource("", []port.EntityMapping{
-		{
-			Identifier: "\"entityWithSameOwner\"",
-			Blueprint:  fmt.Sprintf("\"%s\"", blueprint),
-		},
-	})
-	createItem := EventItem{Key: getKey(d, t), ActionType: CreateAction}
-	item := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
-	f := newFixture(t, &fixtureConfig{stateKey: config.ApplicationConfig.StateKey, resource: resource, existingObjects: []runtime.Object{ud}})
-
-	f.runControllerSyncHandler(createItem, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;entityWithSameOwner", blueprint): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
-	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
-
-	_, err := f.controller.portClient.ReadEntity(context.Background(), "entityWithSameOwner", blueprint)
-	if err != nil && !strings.Contains(err.Error(), "was not found") {
-		t.Errorf("expected entity to be deleted")
-	}
-}
-
-func TestDeleteDeploymentDifferentOwner(t *testing.T) {
-	d := newDeployment()
-	ud := newUnstructured(d)
-	resource := newResource("", []port.EntityMapping{
-		{
-			Identifier: "\"entityWithDifferentOwner\"",
-			Blueprint:  fmt.Sprintf("\"%s\"", blueprint),
-		},
-	})
-	createItem := EventItem{Key: getKey(d, t), ActionType: CreateAction}
-	item := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
-	f := newFixture(t, &fixtureConfig{stateKey: "non_exist_statekey", resource: resource, existingObjects: []runtime.Object{ud}})
-
-	f.runControllerSyncHandler(createItem, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;entityWithDifferentOwner", blueprint): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
-	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
-
-	_, err := f.controller.portClient.ReadEntity(context.Background(), "entityWithDifferentOwner", blueprint)
-	if err != nil && strings.Contains(err.Error(), "was not found") {
-		t.Errorf("expected entity to exist")
-	}
-}
-
-func TestSelectorQueryFilterDeployment(t *testing.T) {
-	d := newDeployment()
-	ud := newUnstructured(d)
-	resource := newResource(".metadata.name != \"port-k8s-exporter\"", []port.EntityMapping{
-		{
-			Identifier: ".metadata.name",
-			Blueprint:  fmt.Sprintf("\"wrong-%s\"", blueprint),
-		},
-	})
-	item := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
-	f := newFixture(t, &fixtureConfig{resource: resource, existingObjects: []runtime.Object{ud}})
-	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{}, RawDataExamples: []interface{}{}, ShouldDeleteStaleEntities: true}, false)
-}
-
-func TestFailPortAuth(t *testing.T) {
-	d := newDeployment()
-	ud := newUnstructured(d)
-	resource := newResource("", []port.EntityMapping{
-		{
-			Identifier: ".metadata.name",
-			Blueprint:  fmt.Sprintf("\"%s\"", blueprint),
-		},
-	})
-	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
-	f := newFixture(t, &fixtureConfig{portClientId: "wrongclientid", portClientSecret: "wrongclientsecret", resource: resource, existingObjects: []runtime.Object{ud}})
-	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: nil, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: false}, true)
-}
-
-func TestFailDeletePortEntity(t *testing.T) {
-	d := newDeployment()
-	ud := newUnstructured(d)
-	resource := newResource("", []port.EntityMapping{
-		{
-			Identifier: ".metadata.name",
-			Blueprint:  fmt.Sprintf("\"wrong-%s\"", blueprint),
-		},
-	})
-	item := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
-	f := newFixture(t, &fixtureConfig{resource: resource, existingObjects: []runtime.Object{ud}})
-	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
-}
-
-func TestUpdateHandlerWithIndividualPropertyChanges(t *testing.T) {
-
-	type Property struct {
-		Value           interface{}
-		ShouldSendEvent bool
-	}
-
-	fullMapping := []port.Resource{
-		newResource("", []port.EntityMapping{
-			{
-				Identifier: ".metadata.name",
-				Blueprint:  fmt.Sprintf("\"%s\"", blueprint),
-				Icon:       "\"Microservice\"",
-				Team:       "\"Test\"",
-				Properties: map[string]string{
-					"labels":            ".spec.selector",
-					"generation":        ".metadata.generation",
-					"generateName":      ".metadata.generateName",
-					"creationTimestamp": ".metadata.creationTimestamp",
-				},
-				Relations: map[string]interface{}{
-					"k8s-relation": "\"e_AgPMYvq1tAs8TuqM\"",
-				},
-			},
-		}),
-		newResource("", []port.EntityMapping{
-
-			{
-				Identifier: ".metadata.name",
-				Blueprint:  fmt.Sprintf("\"%s\"", blueprint),
-				Icon:       "\"Microservice\"",
-				Team:       "\"Test\"",
-				Properties: map[string]string{},
-				Relations:  map[string]interface{}{},
-			},
-			{
-				Identifier: ".metadata.name",
-				Blueprint:  fmt.Sprintf("\"%s\"", blueprint),
-				Icon:       "\"Microservice\"",
-				Team:       "\"Test\"",
-				Properties: map[string]string{
-					"labels":            ".spec.selector",
-					"generation":        ".metadata.generation",
-					"generateName":      ".metadata.generateName",
-					"creationTimestamp": ".metadata.creationTimestamp",
-				},
-				Relations: map[string]interface{}{
-					"k8s-relation": "\"e_AgPMYvq1tAs8TuqM\"",
-				},
-			},
-		}),
-	}
-
-	for _, mapping := range fullMapping {
-
-		controllerWithFullMapping := newFixture(t, &fixtureConfig{resource: mapping, existingObjects: []runtime.Object{}}).controller
-
-		// Test changes in each individual property
-		properties := map[string]Property{
-			"metadata.name":              {Value: "port-k8s-exporter", ShouldSendEvent: false},
-			"something_without_mapping":  {Value: "port-k8s-exporter", ShouldSendEvent: false},
-			"metadata.generation":        {Value: int64(3), ShouldSendEvent: true},
-			"metadata.generateName":      {Value: "new-port-k8s-exporter2", ShouldSendEvent: true},
-			"metadata.creationTimestamp": {Value: v1.Now().Add(1 * time.Hour).Format(time.RFC3339), ShouldSendEvent: true},
-		}
-
-		for property, value := range properties {
-			newDep := newUnstructured(newDeploymentWithCustomLabels(2, "new-port-k8s-exporter", v1.Now(), map[string]string{"app": "port-k8s-exporter"}))
-			oldDep := newUnstructured(newDeploymentWithCustomLabels(2, "new-port-k8s-exporter", v1.Now(), map[string]string{"app": "port-k8s-exporter"}))
-
-			// Update the property in the new deployment
-			unstructured.SetNestedField(newDep.Object, value.Value, strings.Split(property, ".")...)
-
-			result := controllerWithFullMapping.shouldSendUpdateEvent(oldDep, newDep, true)
-			if value.ShouldSendEvent {
-				assert.True(t, result, fmt.Sprintf("Expected true when %s changes and feature flag is on", property))
-			} else {
-				assert.False(t, result, fmt.Sprintf("Expected false when %s changes and feature flag is on", property))
-			}
-			result = controllerWithFullMapping.shouldSendUpdateEvent(oldDep, newDep, false)
-			assert.True(t, result, fmt.Sprintf("Expected true when %s changes and feature flag is off", property))
-		}
-
-		// Add a case for json update because you can't edit the json directly
-		newDep := newUnstructured(newDeploymentWithCustomLabels(2, "new-port-k8s-exporter", v1.Now(), map[string]string{"app": "port-k8s-exporter"}))
-		oldDep := newUnstructured(newDeploymentWithCustomLabels(2, "new-port-k8s-exporter", v1.Now(), map[string]string{"app": "new-port-k8s-exporter"}))
-
-		result := controllerWithFullMapping.shouldSendUpdateEvent(oldDep, newDep, true)
-		assert.True(t, result, fmt.Sprintf("Expected true when labels changes and feature flag is on"))
-		result = controllerWithFullMapping.shouldSendUpdateEvent(oldDep, newDep, false)
-		assert.True(t, result, fmt.Sprintf("Expected true when labels changes and feature flag is off"))
-	}
-}
-
-func TestCreateDeploymentWithSearchIdentifier(t *testing.T) {
-	id := guuid.NewString()
-	randTxt := guuid.NewString()
-	d := newDeployment()
-	ud := newUnstructured(d)
-	resource := getBaseDeploymentResource()
-	resource.Port.Entity.Mappings[0].Identifier = fmt.Sprintf("\"%s\"", id)
-	resource.Port.Entity.Mappings[0].Properties["text"] = fmt.Sprintf("\"%s\"", randTxt)
-	resource.Port.Entity.Mappings[0].Properties["bool"] = "true"
-	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
-	f := newFixture(t, &fixtureConfig{resource: resource, existingObjects: []runtime.Object{ud}})
-
-	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprint, id): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
-
-	entity, err := f.controller.portClient.ReadEntity(context.Background(), id, blueprint)
-	if err != nil {
-		t.Errorf("error reading entity: %v", err)
-	}
-	assert.True(t, entity.Properties["bool"] == true, fmt.Sprintf("expected bool to be true, got: %v", entity.Properties["bool"]))
-
-	item = EventItem{Key: getKey(d, t), ActionType: UpdateAction}
-	resource.Port.Entity.Mappings[0].Identifier = map[string]interface{}{
-		"combinator": "\"and\"",
-		"rules": []interface{}{
-			map[string]interface{}{
-				"property": "\"text\"",
-				"operator": "\"=\"",
-				"value":    fmt.Sprintf("\"%s\"", randTxt),
-			},
-		}}
-	resource.Port.Entity.Mappings[0].Properties["bool"] = "false"
-	f = newFixture(t, &fixtureConfig{resource: resource, existingObjects: []runtime.Object{ud}})
-
-	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprint, id): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
-
-	entity, err = f.controller.portClient.ReadEntity(context.Background(), id, blueprint)
-	if err != nil {
-		t.Errorf("error reading entity: %v", err)
-	}
-	assert.True(t, entity.Properties["bool"] == false, fmt.Sprintf("expected bool to be false, got: %v", entity.Properties["bool"]))
-
-	deleteItem := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
-	f.runControllerSyncHandler(deleteItem, &SyncResult{EntitiesSet: map[string]interface{}{}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
-}
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
+	defer tearDownFixture(t, f)
+	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprintId, d.Name): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
+} */

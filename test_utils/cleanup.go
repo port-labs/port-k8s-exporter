@@ -9,7 +9,15 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func CheckResourcesExistence(shouldExist bool, portClient *cli.PortClient, t *testing.T, blueprints []string, pages []string, actions []string) {
+func CheckResourcesExistence(
+	shouldExist bool,
+	shouldDeleteEntities bool,
+	portClient *cli.PortClient,
+	t *testing.T,
+	blueprints []string,
+	pages []string,
+	actions []string,
+) {
 	for _, a := range actions {
 		_, err := cli.GetAction(portClient, a)
 		if err == nil {
@@ -25,6 +33,9 @@ func CheckResourcesExistence(shouldExist bool, portClient *cli.PortClient, t *te
 	for _, bp := range blueprints {
 		_, err := blueprint.GetBlueprint(portClient, bp)
 		if err == nil {
+			if shouldDeleteEntities {
+				_ = blueprint.DeleteBlueprintEntities(portClient, bp)
+			}
 			_ = blueprint.DeleteBlueprint(portClient, bp)
 		}
 		if shouldExist {

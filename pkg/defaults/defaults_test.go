@@ -20,6 +20,14 @@ type Fixture struct {
 	stateKey   string
 }
 
+func tearDownFixture(
+	t *testing.T,
+	f *Fixture,
+) {
+	t.Logf("Deleting default resources for %s", f.stateKey)
+	deleteDefaultResources(f.portClient, f.stateKey)
+}
+
 func NewFixture(t *testing.T) *Fixture {
 	stateKey := guuid.NewString()
 	portClient := cli.New(config.ApplicationConfig)
@@ -48,8 +56,11 @@ func (f *Fixture) CleanIntegration() {
 
 func deleteDefaultResources(portClient *cli.PortClient, stateKey string) {
 	_ = integration.DeleteIntegration(portClient, stateKey)
+	_ = blueprint.DeleteBlueprintEntities(portClient, "workload")
 	_ = blueprint.DeleteBlueprint(portClient, "workload")
+	_ = blueprint.DeleteBlueprintEntities(portClient, "namespace")
 	_ = blueprint.DeleteBlueprint(portClient, "namespace")
+	_ = blueprint.DeleteBlueprintEntities(portClient, "cluster")
 	_ = blueprint.DeleteBlueprint(portClient, "cluster")
 	_ = page.DeletePage(portClient, "workload_overview_dashboard")
 	_ = page.DeletePage(portClient, "availability_scorecard_dashboard")
@@ -57,6 +68,7 @@ func deleteDefaultResources(portClient *cli.PortClient, stateKey string) {
 
 func Test_InitIntegration_InitDefaults(t *testing.T) {
 	f := NewFixture(t)
+	defer tearDownFixture(t, f)
 	e := InitIntegration(f.portClient, &port.Config{
 		StateKey:               f.stateKey,
 		EventListenerType:      "POLLING",
@@ -85,6 +97,7 @@ func Test_InitIntegration_InitDefaults(t *testing.T) {
 
 func Test_InitIntegration_InitDefaults_CreateDefaultResources_False(t *testing.T) {
 	f := NewFixture(t)
+	defer tearDownFixture(t, f)
 	e := InitIntegration(f.portClient, &port.Config{
 		StateKey:               f.stateKey,
 		EventListenerType:      "POLLING",
@@ -95,11 +108,12 @@ func Test_InitIntegration_InitDefaults_CreateDefaultResources_False(t *testing.T
 	_, err := integration.GetIntegration(f.portClient, f.stateKey)
 	assert.Nil(t, err)
 
-	testUtils.CheckResourcesExistence(false, f.portClient, f.t, []string{"workload", "namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"}, []string{})
+	testUtils.CheckResourcesExistence(false, false, f.portClient, f.t, []string{"workload", "namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"}, []string{})
 }
 
 func Test_InitIntegration_BlueprintExists(t *testing.T) {
 	f := NewFixture(t)
+	defer tearDownFixture(t, f)
 	if _, err := blueprint.NewBlueprint(f.portClient, port.Blueprint{
 		Identifier: "workload",
 		Title:      "Workload",
@@ -123,11 +137,12 @@ func Test_InitIntegration_BlueprintExists(t *testing.T) {
 	_, err = blueprint.GetBlueprint(f.portClient, "workload")
 	assert.Nil(t, err)
 
-	testUtils.CheckResourcesExistence(false, f.portClient, f.t, []string{"namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"}, []string{})
+	testUtils.CheckResourcesExistence(false, false, f.portClient, f.t, []string{"namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"}, []string{})
 }
 
 func Test_InitIntegration_PageExists(t *testing.T) {
 	f := NewFixture(t)
+	defer tearDownFixture(t, f)
 	if err := page.CreatePage(f.portClient, port.Page{
 		Identifier: "workload_overview_dashboard",
 		Title:      "Workload Overview Dashboard",
@@ -148,11 +163,12 @@ func Test_InitIntegration_PageExists(t *testing.T) {
 	_, err = page.GetPage(f.portClient, "workload_overview_dashboard")
 	assert.Nil(t, err)
 
-	testUtils.CheckResourcesExistence(false, f.portClient, f.t, []string{"workload", "namespace", "cluster"}, []string{"availability_scorecard_dashboard"}, []string{})
+	testUtils.CheckResourcesExistence(false, false, f.portClient, f.t, []string{"workload", "namespace", "cluster"}, []string{"availability_scorecard_dashboard"}, []string{})
 }
 
 func Test_InitIntegration_ExistingIntegration(t *testing.T) {
 	f := NewFixture(t)
+	defer tearDownFixture(t, f)
 	err := integration.CreateIntegration(f.portClient, f.stateKey, "", nil)
 	if err != nil {
 		t.Errorf("Error creating Port integration: %s", err.Error())
@@ -167,11 +183,12 @@ func Test_InitIntegration_ExistingIntegration(t *testing.T) {
 	_, err = integration.GetIntegration(f.portClient, f.stateKey)
 	assert.Nil(t, err)
 
-	testUtils.CheckResourcesExistence(false, f.portClient, f.t, []string{"workload", "namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"}, []string{})
+	testUtils.CheckResourcesExistence(false, false, f.portClient, f.t, []string{"workload", "namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"}, []string{})
 }
 
 func Test_InitIntegration_LocalResourcesConfiguration(t *testing.T) {
 	f := NewFixture(t)
+	defer tearDownFixture(t, f)
 	err := integration.CreateIntegration(f.portClient, f.stateKey, "", nil)
 	if err != nil {
 		t.Errorf("Error creating Port integration: %s", err.Error())
@@ -208,11 +225,12 @@ func Test_InitIntegration_LocalResourcesConfiguration(t *testing.T) {
 	assert.Equal(t, expectedResources, i.Config.Resources)
 	assert.Nil(t, err)
 
-	testUtils.CheckResourcesExistence(false, f.portClient, f.t, []string{"workload", "namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"}, []string{})
+	testUtils.CheckResourcesExistence(false, false, f.portClient, f.t, []string{"workload", "namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"}, []string{})
 }
 
 func Test_InitIntegration_LocalResourcesConfiguration_ExistingIntegration_EmptyConfiguration(t *testing.T) {
 	f := NewFixture(t)
+	defer tearDownFixture(t, f)
 	err := integration.CreateIntegration(f.portClient, f.stateKey, "POLLING", nil)
 	if err != nil {
 		t.Errorf("Error creating Port integration: %s", err.Error())
@@ -229,11 +247,12 @@ func Test_InitIntegration_LocalResourcesConfiguration_ExistingIntegration_EmptyC
 	assert.Nil(t, err)
 	assert.Equal(t, "KAFKA", i.EventListener.Type)
 
-	testUtils.CheckResourcesExistence(false, f.portClient, f.t, []string{"workload", "namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"}, []string{})
+	testUtils.CheckResourcesExistence(false, false, f.portClient, f.t, []string{"workload", "namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"}, []string{})
 }
 
 func Test_InitIntegration_LocalResourcesConfiguration_ExistingIntegration_WithConfiguration_WithOverwriteConfigurationOnRestartFlag(t *testing.T) {
 	f := NewFixture(t)
+
 	expectedConfig := &port.IntegrationAppConfig{
 		Resources: []port.Resource{
 			{
@@ -275,5 +294,7 @@ func Test_InitIntegration_LocalResourcesConfiguration_ExistingIntegration_WithCo
 	assert.Nil(t, err)
 	assert.Equal(t, expectedConfig.Resources, i.Config.Resources)
 
-	testUtils.CheckResourcesExistence(false, f.portClient, f.t, []string{"workload", "namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"}, []string{})
+	testUtils.CheckResourcesExistence(false, false, f.portClient, f.t, []string{"workload", "namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"}, []string{})
+	defer tearDownFixture(t, f)
+
 }

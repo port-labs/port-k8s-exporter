@@ -227,6 +227,12 @@ type ResponseBody struct {
 	OrgDetails       OrgDetails          `json:"organization"`
 	Scorecard        Scorecard           `json:"scorecard"`
 	Pages            Page                `json:"pages"`
+	MigrationId      string              `json:"migrationId"`
+	Migration        Migration           `json:"migration"`
+}
+
+type Migration struct {
+	Status string `json:"status"`
 }
 
 type IntegrationKindsResponse struct {

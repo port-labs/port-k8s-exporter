@@ -31,7 +31,24 @@ func (m *MockTicker) GetC() <-chan time.Time {
 
 func NewFixture(t *testing.T, c chan time.Time) *Fixture {
 	stateKey := guuid.NewString()
-	portClient := cli.New(config.ApplicationConfig)
+
+	newConfig := &config.ApplicationConfiguration{
+		ConfigFilePath:                  config.ApplicationConfig.ConfigFilePath,
+		ResyncInterval:                  config.ApplicationConfig.ResyncInterval,
+		PortBaseURL:                     config.ApplicationConfig.PortBaseURL,
+		EventListenerType:               config.ApplicationConfig.EventListenerType,
+		CreateDefaultResources:          config.ApplicationConfig.CreateDefaultResources,
+		OverwriteConfigurationOnRestart: config.ApplicationConfig.OverwriteConfigurationOnRestart,
+		Resources:                       config.ApplicationConfig.Resources,
+		DeleteDependents:                config.ApplicationConfig.DeleteDependents,
+		CreateMissingRelatedEntities:    config.ApplicationConfig.CreateMissingRelatedEntities,
+		UpdateEntityOnlyOnDiff:          config.ApplicationConfig.UpdateEntityOnlyOnDiff,
+		PortClientId:                    config.ApplicationConfig.PortClientId,
+		PortClientSecret:                config.ApplicationConfig.PortClientSecret,
+		StateKey:                        stateKey,
+	}
+
+	portClient := cli.New(newConfig)
 
 	_ = integration.DeleteIntegration(portClient, stateKey)
 	err := integration.CreateIntegration(portClient, stateKey, "", &port.IntegrationAppConfig{
@@ -63,7 +80,7 @@ func TestPolling_DifferentConfiguration(t *testing.T) {
 	})
 
 	c <- time.Now()
-	time.Sleep(time.Millisecond * 500)
+	time.Sleep(time.Millisecond * 1500)
 	assert.False(t, called)
 
 	_ = integration.PatchIntegration(fixture.portClient, fixture.stateKey, &port.Integration{
@@ -73,7 +90,7 @@ func TestPolling_DifferentConfiguration(t *testing.T) {
 	})
 
 	c <- time.Now()
-	time.Sleep(time.Millisecond * 500)
+	time.Sleep(time.Millisecond * 1500)
 
 	assert.True(t, called)
 }

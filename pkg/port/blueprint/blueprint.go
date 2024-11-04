@@ -48,6 +48,19 @@ func DeleteBlueprint(portClient *cli.PortClient, blueprintIdentifier string) err
 	return nil
 }
 
+func DeleteBlueprintEntities(portClient *cli.PortClient, blueprintIdentifier string) error {
+	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
+	if err != nil {
+		return fmt.Errorf("error authenticating with Port: %v", err)
+	}
+
+	err = cli.DeleteBlueprintEntities(portClient, blueprintIdentifier)
+	if err != nil {
+		return fmt.Errorf("error deleting Port blueprint entities: %v", err)
+	}
+	return nil
+}
+
 func GetBlueprint(portClient *cli.PortClient, blueprintIdentifier string) (*port.Blueprint, error) {
 	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
 	if err != nil {

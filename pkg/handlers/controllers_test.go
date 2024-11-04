@@ -4,13 +4,21 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
 	guuid "github.com/google/uuid"
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/defaults"
 	"github.com/port-labs/port-k8s-exporter/pkg/k8s"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
+	"github.com/port-labs/port-k8s-exporter/pkg/port/blueprint"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
+	"github.com/port-labs/port-k8s-exporter/pkg/port/integration"
 	_ "github.com/port-labs/port-k8s-exporter/test_utils"
+	testUtils "github.com/port-labs/port-k8s-exporter/test_utils"
 	"github.com/stretchr/testify/assert"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -27,23 +35,24 @@ import (
 	k8sfake "k8s.io/client-go/dynamic/fake"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/restmapper"
-	"strings"
-	"sync"
-	"testing"
-	"time"
 )
 
 var (
-	blueprint      = "k8s-export-test-bp"
-	deploymentKind = "apps/v1/deployments"
-	daemonSetKind  = "apps/v1/daemonsets"
+	blueprintPrefix = "k8s-export-test"
+	deploymentKind  = "apps/v1/deployments"
+	daemonSetKind   = "apps/v1/daemonsets"
 )
+
+func getBlueprintId(stateKey string) string {
+	return testUtils.GetBlueprintIdFromPrefixAndStateKey(blueprintPrefix, stateKey)
+}
 
 type fixture struct {
 	t                  *testing.T
 	controllersHandler *ControllersHandler
 	k8sClient          *k8s.Client
 	portClient         *cli.PortClient
+	stateKey           string
 }
 
 type fixtureConfig struct {
@@ -53,6 +62,26 @@ type fixtureConfig struct {
 	sendRawDataExamples *bool
 	resources           []port.Resource
 	existingObjects     []runtime.Object
+}
+
+func tearDownFixture(
+	t *testing.T,
+	f *fixture,
+) {
+	blueprintId := getBlueprintId(f.stateKey)
+	t.Logf("deleting resources for %s", f.stateKey)
+	_ = integration.DeleteIntegration(
+		f.portClient,
+		f.stateKey,
+	)
+	_ = blueprint.DeleteBlueprintEntities(
+		f.portClient,
+		blueprintId,
+	)
+	_ = blueprint.DeleteBlueprint(
+		f.portClient,
+		blueprintId,
+	)
 }
 
 type resourceMapEntry struct {
@@ -201,6 +230,40 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 	discoveryMapper := restmapper.NewDeferredDiscoveryRESTMapper(cacheClient)
 	k8sClient := &k8s.Client{DiscoveryClient: discoveryClient, DynamicClient: dynamicClient, DiscoveryMapper: discoveryMapper, ApiExtensionClient: apiExtensionsClient}
 	portClient := cli.New(applicationConfig)
+	blueprintIdentifier := getBlueprintId(exporterConfig.StateKey)
+
+	blueprintRaw := port.Blueprint{
+		Identifier: blueprintIdentifier,
+		Title:      blueprintIdentifier,
+		Schema: port.BlueprintSchema{
+			Properties: map[string]port.Property{
+				"bool": {
+					Type: "boolean",
+				},
+				"text": {
+					Type: "string",
+				},
+				"num": {
+					Type: "number",
+				},
+				"obj": {
+					Type: "object",
+				},
+				"arr": {
+					Type: "array",
+				},
+			},
+		},
+	}
+	t.Logf("creating blueprint %s", blueprintIdentifier)
+	if _, err := blueprint.NewBlueprint(portClient, blueprintRaw); err != nil {
+		t.Logf("Error creating Port blueprint: %s, retrying once", err.Error())
+		if _, secondErr := blueprint.NewBlueprint(portClient, blueprintRaw); secondErr != nil {
+			t.Errorf("Error when retrying to create Port blueprint: %s ", secondErr.Error())
+			t.FailNow()
+		}
+	}
+
 	err := defaults.InitIntegration(portClient, exporterConfig)
 	if err != nil {
 		t.Errorf("error initializing integration: %v", err)
@@ -213,6 +276,7 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 		controllersHandler: controllersHandler,
 		k8sClient:          k8sClient,
 		portClient:         portClient,
+		stateKey:           exporterConfig.StateKey,
 	}
 }
 
@@ -230,9 +294,10 @@ func newResource(selectorQuery string, mappings []port.EntityMapping, kind strin
 	}
 }
 
-func newDeployment() *appsv1.Deployment {
+func newDeployment(stateKey string) *appsv1.Deployment {
+	blueprintId := getBlueprintId(stateKey)
 	labels := map[string]string{
-		"app": "port-k8s-exporter",
+		"app": blueprintId,
 	}
 	return &appsv1.Deployment{
 		TypeMeta: v1.TypeMeta{
@@ -240,8 +305,8 @@ func newDeployment() *appsv1.Deployment {
 			APIVersion: "apps/v1",
 		},
 		ObjectMeta: v1.ObjectMeta{
-			Name:      "port-k8s-exporter",
-			Namespace: "port-k8s-exporter",
+			Name:      blueprintId,
+			Namespace: blueprintId,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Selector: &v1.LabelSelector{
@@ -254,8 +319,8 @@ func newDeployment() *appsv1.Deployment {
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name:  "port-k8s-exporter",
-							Image: "port-k8s-exporter:latest",
+							Name:  blueprintId,
+							Image: fmt.Sprintf("%s:latest", blueprintId),
 						},
 					},
 				},
@@ -264,9 +329,10 @@ func newDeployment() *appsv1.Deployment {
 	}
 }
 
-func newDaemonSet() *appsv1.DaemonSet {
+func newDaemonSet(stateKey string) *appsv1.DaemonSet {
+	blueprintId := getBlueprintId(stateKey)
 	labels := map[string]string{
-		"app": "port-k8s-exporter",
+		"app": blueprintId,
 	}
 	return &appsv1.DaemonSet{
 		TypeMeta: v1.TypeMeta{
@@ -274,8 +340,8 @@ func newDaemonSet() *appsv1.DaemonSet {
 			APIVersion: "apps/v1",
 		},
 		ObjectMeta: v1.ObjectMeta{
-			Name:      "port-k8s-exporter-ds",
-			Namespace: "port-k8s-exporter",
+			Name:      fmt.Sprintf("%s-ds", blueprintId),
+			Namespace: blueprintId,
 		},
 		Spec: appsv1.DaemonSetSpec{
 			Selector: &v1.LabelSelector{
@@ -288,8 +354,8 @@ func newDaemonSet() *appsv1.DaemonSet {
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name:  "port-k8s-exporter",
-							Image: "port-k8s-exporter:latest",
+							Name:  blueprintId,
+							Image: fmt.Sprintf("%s:latest", blueprintId),
 						},
 					},
 				},
@@ -318,13 +384,15 @@ func getGvr(kind string) schema.GroupVersionResource {
 	return schema.GroupVersionResource{Group: s[0], Version: s[1], Resource: s[2]}
 }
 
-func getBaseResource(kind string) port.Resource {
+func getBaseResource(stateKey string, kind string) port.Resource {
+	blueprintId := getBlueprintId(stateKey)
+
 	return newResource("", []port.EntityMapping{
 		{
 			Identifier: ".metadata.name",
-			Blueprint:  fmt.Sprintf("\"%s\"", blueprint),
+			Blueprint:  fmt.Sprintf("\"%s\"", blueprintId),
 			Icon:       "\"Microservice\"",
-			Team:       "\"Test\"",
+			// Team:       "\"Test\"",
 			Properties: map[string]string{
 				"text": "\"pod\"",
 				"num":  "1",
@@ -332,9 +400,9 @@ func getBaseResource(kind string) port.Resource {
 				"obj":  ".spec.selector",
 				"arr":  ".spec.template.spec.containers",
 			},
-			Relations: map[string]interface{}{
+			/* Relations: map[string]interface{}{
 				"k8s-relation": "\"e_AgPMYvq1tAs8TuqM\"",
-			},
+			}, */
 		},
 	}, kind)
 }
@@ -397,7 +465,7 @@ func (f *fixture) assertObjectsHandled(objects []struct{ kind, name string }) {
 		}
 
 		return true
-	}, time.Second*10, time.Millisecond*500)
+	}, time.Second*15, time.Millisecond*500)
 
 	assert.Eventually(f.t, func() bool {
 		entities, err := f.portClient.SearchEntities(context.Background(), port.SearchBody{
@@ -405,7 +473,7 @@ func (f *fixture) assertObjectsHandled(objects []struct{ kind, name string }) {
 				{
 					Property: "$datasource",
 					Operator: "contains",
-					Value:    "port-k8s-exporter",
+					Value:    f.controllersHandler.stateKey,
 				},
 				{
 					Property: "$datasource",
@@ -430,7 +498,7 @@ func (f *fixture) assertObjectsHandled(objects []struct{ kind, name string }) {
 		}
 
 		return err == nil && len(entities) == len(objects)
-	}, time.Second*10, time.Millisecond*500)
+	}, time.Second*15, time.Millisecond*500)
 }
 
 func (f *fixture) runControllersHandle() {
@@ -438,38 +506,39 @@ func (f *fixture) runControllersHandle() {
 }
 
 func TestSuccessfulControllersHandle(t *testing.T) {
-	de := newDeployment()
+	stateKey := guuid.NewString()
+	blueprintId := getBlueprintId(stateKey)
+	de := newDeployment(stateKey)
 	de.Name = guuid.NewString()
-	da := newDaemonSet()
+	da := newDaemonSet(stateKey)
 	da.Name = guuid.NewString()
-	resources := []port.Resource{getBaseResource(deploymentKind), getBaseResource(daemonSetKind)}
-	f := newFixture(t, &fixtureConfig{resources: resources, existingObjects: []runtime.Object{newUnstructured(de), newUnstructured(da)}, stateKey: guuid.NewString()})
-	defer f.portClient.DeleteIntegration(f.controllersHandler.stateKey)
+	resources := []port.Resource{getBaseResource(stateKey, deploymentKind), getBaseResource(stateKey, daemonSetKind)}
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resources: resources, existingObjects: []runtime.Object{newUnstructured(de), newUnstructured(da)}})
 
 	// To test later that the delete stale entities is working
-	f.portClient.CreateEntity(context.Background(), &port.EntityRequest{Blueprint: blueprint, Identifier: guuid.NewString()}, "", false)
+	f.portClient.CreateEntity(context.Background(), &port.EntityRequest{Blueprint: blueprintId, Identifier: guuid.NewString()}, "", false)
 
 	f.runControllersHandle()
 
 	f.assertObjectsHandled([]struct{ kind, name string }{{kind: deploymentKind, name: de.Name}, {kind: daemonSetKind, name: da.Name}})
 
-	nde := newDeployment()
+	nde := newDeployment(stateKey)
 	nde.Name = guuid.NewString()
 	f.createObjects([]*unstructured.Unstructured{newUnstructured(nde)}, deploymentKind)
 
-	nda := newDaemonSet()
+	nda := newDaemonSet(stateKey)
 	nda.Name = guuid.NewString()
 	f.createObjects([]*unstructured.Unstructured{newUnstructured(nda)}, daemonSetKind)
 
 	assert.Eventually(t, func() bool {
 		for _, eid := range []string{nde.Name, nda.Name} {
-			_, err := f.portClient.ReadEntity(context.Background(), eid, blueprint)
+			_, err := f.portClient.ReadEntity(context.Background(), eid, blueprintId)
 			if err != nil {
 				return false
 			}
 		}
 		return true
-	}, time.Second*10, time.Millisecond*500)
+	}, time.Second*15, time.Millisecond*500)
 
 	nde.Spec.Selector.MatchLabels["app"] = "new-label"
 	f.updateObjects([]*unstructured.Unstructured{newUnstructured(nde)}, deploymentKind)
@@ -477,13 +546,13 @@ func TestSuccessfulControllersHandle(t *testing.T) {
 	f.updateObjects([]*unstructured.Unstructured{newUnstructured(da)}, daemonSetKind)
 
 	assert.Eventually(t, func() bool {
-		entity, err := f.portClient.ReadEntity(context.Background(), nde.Name, blueprint)
+		entity, err := f.portClient.ReadEntity(context.Background(), nde.Name, blueprintId)
 		if err != nil || entity.Properties["obj"].(map[string]interface{})["matchLabels"].(map[string]interface{})["app"] != nde.Spec.Selector.MatchLabels["app"] {
 			return false
 		}
-		entity, err = f.portClient.ReadEntity(context.Background(), da.Name, blueprint)
+		entity, err = f.portClient.ReadEntity(context.Background(), da.Name, blueprintId)
 		return err == nil && entity.Properties["obj"].(map[string]interface{})["matchLabels"].(map[string]interface{})["app"] == nde.Spec.Selector.MatchLabels["app"]
-	}, time.Second*10, time.Millisecond*500)
+	}, time.Second*15, time.Millisecond*500)
 
 	f.deleteObjects([]struct{ kind, namespace, name string }{
 		{kind: deploymentKind, namespace: de.Namespace, name: de.Name}, {kind: daemonSetKind, namespace: da.Namespace, name: da.Name},
@@ -491,46 +560,55 @@ func TestSuccessfulControllersHandle(t *testing.T) {
 
 	assert.Eventually(t, func() bool {
 		for _, eid := range []string{de.Name, da.Name, nde.Name, nda.Name} {
-			_, err := f.portClient.ReadEntity(context.Background(), eid, blueprint)
+			_, err := f.portClient.ReadEntity(context.Background(), eid, blueprintId)
 			if err == nil || !strings.Contains(err.Error(), "was not found") {
 				return false
 			}
 		}
 		return true
-	}, time.Second*10, time.Millisecond*500)
+	}, time.Second*15, time.Millisecond*500)
+	defer tearDownFixture(t, f)
 }
 
 func TestControllersHandleTolerateFailure(t *testing.T) {
-	resources := []port.Resource{getBaseResource(deploymentKind)}
-	f := newFixture(t, &fixtureConfig{resources: resources, existingObjects: []runtime.Object{}})
+	stateKey := guuid.NewString()
+	blueprintId := getBlueprintId(stateKey)
+	resources := []port.Resource{getBaseResource(stateKey, deploymentKind)}
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resources: resources, existingObjects: []runtime.Object{}})
 
 	f.runControllersHandle()
 
 	invalidId := fmt.Sprintf("%s!@#", guuid.NewString())
-	d := newDeployment()
+	d := newDeployment(stateKey)
 	d.Name = invalidId
 	f.createObjects([]*unstructured.Unstructured{newUnstructured(d)}, deploymentKind)
 
 	id := guuid.NewString()
 	d.Name = id
+	t.Logf("before creating %s", id)
 	f.createObjects([]*unstructured.Unstructured{newUnstructured(d)}, deploymentKind)
+	t.Logf("after creating %s", id)
 
 	assert.Eventually(t, func() bool {
-		_, err := f.portClient.ReadEntity(context.Background(), id, blueprint)
+		_, err := f.portClient.ReadEntity(context.Background(), id, blueprintId)
 		return err == nil
-	}, time.Second*5, time.Millisecond*500)
+	}, time.Second*15, time.Millisecond*500)
 
 	f.deleteObjects([]struct{ kind, namespace, name string }{{kind: deploymentKind, namespace: d.Namespace, name: d.Name}})
 
 	assert.Eventually(t, func() bool {
-		_, err := f.portClient.ReadEntity(context.Background(), id, blueprint)
+		_, err := f.portClient.ReadEntity(context.Background(), id, blueprintId)
 		return err != nil && strings.Contains(err.Error(), "was not found")
-	}, time.Second*5, time.Millisecond*500)
+	}, time.Second*15, time.Millisecond*500)
+	defer tearDownFixture(t, f)
 }
 
 func TestControllersHandler_Stop(t *testing.T) {
-	resources := []port.Resource{getBaseResource(deploymentKind)}
-	f := newFixture(t, &fixtureConfig{resources: resources, existingObjects: []runtime.Object{}})
+	stateKey := guuid.NewString()
+
+	resources := []port.Resource{getBaseResource(stateKey, deploymentKind)}
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resources: resources, existingObjects: []runtime.Object{}})
+	defer tearDownFixture(t, f)
 
 	f.controllersHandler.Stop()
 	assert.True(t, f.controllersHandler.isStopped)

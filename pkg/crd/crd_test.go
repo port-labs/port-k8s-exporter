@@ -1,9 +1,11 @@
 package crd
 
 import (
+	"fmt"
 	"slices"
 	"testing"
 
+	guuid "github.com/google/uuid"
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/blueprint"
@@ -20,13 +22,27 @@ type Fixture struct {
 	apiextensionClient *fakeapiextensionsv1.FakeApiextensionsV1
 	portClient         *cli.PortClient
 	portConfig         *port.IntegrationAppConfig
+	stateKey           string
 }
 
-func deleteDefaultResources(portClient *cli.PortClient) {
-	_ = blueprint.DeleteBlueprint(portClient, "testkind")
+var (
+	blueprintPrefix = "k8s-crd-test"
+)
+
+func getBlueprintId(stateKey string) string {
+	return testUtils.GetBlueprintIdFromPrefixAndStateKey(blueprintPrefix, stateKey)
+}
+
+func deleteDefaultResources(stateKey string, portClient *cli.PortClient) {
+	blueprintId := getBlueprintId(stateKey)
+	_ = blueprint.DeleteBlueprintEntities(portClient, blueprintId)
+	_ = blueprint.DeleteBlueprint(portClient, blueprintId)
 }
 
 func newFixture(t *testing.T, userAgent string, namespaced bool, crdsDiscoveryPattern string) *Fixture {
+
+	stateKey := guuid.NewString()
+	blueprintId := getBlueprintId(stateKey)
 	apiExtensionsFakeClient := fakeapiextensionsv1.FakeApiextensionsV1{Fake: &clienttesting.Fake{}}
 
 	apiExtensionsFakeClient.AddReactor("list", "customresourcedefinitions", func(action clienttesting.Action) (handled bool, ret runtime.Object, err error) {
@@ -37,7 +53,7 @@ func newFixture(t *testing.T, userAgent string, namespaced bool, crdsDiscoveryPa
 						Group: "testgroup",
 						Names: v1.CustomResourceDefinitionNames{
 							Kind:     "TestKind",
-							Singular: "testkind",
+							Singular: blueprintId,
 							Plural:   "testkinds",
 						},
 						Versions: []v1.CustomResourceDefinitionVersion{
@@ -100,12 +116,28 @@ func newFixture(t *testing.T, userAgent string, namespaced bool, crdsDiscoveryPa
 		return true, fakeCrd, nil
 	})
 
-	if userAgent == "" {
-		userAgent = "port-k8s-exporter/0.1"
+	newConfig := &config.ApplicationConfiguration{
+		ConfigFilePath:                  config.ApplicationConfig.ConfigFilePath,
+		ResyncInterval:                  config.ApplicationConfig.ResyncInterval,
+		PortBaseURL:                     config.ApplicationConfig.PortBaseURL,
+		EventListenerType:               config.ApplicationConfig.EventListenerType,
+		CreateDefaultResources:          config.ApplicationConfig.CreateDefaultResources,
+		OverwriteConfigurationOnRestart: config.ApplicationConfig.OverwriteConfigurationOnRestart,
+		Resources:                       config.ApplicationConfig.Resources,
+		DeleteDependents:                config.ApplicationConfig.DeleteDependents,
+		CreateMissingRelatedEntities:    config.ApplicationConfig.CreateMissingRelatedEntities,
+		UpdateEntityOnlyOnDiff:          config.ApplicationConfig.UpdateEntityOnlyOnDiff,
+		PortClientId:                    config.ApplicationConfig.PortClientId,
+		PortClientSecret:                config.ApplicationConfig.PortClientSecret,
+		StateKey:                        stateKey,
 	}
 
-	portClient := cli.New(config.ApplicationConfig)
-	deleteDefaultResources(portClient)
+	if userAgent == "" {
+		userAgent = fmt.Sprintf("%s/0.1", stateKey)
+	}
+
+	portClient := cli.New(newConfig)
+	deleteDefaultResources(stateKey, portClient)
 
 	return &Fixture{
 		t:                  t,
@@ -114,12 +146,14 @@ func newFixture(t *testing.T, userAgent string, namespaced bool, crdsDiscoveryPa
 		portConfig: &port.IntegrationAppConfig{
 			CRDSToDiscover: crdsDiscoveryPattern,
 		},
+		stateKey: stateKey,
 	}
 }
 
 func checkBlueprintAndActionsProperties(t *testing.T, f *Fixture, namespaced bool) {
 
-	bp, err := blueprint.GetBlueprint(f.portClient, "testkind")
+	blueprintId := getBlueprintId(f.stateKey)
+	bp, err := blueprint.GetBlueprint(f.portClient, blueprintId)
 	if err != nil {
 		t.Errorf("Error getting blueprint: %s", err.Error())
 	}
@@ -153,7 +187,7 @@ func checkBlueprintAndActionsProperties(t *testing.T, f *Fixture, namespaced boo
 		}
 	})
 
-	createAction, err := cli.GetAction(f.portClient, "create_testkind")
+	createAction, err := cli.GetAction(f.portClient, fmt.Sprintf("create_%s", blueprintId))
 	if err != nil {
 		t.Errorf("Error getting create action: %s", err.Error())
 	}
@@ -199,7 +233,7 @@ func checkBlueprintAndActionsProperties(t *testing.T, f *Fixture, namespaced boo
 		}
 	})
 
-	updateAction, err := cli.GetAction(f.portClient, "update_testkind")
+	updateAction, err := cli.GetAction(f.portClient, fmt.Sprintf("update_%s", blueprintId))
 	if err != nil {
 		t.Errorf("Error getting update action: %s", err.Error())
 	}
@@ -239,7 +273,7 @@ func checkBlueprintAndActionsProperties(t *testing.T, f *Fixture, namespaced boo
 		}
 	})
 
-	deleteAction, err := cli.GetAction(f.portClient, "delete_testkind")
+	deleteAction, err := cli.GetAction(f.portClient, fmt.Sprintf("delete_%s", blueprintId))
 	if err != nil {
 		t.Errorf("Error getting delete action: %s", err.Error())
 	}
@@ -263,27 +297,55 @@ func checkBlueprintAndActionsProperties(t *testing.T, f *Fixture, namespaced boo
 func TestCRD_crd_autoDiscoverCRDsToActionsClusterScoped(t *testing.T) {
 	f := newFixture(t, "", false, "true")
 
+	blueprintId := getBlueprintId(f.stateKey)
+
 	AutodiscoverCRDsToActions(f.portConfig, f.apiextensionClient, f.portClient)
 
 	checkBlueprintAndActionsProperties(t, f, false)
 
-	testUtils.CheckResourcesExistence(true, f.portClient, t, []string{"testkind"}, []string{}, []string{"create_testkind", "update_testkind", "delete_testkind"})
+	testUtils.CheckResourcesExistence(
+		true, true, f.portClient, t,
+		[]string{blueprintId}, []string{},
+		[]string{
+			fmt.Sprintf("create_%s", blueprintId),
+			fmt.Sprintf("update_%s", blueprintId),
+			fmt.Sprintf("delete_%s", blueprintId),
+		},
+	)
 }
 
 func TestCRD_crd_autoDiscoverCRDsToActionsNamespaced(t *testing.T) {
 	f := newFixture(t, "", true, "true")
+	blueprintId := getBlueprintId(f.stateKey)
 
 	AutodiscoverCRDsToActions(f.portConfig, f.apiextensionClient, f.portClient)
 
 	checkBlueprintAndActionsProperties(t, f, true)
 
-	testUtils.CheckResourcesExistence(true, f.portClient, t, []string{"testkind"}, []string{}, []string{"create_testkind", "update_testkind", "delete_testkind"})
+	testUtils.CheckResourcesExistence(
+		true, true, f.portClient, t,
+		[]string{blueprintId}, []string{},
+		[]string{
+			fmt.Sprintf("create_%s", blueprintId),
+			fmt.Sprintf("update_%s", blueprintId),
+			fmt.Sprintf("delete_%s", blueprintId),
+		},
+	)
 }
 
 func TestCRD_crd_autoDiscoverCRDsToActionsNoCRDs(t *testing.T) {
 	f := newFixture(t, "", false, "false")
+	blueprintId := getBlueprintId(f.stateKey)
 
 	AutodiscoverCRDsToActions(f.portConfig, f.apiextensionClient, f.portClient)
 
-	testUtils.CheckResourcesExistence(false, f.portClient, t, []string{"testkind"}, []string{}, []string{"create_testkind", "update_testkind", "delete_testkind"})
+	testUtils.CheckResourcesExistence(
+		false, false, f.portClient, t,
+		[]string{blueprintId}, []string{},
+		[]string{
+			fmt.Sprintf("create_%s", blueprintId),
+			fmt.Sprintf("update_%s", blueprintId),
+			fmt.Sprintf("delete_%s", blueprintId),
+		},
+	)
 }

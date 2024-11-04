@@ -26,8 +26,17 @@ jobs:
       run: go clean -testcache
 
     - name: Test
-      run: go test -v ./...
+      run: go run gotest.tools/gotestsum@latest -f github-actions --junitfile ./test-results/junit.xml --format-hide-empty-pkg --junitfile-hide-empty-pkg
       env:
         PORT_CLIENT_ID: ${{ secrets.PORT_CLIENT_ID }}
         PORT_CLIENT_SECRET: ${{ secrets.PORT_CLIENT_SECRET }}
-        PORT_BASE_URL: https://api.stg-01.getport.io
+        PORT_BASE_URL: ${{ secrets.PORT_BASE_URL }}
+
+    - name: Publish Test Report
+      uses: mikepenz/action-junit-report@v4
+      if: ${{ always() }}
+      with:
+        report_paths: './test-results/junit.xml'
+        include_passed: true
+        require_tests: true
+        fail_on_failure: true
