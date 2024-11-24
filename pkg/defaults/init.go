@@ -21,6 +21,8 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config)
 	existingIntegration, err := integration.GetIntegration(portClient, applicationConfig.StateKey)
 	defaultIntegrationConfig := &port.IntegrationAppConfig{
 		Resources:                    applicationConfig.Resources,
+		CRDSToDiscover:               applicationConfig.CRDSToDiscover,
+		OverwriteCRDsActions:         applicationConfig.OverwriteCRDsActions,
 		DeleteDependents:             applicationConfig.DeleteDependents,
 		CreateMissingRelatedEntities: applicationConfig.CreateMissingRelatedEntities,
 	}
