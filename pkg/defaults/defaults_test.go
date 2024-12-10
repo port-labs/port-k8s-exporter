@@ -131,13 +131,13 @@ func Test_InitIntegration_BlueprintExists(t *testing.T) {
 	assert.Nil(t, e)
 
 	i, err := integration.GetIntegration(f.portClient, f.stateKey)
-	assert.Nil(t, i.Config.Resources)
+	assert.NotNil(t, i.Config.Resources)
 	assert.Nil(t, err)
 
 	_, err = blueprint.GetBlueprint(f.portClient, "workload")
 	assert.Nil(t, err)
 
-	testUtils.CheckResourcesExistence(false, false, f.portClient, f.t, []string{"namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"}, []string{})
+	testUtils.CheckResourcesExistence(true, false, f.portClient, f.t, []string{"namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"}, []string{})
 }
 
 func Test_InitIntegration_PageExists(t *testing.T) {
@@ -157,13 +157,13 @@ func Test_InitIntegration_PageExists(t *testing.T) {
 	assert.Nil(t, e)
 
 	i, err := integration.GetIntegration(f.portClient, f.stateKey)
-	assert.Nil(t, i.Config.Resources)
+	assert.NotNil(t, i.Config.Resources)
 	assert.Nil(t, err)
 
 	_, err = page.GetPage(f.portClient, "workload_overview_dashboard")
 	assert.Nil(t, err)
 
-	testUtils.CheckResourcesExistence(false, false, f.portClient, f.t, []string{"workload", "namespace", "cluster"}, []string{"availability_scorecard_dashboard"}, []string{})
+	testUtils.CheckResourcesExistence(true, false, f.portClient, f.t, []string{"workload", "namespace", "cluster"}, []string{"availability_scorecard_dashboard"}, []string{})
 }
 
 func Test_InitIntegration_ExistingIntegration(t *testing.T) {
