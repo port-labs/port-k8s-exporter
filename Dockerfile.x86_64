@@ -1,4 +1,4 @@
-FROM alpine:3.20
+FROM alpine:3.21.0
 
 RUN apk upgrade libssl3 libcrypto3
 
