@@ -174,7 +174,6 @@ func validateResourcesDoesNotExist(portClient *cli.PortClient, defaults *Default
 func createResources(portClient *cli.PortClient, defaults *Defaults, config *port.Config) *AbortDefaultCreationError {
 	if err := validateResourcesDoesNotExist(portClient, defaults, config); err != nil {
 		klog.Warningf("Failed to create resources: %v.", err.Errors)
-		return err
 	}
 
 	bareBlueprints, patchStages := deconstructBlueprintsToCreationSteps(defaults.Blueprints)
