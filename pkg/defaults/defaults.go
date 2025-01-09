@@ -204,9 +204,6 @@ func createResources(portClient *cli.PortClient, defaults *Defaults, config *por
 	}
 	waitGroup.Wait()
 
-	if err := validateResourcesErrors(createdBlueprints, createdPages, resourceErrors); err != nil {
-	}
-
 	for _, patchStage := range patchStages {
 		for _, bp := range patchStage {
 			waitGroup.Add(1)
@@ -219,9 +216,6 @@ func createResources(portClient *cli.PortClient, defaults *Defaults, config *por
 			}(bp)
 		}
 		waitGroup.Wait()
-	}
-
-	if err := validateResourcesErrors(createdBlueprints, createdPages, resourceErrors); err != nil {
 	}
 
 	for _, blueprintScorecards := range defaults.Scorecards {
@@ -238,9 +232,6 @@ func createResources(portClient *cli.PortClient, defaults *Defaults, config *por
 	}
 	waitGroup.Wait()
 
-	if err := validateResourcesErrors(createdBlueprints, createdPages, resourceErrors); err != nil {
-	}
-
 	for _, pageToCreate := range defaults.Pages {
 		waitGroup.Add(1)
 		go func(p port.Page) {
@@ -256,11 +247,11 @@ func createResources(portClient *cli.PortClient, defaults *Defaults, config *por
 	}
 	waitGroup.Wait()
 
-	if err := validateResourcesErrors(createdBlueprints, createdPages, resourceErrors); err != nil {
-	}
+	validateResourcesErrors(createdBlueprints, createdPages, resourceErrors)
 
 	if err := integration.CreateIntegration(portClient, config.StateKey, config.EventListenerType, defaults.AppConfig); err != nil {
 		klog.Warningf("Failed to create integration with default configuration. state key %s: %v", config.StateKey, err.Error())
+		return &AbortDefaultCreationError{BlueprintsToRollback: createdBlueprints, PagesToRollback: createdPages, Errors: []error{err}}
 	}
 
 	return nil
