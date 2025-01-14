@@ -174,6 +174,7 @@ func validateResourcesDoesNotExist(portClient *cli.PortClient, defaults *Default
 func createResources(portClient *cli.PortClient, defaults *Defaults, config *port.Config) *AbortDefaultCreationError {
 	if err := validateResourcesDoesNotExist(portClient, defaults, config); err != nil {
 		klog.Warningf("Failed to create resources: %v.", err.Errors)
+		return nil
 	}
 
 	bareBlueprints, patchStages := deconstructBlueprintsToCreationSteps(defaults.Blueprints)
@@ -204,6 +205,10 @@ func createResources(portClient *cli.PortClient, defaults *Defaults, config *por
 	}
 	waitGroup.Wait()
 
+	if err := validateResourcesErrors(createdBlueprints, createdPages, resourceErrors); err != nil {
+		return err
+	}
+
 	for _, patchStage := range patchStages {
 		for _, bp := range patchStage {
 			waitGroup.Add(1)
@@ -216,6 +221,10 @@ func createResources(portClient *cli.PortClient, defaults *Defaults, config *por
 			}(bp)
 		}
 		waitGroup.Wait()
+	}
+
+	if err := validateResourcesErrors(createdBlueprints, createdPages, resourceErrors); err != nil {
+		return err
 	}
 
 	for _, blueprintScorecards := range defaults.Scorecards {
@@ -232,6 +241,10 @@ func createResources(portClient *cli.PortClient, defaults *Defaults, config *por
 	}
 	waitGroup.Wait()
 
+	if err := validateResourcesErrors(createdBlueprints, createdPages, resourceErrors); err != nil {
+		return err
+	}
+
 	for _, pageToCreate := range defaults.Pages {
 		waitGroup.Add(1)
 		go func(p port.Page) {
@@ -247,7 +260,9 @@ func createResources(portClient *cli.PortClient, defaults *Defaults, config *por
 	}
 	waitGroup.Wait()
 
-	validateResourcesErrors(createdBlueprints, createdPages, resourceErrors)
+	if err := validateResourcesErrors(createdBlueprints, createdPages, resourceErrors); err != nil {
+		return err
+	}
 
 	if err := integration.CreateIntegration(portClient, config.StateKey, config.EventListenerType, defaults.AppConfig); err != nil {
 		klog.Warningf("Failed to create integration with default configuration. state key %s: %v", config.StateKey, err.Error())
