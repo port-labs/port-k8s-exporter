@@ -18,6 +18,11 @@ func getEventListenerConfig(eventListenerType string) *port.EventListenerSetting
 
 func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config) error {
 	klog.Infof("Initializing Port integration")
+	defaults, err := getDefaults()
+	if err != nil {
+		return err
+	}
+	
 	existingIntegration, err := integration.GetIntegration(portClient, applicationConfig.StateKey)
 	defaultIntegrationConfig := &port.IntegrationAppConfig{
 		Resources:                    applicationConfig.Resources,
@@ -28,6 +33,10 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config)
 	}
 
 	if err != nil {
+		if applicationConfig.CreateDefaultResources {
+			defaultIntegrationConfig = defaults.AppConfig
+		}
+
 		klog.Infof("Could not get integration with state key %s, error: %s", applicationConfig.StateKey, err.Error())
 		if err := integration.CreateIntegration(portClient, applicationConfig.StateKey, applicationConfig.EventListenerType, defaultIntegrationConfig); err != nil {
 			return err
@@ -49,7 +58,7 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config)
 
 	if applicationConfig.CreateDefaultResources {
 		klog.Infof("Creating default resources")
-		if err := initializeDefaults(portClient); err != nil {
+		if err := initializeDefaults(portClient, defaults); err != nil {
 			klog.Warningf("Error initializing defaults: %s", err.Error())
 			klog.Warningf("Some default resources may not have been created. The integration will continue running.")
 		}

@@ -137,7 +137,7 @@ func Test_InitIntegration_BlueprintExists(t *testing.T) {
 	_, err = blueprint.GetBlueprint(f.portClient, "workload")
 	assert.Nil(t, err)
 
-	testUtils.CheckResourcesExistence(true, false, f.portClient, f.t, []string{"namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"}, []string{})
+	testUtils.CheckResourcesExistence(false, false, f.portClient, f.t, []string{"namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"}, []string{})
 }
 
 func Test_InitIntegration_PageExists(t *testing.T) {

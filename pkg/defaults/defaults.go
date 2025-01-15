@@ -130,16 +130,6 @@ func (e *AbortDefaultCreationError) Error() string {
 	return "AbortDefaultCreationError"
 }
 
-func validateResourcesErrors(createdBlueprints []string, createdPages []string, resourceErrors []error) *AbortDefaultCreationError {
-	if len(resourceErrors) > 0 {
-		for _, err := range resourceErrors {
-			klog.Infof("Failed to create resources: %v.", err.Error())
-		}
-		return &AbortDefaultCreationError{BlueprintsToRollback: createdBlueprints, PagesToRollback: createdPages, Errors: resourceErrors}
-	}
-	return nil
-}
-
 func createResources(portClient *cli.PortClient, defaults *Defaults) error {
 	existingBlueprints := []string{}
 	for _, bp := range defaults.Blueprints {
@@ -199,7 +189,6 @@ func createResources(portClient *cli.PortClient, defaults *Defaults) error {
 		}
 		waitGroup.Wait()
 
-		// If any patch failed, return abort error
 		if len(resourceErrors) > 0 {
 			return &AbortDefaultCreationError{
 				BlueprintsToRollback: createdBlueprints,
@@ -237,12 +226,7 @@ func createResources(portClient *cli.PortClient, defaults *Defaults) error {
 	return nil
 }
 
-func initializeDefaults(portClient *cli.PortClient) error {
-	defaults, err := getDefaults()
-	if err != nil {
-		return err
-	}
-
+func initializeDefaults(portClient *cli.PortClient, defaults *Defaults) error {
 	if err := createResources(portClient, defaults); err != nil {
 		if abortErr, ok := err.(*AbortDefaultCreationError); ok {
 			klog.Warningf("Rolling back blueprints due to creation error")
