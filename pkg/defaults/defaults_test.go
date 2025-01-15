@@ -183,7 +183,7 @@ func Test_InitIntegration_ExistingIntegration(t *testing.T) {
 	_, err = integration.GetIntegration(f.portClient, f.stateKey)
 	assert.Nil(t, err)
 
-	testUtils.CheckResourcesExistence(false, false, f.portClient, f.t, []string{"workload", "namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"}, []string{})
+	testUtils.CheckResourcesExistence(true, false, f.portClient, f.t, []string{"workload", "namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"}, []string{})
 }
 
 func Test_InitIntegration_LocalResourcesConfiguration(t *testing.T) {
@@ -225,7 +225,7 @@ func Test_InitIntegration_LocalResourcesConfiguration(t *testing.T) {
 	assert.Equal(t, expectedResources, i.Config.Resources)
 	assert.Nil(t, err)
 
-	testUtils.CheckResourcesExistence(false, false, f.portClient, f.t, []string{"workload", "namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"}, []string{})
+	testUtils.CheckResourcesExistence(true, false, f.portClient, f.t, []string{"workload", "namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"}, []string{})
 }
 
 func Test_InitIntegration_LocalResourcesConfiguration_ExistingIntegration_EmptyConfiguration(t *testing.T) {
@@ -247,11 +247,12 @@ func Test_InitIntegration_LocalResourcesConfiguration_ExistingIntegration_EmptyC
 	assert.Nil(t, err)
 	assert.Equal(t, "KAFKA", i.EventListener.Type)
 
-	testUtils.CheckResourcesExistence(false, false, f.portClient, f.t, []string{"workload", "namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"}, []string{})
+	testUtils.CheckResourcesExistence(true, false, f.portClient, f.t, []string{"workload", "namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"}, []string{})
 }
 
 func Test_InitIntegration_LocalResourcesConfiguration_ExistingIntegration_WithConfiguration_WithOverwriteConfigurationOnRestartFlag(t *testing.T) {
 	f := NewFixture(t)
+	defer tearDownFixture(t, f)
 
 	expectedConfig := &port.IntegrationAppConfig{
 		Resources: []port.Resource{
@@ -294,7 +295,5 @@ func Test_InitIntegration_LocalResourcesConfiguration_ExistingIntegration_WithCo
 	assert.Nil(t, err)
 	assert.Equal(t, expectedConfig.Resources, i.Config.Resources)
 
-	testUtils.CheckResourcesExistence(false, false, f.portClient, f.t, []string{"workload", "namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"}, []string{})
-	defer tearDownFixture(t, f)
-
+	testUtils.CheckResourcesExistence(true, false, f.portClient, f.t, []string{"workload", "namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"}, []string{})
 }
