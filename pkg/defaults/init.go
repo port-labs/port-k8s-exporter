@@ -37,7 +37,7 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config)
 			defaultIntegrationConfig = defaults.AppConfig
 		}
 
-		klog.Infof("Could not get integration with state key %s, error: %s", applicationConfig.StateKey, err.Error())
+		klog.warningf("Could not get integration with state key %s, error: %s", applicationConfig.StateKey, err.Error())
 		if err := integration.CreateIntegration(portClient, applicationConfig.StateKey, applicationConfig.EventListenerType, defaultIntegrationConfig); err != nil {
 			return err
 		}
