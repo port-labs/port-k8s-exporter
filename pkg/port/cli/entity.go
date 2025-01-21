@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/port-labs/port-k8s-exporter/pkg/port"
-	"k8s.io/klog/v2"
 	"net/url"
 	"strconv"
+
+	"github.com/port-labs/port-k8s-exporter/pkg/port"
+	"k8s.io/klog/v2"
 )
 
 func (c *PortClient) SearchEntities(ctx context.Context, body port.SearchBody) ([]port.Entity, error) {
@@ -100,7 +101,7 @@ func (c *PortClient) DeleteStaleEntities(ctx context.Context, stateKey string, e
 			{
 				Property: "$datasource",
 				Operator: "contains",
-				Value:    fmt.Sprintf("statekey/%s", stateKey),
+				Value:    fmt.Sprintf("(statekey/%s)", stateKey),
 			},
 		},
 		Combinator: "and",
