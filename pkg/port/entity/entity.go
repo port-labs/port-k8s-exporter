@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
+	"reflect"
+	"strconv"
+
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/jq"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
-	"hash/fnv"
-	"reflect"
-	"strconv"
 )
 
 func CheckIfOwnEntity(entity port.EntityRequest, portClient *cli.PortClient) (*bool, error) {
@@ -29,7 +30,7 @@ func CheckIfOwnEntity(entity port.EntityRequest, portClient *cli.PortClient) (*b
 			{
 				Property: "$datasource",
 				Operator: "contains",
-				Value:    fmt.Sprintf("statekey/%s", config.ApplicationConfig.StateKey),
+				Value:    fmt.Sprintf("(statekey/%s)", config.ApplicationConfig.StateKey),
 			},
 			{
 				Property: "$blueprint",
