@@ -31,7 +31,6 @@ func (m *MockTicker) GetC() <-chan time.Time {
 
 func NewFixture(t *testing.T, c chan time.Time) *Fixture {
 	stateKey := guuid.NewString()
-
 	newConfig := &config.ApplicationConfiguration{
 		ConfigFilePath:                  config.ApplicationConfig.ConfigFilePath,
 		ResyncInterval:                  config.ApplicationConfig.ResyncInterval,
@@ -49,11 +48,10 @@ func NewFixture(t *testing.T, c chan time.Time) *Fixture {
 	}
 
 	portClient := cli.New(newConfig)
-
 	_ = integration.DeleteIntegration(portClient, stateKey)
-	err := integration.CreateIntegration(portClient, stateKey, "", &port.IntegrationAppConfig{
+	_, err := integration.CreateIntegration(portClient, stateKey, "", &port.IntegrationAppConfig{
 		Resources: []port.Resource{},
-	})
+	}, false)
 	if err != nil {
 		t.Errorf("Error creating Port integration: %s", err.Error())
 	}
