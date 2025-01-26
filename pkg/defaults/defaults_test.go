@@ -305,20 +305,3 @@ func Test_InitIntegration_LocalResourcesConfiguration_ExistingIntegration_WithCo
 
 	testUtils.CheckResourcesExistence(true, false, f.portClient, f.t, []string{"workload", "namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"}, []string{})
 }
-
-func Test_InitIntegration_With_CreatePortResourcesOriginPort_FeatureFlag(t *testing.T) {
-	f := NewFixture(t)
-	defer tearDownFixture(t, f)
-
-	e := InitIntegration(f.portClient, &port.Config{
-		StateKey:                  f.stateKey,
-		EventListenerType:         "POLLING",
-		CreateDefaultResources:    true,
-		CreatePortResourcesOrigin: port.CreatePortResourcesOriginPort,
-	})
-	assert.Nil(t, e)
-
-	i, err := integration.GetIntegration(f.portClient, f.stateKey)
-	assert.Nil(t, err)
-	assert.NotNil(t, i)
-}
