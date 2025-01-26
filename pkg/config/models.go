@@ -21,6 +21,7 @@ type ApplicationConfiguration struct {
 	PortClientSecret                string
 	EventListenerType               string
 	CreateDefaultResources          bool
+	CreatePortResourcesOrigin       port.CreatePortResourcesOrigin
 	OverwriteConfigurationOnRestart bool
 	// These Configurations are used only for setting up the Integration on installation or when using OverwriteConfigurationOnRestart flag.
 	Resources                    []port.Resource

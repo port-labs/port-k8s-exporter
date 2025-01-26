@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
+	"strings"
 	"time"
 )
 
@@ -12,7 +13,10 @@ const (
 	integrationPollingInitialSeconds = 3
 	integrationPollingRetryLimit     = 30
 	integrationPollingBackoffFactor  = 1.15
+	createResourcesParamName         = "integration_modes"
 )
+
+var createResourcesParamValue = []string{"create_resources"}
 
 type DefaultsProvisionFailedError struct {
 	RetryLimit int
@@ -22,7 +26,7 @@ func (e *DefaultsProvisionFailedError) Error() string {
 	return fmt.Sprintf("integration config was not provisioned after %d attempts", e.RetryLimit)
 }
 
-func CreateIntegration(portClient *cli.PortClient, stateKey string, eventListenerType string, appConfig *port.IntegrationAppConfig) error {
+func CreateIntegration(portClient *cli.PortClient, stateKey string, eventListenerType string, appConfig *port.IntegrationAppConfig, createPortResourcesOriginInPort bool) (*port.Integration, error) {
 	integration := &port.Integration{
 		Title:               stateKey,
 		InstallationAppType: "K8S EXPORTER",
@@ -34,14 +38,27 @@ func CreateIntegration(portClient *cli.PortClient, stateKey string, eventListene
 	}
 	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
 	if err != nil {
-		return fmt.Errorf("error authenticating with Port: %v", err)
+		return nil, fmt.Errorf("error authenticating with Port: %v", err)
 	}
 
-	_, err = portClient.CreateIntegration(integration)
-	if err != nil {
-		return fmt.Errorf("error creating Port integration: %v", err)
+	if createPortResourcesOriginInPort {
+		queryParams := map[string]string{
+			createResourcesParamName: strings.Join(createResourcesParamValue, ","),
+		}
+
+		portClient.Client.SetQueryParams(queryParams)
 	}
-	return nil
+
+	createdIntegration, err := portClient.CreateIntegration(integration)
+	if err != nil {
+		return nil, fmt.Errorf("error creating Port integration: %v", err)
+	}
+
+	if createPortResourcesOriginInPort {
+		return PollIntegrationUntilDefaultProvisioningComplete(portClient, stateKey)
+	}
+
+	return createdIntegration, nil
 }
 
 func GetIntegration(portClient *cli.PortClient, stateKey string) (*port.Integration, error) {
