@@ -207,7 +207,8 @@ type (
 	}
 
 	OrgDetails struct {
-		OrgId string `json:"id"`
+		OrgId        string   `json:"id"`
+		FeatureFlags []string `json:"featureFlags,omitempty"`
 	}
 )
 
