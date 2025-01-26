@@ -297,3 +297,5 @@ func Test_InitIntegration_LocalResourcesConfiguration_ExistingIntegration_WithCo
 
 	testUtils.CheckResourcesExistence(true, false, f.portClient, f.t, []string{"workload", "namespace", "cluster"}, []string{"workload_overview_dashboard", "availability_scorecard_dashboard"}, []string{})
 }
+
+// comment
