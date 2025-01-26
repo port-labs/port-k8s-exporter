@@ -42,7 +42,6 @@ func NewCreatePortResourcesOrigin(target *port.CreatePortResourcesOrigin, key, d
 	var value string
 	flag.StringVar(&value, key, defaultValue, description)
 
-	// Validate and assign to the target after parsing
 	*target = port.CreatePortResourcesOrigin(value)
 	if *target != port.CreatePortResourcesOriginPort && *target != port.CreatePortResourcesOriginK8S {
 		panic(fmt.Sprintf("Invalid value for %s: %s. Must be one of [Port, K8S]", key, value))
