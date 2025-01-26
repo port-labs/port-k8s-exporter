@@ -5,7 +5,22 @@ import (
 	"fmt"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
+	"time"
 )
+
+const (
+	integrationPollingInitialSeconds = 3
+	integrationPollingRetryLimit     = 30
+	integrationPollingBackoffFactor  = 1.15
+)
+
+type DefaultsProvisionFailedError struct {
+	RetryLimit int
+}
+
+func (e *DefaultsProvisionFailedError) Error() string {
+	return fmt.Sprintf("integration config was not provisioned after %d attempts", e.RetryLimit)
+}
 
 func CreateIntegration(portClient *cli.PortClient, stateKey string, eventListenerType string, appConfig *port.IntegrationAppConfig) error {
 	integration := &port.Integration{
@@ -87,4 +102,30 @@ func PostIntegrationKindExample(portClient *cli.PortClient, stateKey string, kin
 		return err
 	}
 	return nil
+}
+
+func PollIntegrationUntilDefaultProvisioningComplete(portClient *cli.PortClient, stateKey string) (*port.Integration, error) {
+	attempts := 0
+	currentIntervalSeconds := integrationPollingInitialSeconds
+
+	for attempts < integrationPollingRetryLimit {
+		fmt.Printf("Fetching created integration and validating config, attempt %d/%d\n", attempts+1, integrationPollingRetryLimit)
+
+		integration, err := GetIntegration(portClient, stateKey)
+		if err != nil {
+			return nil, fmt.Errorf("error getting integration during polling: %v", err)
+		}
+
+		if integration.Config != nil {
+			return integration, nil
+		}
+
+		fmt.Printf("Integration config is still being provisioned, retrying in %d seconds\n", currentIntervalSeconds)
+		time.Sleep(time.Duration(currentIntervalSeconds) * time.Second)
+
+		attempts++
+		currentIntervalSeconds = int(float64(currentIntervalSeconds) * integrationPollingBackoffFactor)
+	}
+
+	return nil, &DefaultsProvisionFailedError{RetryLimit: integrationPollingRetryLimit}
 }
