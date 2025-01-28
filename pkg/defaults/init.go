@@ -63,7 +63,9 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config)
 
 	if err != nil {
 		if applicationConfig.CreateDefaultResources {
-			defaultIntegrationConfig = defaults.AppConfig
+			if applicationConfig.CreatePortResourcesOrigin != port.CreatePortResourcesOriginPort {
+				defaultIntegrationConfig = defaults.AppConfig
+			}
 		}
 
 		klog.Warningf("Could not get integration with state key %s, error: %s", applicationConfig.StateKey, err.Error())
@@ -78,7 +80,7 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config)
 			EventListener: getEventListenerConfig(applicationConfig.EventListenerType),
 		}
 
-		if existingIntegration.Config == nil || applicationConfig.OverwriteConfigurationOnRestart {
+		if (existingIntegration.Config == nil || applicationConfig.OverwriteConfigurationOnRestart) && !(applicationConfig.CreatePortResourcesOrigin == port.CreatePortResourcesOriginPort) {
 			integrationPatch.Config = defaultIntegrationConfig
 		}
 
