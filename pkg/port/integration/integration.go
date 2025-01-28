@@ -40,16 +40,14 @@ func CreateIntegration(portClient *cli.PortClient, stateKey string, eventListene
 	if err != nil {
 		return nil, fmt.Errorf("error authenticating with Port: %v", err)
 	}
-
+	queryParams := map[string]string{}
 	if createPortResourcesOriginInPort {
-		queryParams := map[string]string{
+		queryParams = map[string]string{
 			createResourcesParamName: strings.Join(createResourcesParamValue, ","),
 		}
-
-		portClient.Client.SetQueryParams(queryParams)
 	}
 
-	createdIntegration, err := portClient.CreateIntegration(integration)
+	createdIntegration, err := portClient.CreateIntegration(integration, queryParams)
 	if err != nil {
 		return nil, fmt.Errorf("error creating Port integration: %v", err)
 	}
@@ -133,7 +131,7 @@ func PollIntegrationUntilDefaultProvisioningComplete(portClient *cli.PortClient,
 			return nil, fmt.Errorf("error getting integration during polling: %v", err)
 		}
 
-		if integration.Config != nil {
+		if integration.Config.Resources != nil {
 			return integration, nil
 		}
 
