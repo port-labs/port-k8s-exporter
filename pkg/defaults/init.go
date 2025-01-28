@@ -17,6 +17,23 @@ func getEventListenerConfig(eventListenerType string) *port.EventListenerSetting
 	return nil
 }
 
+func isPortProvisioningSupported(portClient *cli.PortClient) (bool, error) {
+	klog.Info("Resources origin is set to be Port, verifying integration is supported")
+	featureFlags, err := org_details.GetOrganizationFeatureFlags(portClient)
+	if err != nil {
+		return false, err
+	}
+
+	for _, flag := range featureFlags {
+		if flag == port.OrgUseProvisionedDefaultsFeatureFlag {
+			return true, nil
+		}
+	}
+
+	klog.Info("Port origin for Integration is not supported, changing resources origin to use K8S")
+	return false, nil
+}
+
 func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config) error {
 	klog.Infof("Initializing Port integration")
 	defaults, err := getDefaults()
@@ -26,22 +43,11 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config)
 
 	// Verify Port origin is supported via feature flags
 	if applicationConfig.CreatePortResourcesOrigin == port.CreatePortResourcesOriginPort {
-		klog.Info("Resources origin is set to be Port, verifying integration is supported")
-		featureFlags, err := org_details.GetOrganizationFeatureFlags(portClient)
+		shouldProvisionResourcesUsingPort, err := isPortProvisioningSupported(portClient)
 		if err != nil {
 			return err
 		}
-
-		hasProvisionedDefaultsFlag := false
-		for _, flag := range featureFlags {
-			if flag == port.OrgUseProvisionedDefaultsFeatureFlag {
-				hasProvisionedDefaultsFlag = true
-				break
-			}
-		}
-
-		if !hasProvisionedDefaultsFlag {
-			klog.Info("Port origin for Integration is not supported, changing resources origin to use K8S")
+		if !shouldProvisionResourcesUsingPort {
 			applicationConfig.CreatePortResourcesOrigin = port.CreatePortResourcesOriginK8S
 		}
 	}
@@ -61,7 +67,8 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config)
 		}
 
 		klog.Warningf("Could not get integration with state key %s, error: %s", applicationConfig.StateKey, err.Error())
-		_, err := integration.CreateIntegration(portClient, applicationConfig.StateKey, applicationConfig.EventListenerType, defaultIntegrationConfig, applicationConfig.CreatePortResourcesOrigin == port.CreatePortResourcesOriginPort)
+		shouldCreateResourcesUsingPort := applicationConfig.CreatePortResourcesOrigin == port.CreatePortResourcesOriginPort
+		_, err := integration.CreateIntegration(portClient, applicationConfig.StateKey, applicationConfig.EventListenerType, defaultIntegrationConfig, shouldCreateResourcesUsingPort)
 		if err != nil {
 			return err
 		}
