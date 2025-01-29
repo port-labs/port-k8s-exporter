@@ -80,7 +80,7 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config)
 			EventListener: getEventListenerConfig(applicationConfig.EventListenerType),
 		}
 
-		if (existingIntegration.Config == nil || applicationConfig.OverwriteConfigurationOnRestart) && !(applicationConfig.CreatePortResourcesOrigin == port.CreatePortResourcesOriginPort) {
+		if (existingIntegration.Config == nil && !(applicationConfig.CreatePortResourcesOrigin == port.CreatePortResourcesOriginPort)) || applicationConfig.OverwriteConfigurationOnRestart {
 			integrationPatch.Config = defaultIntegrationConfig
 		}
 
