@@ -41,9 +41,9 @@ func NewFixture(t *testing.T) *Fixture {
 }
 
 func (f *Fixture) CreateIntegration() {
-	err := integration.CreateIntegration(f.portClient, f.stateKey, "", &port.IntegrationAppConfig{
+	_, err := integration.CreateIntegration(f.portClient, f.stateKey, "", &port.IntegrationAppConfig{
 		Resources: []port.Resource{},
-	})
+	}, false)
 
 	if err != nil {
 		f.t.Errorf("Error creating Port integration: %s", err.Error())
@@ -70,9 +70,10 @@ func Test_InitIntegration_InitDefaults(t *testing.T) {
 	f := NewFixture(t)
 	defer tearDownFixture(t, f)
 	e := InitIntegration(f.portClient, &port.Config{
-		StateKey:               f.stateKey,
-		EventListenerType:      "POLLING",
-		CreateDefaultResources: true,
+		StateKey:                  f.stateKey,
+		EventListenerType:         "POLLING",
+		CreateDefaultResources:    true,
+		CreatePortResourcesOrigin: port.CreatePortResourcesOriginK8S,
 	})
 	assert.Nil(t, e)
 
@@ -99,9 +100,10 @@ func Test_InitIntegration_InitDefaults_CreateDefaultResources_False(t *testing.T
 	f := NewFixture(t)
 	defer tearDownFixture(t, f)
 	e := InitIntegration(f.portClient, &port.Config{
-		StateKey:               f.stateKey,
-		EventListenerType:      "POLLING",
-		CreateDefaultResources: false,
+		StateKey:                  f.stateKey,
+		EventListenerType:         "POLLING",
+		CreateDefaultResources:    false,
+		CreatePortResourcesOrigin: port.CreatePortResourcesOriginK8S,
 	})
 	assert.Nil(t, e)
 
@@ -124,9 +126,10 @@ func Test_InitIntegration_BlueprintExists(t *testing.T) {
 		t.Errorf("Error creating Port blueprint: %s", err.Error())
 	}
 	e := InitIntegration(f.portClient, &port.Config{
-		StateKey:               f.stateKey,
-		EventListenerType:      "POLLING",
-		CreateDefaultResources: true,
+		StateKey:                  f.stateKey,
+		EventListenerType:         "POLLING",
+		CreateDefaultResources:    true,
+		CreatePortResourcesOrigin: port.CreatePortResourcesOriginK8S,
 	})
 	assert.Nil(t, e)
 
@@ -150,9 +153,10 @@ func Test_InitIntegration_PageExists(t *testing.T) {
 		t.Errorf("Error creating Port page: %s", err.Error())
 	}
 	e := InitIntegration(f.portClient, &port.Config{
-		StateKey:               f.stateKey,
-		EventListenerType:      "POLLING",
-		CreateDefaultResources: true,
+		StateKey:                  f.stateKey,
+		EventListenerType:         "POLLING",
+		CreateDefaultResources:    true,
+		CreatePortResourcesOrigin: port.CreatePortResourcesOriginK8S,
 	})
 	assert.Nil(t, e)
 
@@ -169,14 +173,15 @@ func Test_InitIntegration_PageExists(t *testing.T) {
 func Test_InitIntegration_ExistingIntegration(t *testing.T) {
 	f := NewFixture(t)
 	defer tearDownFixture(t, f)
-	err := integration.CreateIntegration(f.portClient, f.stateKey, "", nil)
+	_, err := integration.CreateIntegration(f.portClient, f.stateKey, "", nil, false)
 	if err != nil {
 		t.Errorf("Error creating Port integration: %s", err.Error())
 	}
 	e := InitIntegration(f.portClient, &port.Config{
-		StateKey:               f.stateKey,
-		EventListenerType:      "POLLING",
-		CreateDefaultResources: true,
+		StateKey:                  f.stateKey,
+		EventListenerType:         "POLLING",
+		CreateDefaultResources:    true,
+		CreatePortResourcesOrigin: port.CreatePortResourcesOriginK8S,
 	})
 	assert.Nil(t, e)
 
@@ -189,7 +194,7 @@ func Test_InitIntegration_ExistingIntegration(t *testing.T) {
 func Test_InitIntegration_LocalResourcesConfiguration(t *testing.T) {
 	f := NewFixture(t)
 	defer tearDownFixture(t, f)
-	err := integration.CreateIntegration(f.portClient, f.stateKey, "", nil)
+	_, err := integration.CreateIntegration(f.portClient, f.stateKey, "", nil, false)
 	if err != nil {
 		t.Errorf("Error creating Port integration: %s", err.Error())
 	}
@@ -214,10 +219,11 @@ func Test_InitIntegration_LocalResourcesConfiguration(t *testing.T) {
 		},
 	}
 	e := InitIntegration(f.portClient, &port.Config{
-		StateKey:               f.stateKey,
-		EventListenerType:      "POLLING",
-		Resources:              expectedResources,
-		CreateDefaultResources: true,
+		StateKey:                  f.stateKey,
+		EventListenerType:         "POLLING",
+		Resources:                 expectedResources,
+		CreateDefaultResources:    true,
+		CreatePortResourcesOrigin: port.CreatePortResourcesOriginK8S,
 	})
 	assert.Nil(t, e)
 
@@ -231,15 +237,16 @@ func Test_InitIntegration_LocalResourcesConfiguration(t *testing.T) {
 func Test_InitIntegration_LocalResourcesConfiguration_ExistingIntegration_EmptyConfiguration(t *testing.T) {
 	f := NewFixture(t)
 	defer tearDownFixture(t, f)
-	err := integration.CreateIntegration(f.portClient, f.stateKey, "POLLING", nil)
+	_, err := integration.CreateIntegration(f.portClient, f.stateKey, "POLLING", nil, false)
 	if err != nil {
 		t.Errorf("Error creating Port integration: %s", err.Error())
 	}
 	e := InitIntegration(f.portClient, &port.Config{
-		StateKey:               f.stateKey,
-		EventListenerType:      "KAFKA",
-		Resources:              nil,
-		CreateDefaultResources: true,
+		StateKey:                  f.stateKey,
+		EventListenerType:         "KAFKA",
+		Resources:                 nil,
+		CreateDefaultResources:    true,
+		CreatePortResourcesOrigin: port.CreatePortResourcesOriginK8S,
 	})
 	assert.Nil(t, e)
 
@@ -276,7 +283,7 @@ func Test_InitIntegration_LocalResourcesConfiguration_ExistingIntegration_WithCo
 			},
 		},
 	}
-	err := integration.CreateIntegration(f.portClient, f.stateKey, "POLLING", expectedConfig)
+	_, err := integration.CreateIntegration(f.portClient, f.stateKey, "POLLING", expectedConfig, false)
 	if err != nil {
 		t.Errorf("Error creating Port integration: %s", err.Error())
 	}
@@ -287,6 +294,7 @@ func Test_InitIntegration_LocalResourcesConfiguration_ExistingIntegration_WithCo
 		EventListenerType:               "KAFKA",
 		Resources:                       expectedConfig.Resources,
 		CreateDefaultResources:          true,
+		CreatePortResourcesOrigin:       port.CreatePortResourcesOriginK8S,
 		OverwriteConfigurationOnRestart: true,
 	})
 	assert.Nil(t, e)

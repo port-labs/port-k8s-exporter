@@ -19,3 +19,17 @@ func GetOrgId(portClient *cli.PortClient) (string, error) {
 
 	return r, nil
 }
+
+func GetOrganizationFeatureFlags(portClient *cli.PortClient) ([]string, error) {
+	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
+	if err != nil {
+		return nil, fmt.Errorf("error authenticating with Port: %v", err)
+	}
+
+	flags, err := portClient.GetOrganizationFeatureFlags()
+	if err != nil {
+		return nil, fmt.Errorf("error getting organization feature flags: %v", err)
+	}
+
+	return flags, nil
+}

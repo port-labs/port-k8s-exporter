@@ -24,9 +24,10 @@ func parseIntegration(i *port.Integration) *port.Integration {
 	return x
 }
 
-func (c *PortClient) CreateIntegration(i *port.Integration) (*port.Integration, error) {
+func (c *PortClient) CreateIntegration(i *port.Integration, queryParams map[string]string) (*port.Integration, error) {
 	pb := &port.ResponseBody{}
 	resp, err := c.Client.R().
+		SetQueryParams(queryParams).
 		SetBody(parseIntegration(i)).
 		SetResult(&pb).
 		Post("v1/integration")

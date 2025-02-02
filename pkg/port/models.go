@@ -207,7 +207,8 @@ type (
 	}
 
 	OrgDetails struct {
-		OrgId string `json:"id"`
+		OrgId        string   `json:"id"`
+		FeatureFlags []string `json:"featureFlags,omitempty"`
 	}
 )
 
@@ -303,12 +304,24 @@ type IntegrationAppConfig struct {
 	SendRawDataExamples          *bool      `json:"sendRawDataExamples,omitempty"`
 }
 
+const (
+	OrgUseProvisionedDefaultsFeatureFlag = "USE_PROVISIONED_DEFAULTS"
+)
+
+type CreatePortResourcesOrigin string
+
+const (
+	CreatePortResourcesOriginPort CreatePortResourcesOrigin = "Port"
+	CreatePortResourcesOriginK8S  CreatePortResourcesOrigin = "K8S"
+)
+
 type Config struct {
-	ResyncInterval                  uint   `yaml:"resyncInterval,omitempty"`
-	StateKey                        string `yaml:"stateKey,omitempty"`
-	EventListenerType               string `yaml:"eventListenerType,omitempty"`
-	CreateDefaultResources          bool   `yaml:"createDefaultResources,omitempty"`
-	OverwriteConfigurationOnRestart bool   `yaml:"overwriteConfigurationOnRestart,omitempty"`
+	ResyncInterval                  uint                      `yaml:"resyncInterval,omitempty"`
+	StateKey                        string                    `yaml:"stateKey,omitempty"`
+	EventListenerType               string                    `yaml:"eventListenerType,omitempty"`
+	CreateDefaultResources          bool                      `yaml:"createDefaultResources,omitempty"`
+	CreatePortResourcesOrigin       CreatePortResourcesOrigin `yaml:"createPortResourcesOrigin,omitempty"`
+	OverwriteConfigurationOnRestart bool                      `yaml:"overwriteConfigurationOnRestart,omitempty"`
 	// These Configurations are used only for setting up the Integration on installation or when using OverwriteConfigurationOnRestart flag.
 	Resources                    []Resource `yaml:"resources,omitempty"`
 	CRDSToDiscover               string     `yaml:"crdsToDiscover,omitempty"`
