@@ -16,7 +16,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: 1.22
+        go-version: 1.23
         cache: true
 
     - name: Build
@@ -26,7 +26,7 @@ jobs:
       run: go clean -testcache
 
     - name: Test
-      run: go run gotest.tools/gotestsum@latest -f github-actions --junitfile ./test-results/junit.xml --format-hide-empty-pkg --junitfile-hide-empty-pkg
+      run: go run gotest.tools/gotestsum@latest -f github-actions --junitfile ./test-results/junit.xml --format-hide-empty-pkg --junitfile-hide-empty-pkg -- -p=1 ./...
       env:
         PORT_CLIENT_ID: ${{ secrets.PORT_CLIENT_ID }}
         PORT_CLIENT_SECRET: ${{ secrets.PORT_CLIENT_SECRET }}
