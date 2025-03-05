@@ -46,7 +46,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: 1.22
+          go-version: 1.23
           cache: true
 
       # https://stackoverflow.com/questions/51475992/cgo-cross-compiling-from-amd64linux-to-arm64linux/75368290#75368290
