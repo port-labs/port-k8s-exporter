@@ -33,7 +33,7 @@ jobs:
         PORT_BASE_URL: ${{ secrets.PORT_BASE_URL }}
 
     - name: Publish Test Report
-      uses: mikepenz/action-junit-report@v4
+      uses: mikepenz/action-junit-report@v5
       if: ${{ always() }}
       with:
         report_paths: './test-results/junit.xml'
