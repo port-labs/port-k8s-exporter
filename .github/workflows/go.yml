@@ -37,6 +37,7 @@ jobs:
         go tool cover -func=cover.out > coverage.txt
         go tool cover -html=cover.out -o coverage.html
     - name: Upload coverage report
+      id: upload-coverage
       uses: actions/upload-artifact@v4
       with:
         path: 'coverage.html'
@@ -110,7 +111,7 @@ jobs:
       if: ${{ (fromJson(steps.set-stmts-coverage.outputs.STMTS_COVERAGE) < fromJson(steps.set-current-coverage.outputs.CURRENT_COVERAGE)) && (vars.CODE_COVERAGE_ENFORCEMENT == 'true') }}
       run: exit 1
     - name: Update service code coverage percentage in Port
-      #if: ${{ (github.event_name == 'push') }}
+      if: ${{ (github.event_name == 'push') }}
       uses: port-labs/port-github-action@v1
       with:
         clientId: ${{ secrets.PORT_MAIN_CLIENT_ID }}
