@@ -108,7 +108,6 @@ jobs:
             body: output
           })
     - name: Calculate minimum required coverage with tolerance
-      if: ${{ (steps.run-tests.outputs.CODE_COVERAGE_EXISTS == 'true') }}
       run: |
         STMT_COVERAGE=${{ steps.set-stmts-coverage.outputs.STMTS_COVERAGE }}
         THRESHOLD_DELTA=${{ vars.COVERAGE_THRESHOLD_DELTA }}
