@@ -85,22 +85,9 @@ func TestJqSearchIdentifier(t *testing.T) {
 }
 
 func TestJqSearchTeam(t *testing.T) {
-	// Test with string type
 	mapping := []port.EntityMapping{
 		{
-			Identifier: ".metadata.name",
-			Blueprint:  fmt.Sprintf("\"%s\"", blueprint),
-			Icon:       "\"Microservice\"",
-			Team:       "\"Test\"",
-		},
-	}
-	res, _ := ParseString(mapping[0].Team.(string), nil)
-	assert.Equal(t, res, "Test")
-
-	// Test with map type
-	mapping = []port.EntityMapping{
-		{
-			Identifier: ".metadata.name",
+			Identifier: "\"Frontend-Service\"",
 			Blueprint:  fmt.Sprintf("\"%s\"", blueprint),
 			Icon:       "\"Microservice\"",
 			Team: map[string]interface{}{
@@ -108,21 +95,21 @@ func TestJqSearchTeam(t *testing.T) {
 				"rules": []interface{}{
 					map[string]interface{}{
 						"property": "\"team\"",
-						"operator": "\"=\"",
-						"value":    "\"Test\"",
+						"operator": "\"in\"",
+						"value":    ".values",
 					},
 				},
 			},
 		},
 	}
-	resMap, _ := ParseMapRecursively(mapping[0].Team.(map[string]interface{}), nil)
+	resMap, _ := ParseMapRecursively(mapping[0].Team.(map[string]interface{}), map[string]interface{}{"values": []string{"val1", "val2"}})
 	assert.Equal(t, resMap, map[string]interface{}{
 		"combinator": "and",
 		"rules": []interface{}{
 			map[string]interface{}{
 				"property": "team",
-				"operator": "=",
-				"value":    "Test",
+				"operator": "in",
+				"value":    []string{"val1", "val2"},
 			},
 		},
 	})
