@@ -129,6 +129,9 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 	blueprintRaw := port.Blueprint{
 		Identifier: blueprintIdentifier,
 		Title:      blueprintIdentifier,
+		Ownership: {
+			"type": "Direct"
+		}
 		Schema: port.BlueprintSchema{
 			Properties: map[string]port.Property{
 				"bool": {
