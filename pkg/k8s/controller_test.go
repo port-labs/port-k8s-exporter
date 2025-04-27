@@ -129,9 +129,9 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 	blueprintRaw := port.Blueprint{
 		Identifier: blueprintIdentifier,
 		Title:      blueprintIdentifier,
-		Ownership: {
-			"type": "Direct"
-		}
+		Ownership: &port.Ownership{
+			Type: "Direct",
+		},
 		Schema: port.BlueprintSchema{
 			Properties: map[string]port.Property{
 				"bool": {
@@ -858,28 +858,33 @@ func TestCreateDeploymentWithTeam(t *testing.T) {
 	if err != nil {
 		t.Errorf("error reading entity: %v", err)
 	}
-	assert.Equal(t, entity.Team, teamName)
+	teamArray := entity.Team.([]interface{})
+	teamValue := teamArray[0].(string)
+	assert.Equal(t, teamName, teamValue)
 
+	searchTeamName := "Search Team"
 	// Test with map type team
-	item = EventItem{Key: getKey(d, t), ActionType: UpdateAction}
+	item = EventItem{Key: getKey(d, t), ActionType: CreateAction}
 	resource.Port.Entity.Mappings[0].Team = map[string]interface{}{
 		"combinator": "\"and\"",
 		"rules": []interface{}{
 			map[string]interface{}{
-				"property": "\"$identifier\"",
+				"property": "\"$title\"",
 				"operator": "\"=\"",
-				"value":    fmt.Sprintf("\"%s\"", teamName),
+				"value":    fmt.Sprintf("\"%s\"", searchTeamName),
 			},
 		},
 	}
+	defer tearDownFixture(t, f)
 	f = newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
 
-	defer tearDownFixture(t, f)
 	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprintId, id): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
 
 	entity, err = f.controller.portClient.ReadEntity(context.Background(), id, blueprintId)
 	if err != nil {
 		t.Errorf("error reading entity: %v", err)
 	}
-	assert.Equal(t, entity.Team, teamName)
+	searchTeamArray := entity.Team.([]interface{})
+	searchTeamValue := searchTeamArray[0].(string)
+	assert.Equal(t, "search_team", searchTeamValue)
 }

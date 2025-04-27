@@ -2,8 +2,9 @@ package jq
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	_ "github.com/port-labs/port-k8s-exporter/test_utils"
@@ -114,8 +115,8 @@ func TestJqSearchTeam(t *testing.T) {
 			},
 		},
 	}
-	res, _ = ParseMapRecursively(mapping[0].Team.(map[string]interface{}), nil)
-	assert.Equal(t, res, map[string]interface{}{
+	resMap, _ := ParseMapRecursively(mapping[0].Team.(map[string]interface{}), nil)
+	assert.Equal(t, resMap, map[string]interface{}{
 		"combinator": "and",
 		"rules": []interface{}{
 			map[string]interface{}{

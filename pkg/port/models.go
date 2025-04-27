@@ -139,8 +139,13 @@ type (
 		MirrorProperties      map[string]BlueprintMirrorProperty      `json:"mirrorProperties,omitempty"`
 		ChangelogDestination  *ChangelogDestination                   `json:"changelogDestination,omitempty"`
 		Relations             map[string]Relation                     `json:"relations,omitempty"`
+		Ownership             *Ownership                              `json:"ownership,omitempty"`
 	}
 
+	Ownership struct {
+		Type string `json:"type,omitempty"`
+	}
+	
 	Page struct {
 		Identifier string      `json:"identifier"`
 		Blueprint  string      `json:"blueprint,omitempty"`
