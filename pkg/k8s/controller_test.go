@@ -862,14 +862,14 @@ func TestCreateDeploymentWithTeam(t *testing.T) {
 	teamValue := teamArray[0].(string)
 	assert.Equal(t, teamName, teamValue)
 
-	searchTeamName := "Search Team"
+	searchTeamName := "search_team"
 	// Test with map type team
 	item = EventItem{Key: getKey(d, t), ActionType: CreateAction}
 	resource.Port.Entity.Mappings[0].Team = map[string]interface{}{
 		"combinator": "\"and\"",
 		"rules": []interface{}{
 			map[string]interface{}{
-				"property": "\"$title\"",
+				"property": "\"$identifier\"",
 				"operator": "\"=\"",
 				"value":    fmt.Sprintf("\"%s\"", searchTeamName),
 			},
@@ -887,4 +887,28 @@ func TestCreateDeploymentWithTeam(t *testing.T) {
 	searchTeamArray := entity.Team.([]interface{})
 	searchTeamValue := searchTeamArray[0].(string)
 	assert.Equal(t, "search_team", searchTeamValue)
+
+	item = EventItem{Key: getKey(d, t), ActionType: CreateAction}
+	resource.Port.Entity.Mappings[0].Team = map[string]interface{}{
+		"combinator": "\"and\"",
+		"rules": []interface{}{
+			map[string]interface{}{
+				"property": "\"$identifier\"",
+				"operator": "\"in\"",
+				"value":    fmt.Sprintf("[\"%s\", \"%s\"]", teamName, searchTeamName),
+			},
+		},
+	}
+	defer tearDownFixture(t, f)
+
+	f = newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
+	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprintId, id): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
+
+	entity, err = f.controller.portClient.ReadEntity(context.Background(), id, blueprintId)
+	if err != nil {
+		t.Errorf("error reading entity: %v", err)
+	}
+	expectedTeams := []string{"search_team", "example_team"}
+	teamsArray := entity.Team.([]interface{})
+	assert.ElementsMatch(t, expectedTeams, teamsArray)
 }
