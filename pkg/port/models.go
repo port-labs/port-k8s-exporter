@@ -246,7 +246,7 @@ type EntityMapping struct {
 	Title      string                 `json:"title,omitempty" yaml:"title,omitempty"`
 	Blueprint  string                 `json:"blueprint" yaml:"blueprint"`
 	Icon       string                 `json:"icon,omitempty" yaml:"icon,omitempty"`
-	Team       string                 `json:"team,omitempty" yaml:"team,omitempty"`
+	Team       interface{}            `json:"team,omitempty" yaml:"team,omitempty"`
 	Properties map[string]string      `json:"properties,omitempty" yaml:"properties,omitempty"`
 	Relations  map[string]interface{} `json:"relations,omitempty" yaml:"relations,omitempty"`
 }

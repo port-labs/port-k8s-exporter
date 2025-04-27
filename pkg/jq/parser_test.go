@@ -82,3 +82,47 @@ func TestJqSearchIdentifier(t *testing.T) {
 	})
 
 }
+
+func TestJqSearchTeam(t *testing.T) {
+	// Test with string type
+	mapping := []port.EntityMapping{
+		{
+			Identifier: ".metadata.name",
+			Blueprint:  fmt.Sprintf("\"%s\"", blueprint),
+			Icon:       "\"Microservice\"",
+			Team:       "\"Test\"",
+		},
+	}
+	res, _ := ParseString(mapping[0].Team.(string), nil)
+	assert.Equal(t, res, "Test")
+
+	// Test with map type
+	mapping = []port.EntityMapping{
+		{
+			Identifier: ".metadata.name",
+			Blueprint:  fmt.Sprintf("\"%s\"", blueprint),
+			Icon:       "\"Microservice\"",
+			Team: map[string]interface{}{
+				"combinator": "\"and\"",
+				"rules": []interface{}{
+					map[string]interface{}{
+						"property": "\"team\"",
+						"operator": "\"=\"",
+						"value":    "\"Test\"",
+					},
+				},
+			},
+		},
+	}
+	res, _ = ParseMapRecursively(mapping[0].Team.(map[string]interface{}), nil)
+	assert.Equal(t, res, map[string]interface{}{
+		"combinator": "and",
+		"rules": []interface{}{
+			map[string]interface{}{
+				"property": "team",
+				"operator": "=",
+				"value":    "Test",
+			},
+		},
+	})
+}
