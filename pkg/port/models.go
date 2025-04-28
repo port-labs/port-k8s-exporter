@@ -145,7 +145,7 @@ type (
 	Ownership struct {
 		Type string `json:"type,omitempty"`
 	}
-	
+
 	Page struct {
 		Identifier string      `json:"identifier"`
 		Blueprint  string      `json:"blueprint,omitempty"`
@@ -333,4 +333,8 @@ type Config struct {
 	OverwriteCRDsActions         bool       `yaml:"overwriteCrdsActions,omitempty"`
 	DeleteDependents             bool       `yaml:"deleteDependents,omitempty"`
 	CreateMissingRelatedEntities bool       `yaml:"createMissingRelatedEntities,omitempty"`
+}
+
+type Team struct {
+	Name string `json:"name"`
 }
