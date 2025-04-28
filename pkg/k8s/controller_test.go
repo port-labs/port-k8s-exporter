@@ -843,12 +843,12 @@ func TestCreateDeploymentWithTeam(t *testing.T) {
 	stateKey := guuid.NewString()
 	blueprintId := getBlueprintId(stateKey)
 	id := guuid.NewString()
-	teamName := "example_team"
+	exampleTeamName := "example_team"
 	d := newDeployment(stateKey)
 	ud := newUnstructured(d)
 	resource := getBaseDeploymentResource(stateKey)
 	resource.Port.Entity.Mappings[0].Identifier = fmt.Sprintf("\"%s\"", id)
-	resource.Port.Entity.Mappings[0].Team = fmt.Sprintf("\"%s\"", teamName)
+	resource.Port.Entity.Mappings[0].Team = fmt.Sprintf("\"%s\"", exampleTeamName)
 	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
 	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
 
@@ -860,9 +860,26 @@ func TestCreateDeploymentWithTeam(t *testing.T) {
 	}
 	teamArray := entity.Team.([]interface{})
 	teamValue := teamArray[0].(string)
-	assert.Equal(t, teamName, teamValue)
+	assert.Equal(t, exampleTeamName, teamValue)
 
 	searchTeamName := "search_team"
+
+	teamBody := &port.Team{
+		Name: searchTeamName,
+	}
+	// create test team
+	pb := &port.ResponseBody{}
+	resp, err := f.controller.portClient.Client.R().
+		SetBody(teamBody).
+		SetHeader("Accept", "application/json").
+		SetResult(&pb).
+		Post("v1/teams")
+	if err != nil {
+		t.Errorf("error creating team: %v", err)
+	}
+	if !pb.OK {
+		t.Errorf("failed to create team, got: %s", resp.Body())
+	}
 	// Test with map type team
 	item = EventItem{Key: getKey(d, t), ActionType: CreateAction}
 	resource.Port.Entity.Mappings[0].Team = map[string]interface{}{
@@ -895,7 +912,7 @@ func TestCreateDeploymentWithTeam(t *testing.T) {
 			map[string]interface{}{
 				"property": "\"$identifier\"",
 				"operator": "\"in\"",
-				"value":    fmt.Sprintf("[\"%s\", \"%s\"]", teamName, searchTeamName),
+				"value":    fmt.Sprintf("[\"%s\", \"%s\"]", exampleTeamName, searchTeamName),
 			},
 		},
 	}
@@ -908,7 +925,20 @@ func TestCreateDeploymentWithTeam(t *testing.T) {
 	if err != nil {
 		t.Errorf("error reading entity: %v", err)
 	}
-	expectedTeams := []string{"search_team", "example_team"}
+	expectedTeams := []string{exampleTeamName, searchTeamName}
 	teamsArray := entity.Team.([]interface{})
 	assert.ElementsMatch(t, expectedTeams, teamsArray)
+	// delete test team
+	pc := &port.ResponseBody{}
+	res, err := f.controller.portClient.Client.R().
+		SetHeader("Accept", "application/json").
+		SetResult(&pc).
+		SetPathParam("name", searchTeamName).
+		Delete("v1/teams/{name}")
+	if err != nil {
+		t.Errorf("error creating team: %v", err)
+	}
+	if !pc.OK {
+		t.Errorf("failed to delete team, got: %s", res.Body())
+	}
 }
