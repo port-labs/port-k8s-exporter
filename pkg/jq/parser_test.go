@@ -2,8 +2,9 @@ package jq
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	_ "github.com/port-labs/port-k8s-exporter/test_utils"
@@ -81,4 +82,35 @@ func TestJqSearchIdentifier(t *testing.T) {
 		},
 	})
 
+}
+
+func TestJqSearchTeam(t *testing.T) {
+	mapping := []port.EntityMapping{
+		{
+			Identifier: "\"Frontend-Service\"",
+			Blueprint:  fmt.Sprintf("\"%s\"", blueprint),
+			Icon:       "\"Microservice\"",
+			Team: map[string]interface{}{
+				"combinator": "\"and\"",
+				"rules": []interface{}{
+					map[string]interface{}{
+						"property": "\"team\"",
+						"operator": "\"in\"",
+						"value":    ".values",
+					},
+				},
+			},
+		},
+	}
+	resMap, _ := ParseMapRecursively(mapping[0].Team.(map[string]interface{}), map[string]interface{}{"values": []string{"val1", "val2"}})
+	assert.Equal(t, resMap, map[string]interface{}{
+		"combinator": "and",
+		"rules": []interface{}{
+			map[string]interface{}{
+				"property": "team",
+				"operator": "in",
+				"value":    []string{"val1", "val2"},
+			},
+		},
+	})
 }

@@ -129,6 +129,9 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 	blueprintRaw := port.Blueprint{
 		Identifier: blueprintIdentifier,
 		Title:      blueprintIdentifier,
+		Ownership: &port.Ownership{
+			Type: "Direct",
+		},
 		Schema: port.BlueprintSchema{
 			Properties: map[string]port.Property{
 				"bool": {
@@ -835,3 +838,159 @@ func TestCreateDeploymentWithSearchRelation(t *testing.T) {
 	defer tearDownFixture(t, f)
 	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprintId, d.Name): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
 } */
+
+func TestCreateDeploymentWithTeamString(t *testing.T) {
+	stateKey := guuid.NewString()
+	blueprintId := getBlueprintId(stateKey)
+	id := guuid.NewString()
+	exampleTeamName := "example_team"
+	d := newDeployment(stateKey)
+	ud := newUnstructured(d)
+	resource := getBaseDeploymentResource(stateKey)
+	resource.Port.Entity.Mappings[0].Identifier = fmt.Sprintf("\"%s\"", id)
+	resource.Port.Entity.Mappings[0].Team = fmt.Sprintf("\"%s\"", exampleTeamName)
+	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
+	defer tearDownFixture(t, f)
+
+	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprintId, id): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
+
+	entity, err := f.controller.portClient.ReadEntity(context.Background(), id, blueprintId)
+	if err != nil {
+		t.Errorf("error reading entity: %v", err)
+	}
+	teamArray := entity.Team.([]interface{})
+	teamValue := teamArray[0].(string)
+	assert.Equal(t, exampleTeamName, teamValue)
+}
+
+func TestCreateDeploymentWithTeamSearch(t *testing.T) {
+	stateKey := guuid.NewString()
+	blueprintId := getBlueprintId(stateKey)
+	id := guuid.NewString()
+	searchTeamName := "search_team"
+	d := newDeployment(stateKey)
+	ud := newUnstructured(d)
+
+	resource := getBaseDeploymentResource(stateKey)
+	resource.Port.Entity.Mappings[0].Identifier = fmt.Sprintf("\"%s\"", id)
+	resource.Port.Entity.Mappings[0].Team = map[string]interface{}{
+		"combinator": "\"and\"",
+		"rules": []interface{}{
+			map[string]interface{}{
+				"property": "\"$identifier\"",
+				"operator": "\"=\"",
+				"value":    fmt.Sprintf("\"%s\"", searchTeamName),
+			},
+		},
+	}
+	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
+	defer tearDownFixture(t, f)
+	// Create test team
+	teamBody := &port.Team{
+		Name: searchTeamName,
+	}
+	pb := &port.ResponseBody{}
+	resp, err := f.controller.portClient.Client.R().
+		SetBody(teamBody).
+		SetHeader("Accept", "application/json").
+		SetResult(&pb).
+		Post("v1/teams")
+	if err != nil {
+		t.Errorf("error creating team: %v", err)
+	}
+	if !pb.OK {
+		t.Errorf("failed to create team, got: %s", resp.Body())
+	}
+
+	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprintId, id): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
+
+	entity, err := f.controller.portClient.ReadEntity(context.Background(), id, blueprintId)
+	if err != nil {
+		t.Errorf("error reading entity: %v", err)
+	}
+	searchTeamArray := entity.Team.([]interface{})
+	searchTeamValue := searchTeamArray[0].(string)
+	assert.Equal(t, searchTeamName, searchTeamValue)
+
+	// Cleanup test team
+	pc := &port.ResponseBody{}
+	res, err := f.controller.portClient.Client.R().
+		SetHeader("Accept", "application/json").
+		SetResult(&pc).
+		SetPathParam("name", searchTeamName).
+		Delete("v1/teams/{name}")
+	if err != nil {
+		t.Errorf("error deleting team: %v", err)
+	}
+	if !pc.OK {
+		t.Errorf("failed to delete team, got: %s", res.Body())
+	}
+}
+
+func TestCreateDeploymentWithMultiTeamSearch(t *testing.T) {
+	stateKey := guuid.NewString()
+	blueprintId := getBlueprintId(stateKey)
+	id := guuid.NewString()
+	exampleTeamName := "example_team"
+	searchTeamName := "search_team"
+	d := newDeployment(stateKey)
+	ud := newUnstructured(d)
+
+	resource := getBaseDeploymentResource(stateKey)
+	resource.Port.Entity.Mappings[0].Identifier = fmt.Sprintf("\"%s\"", id)
+	resource.Port.Entity.Mappings[0].Team = map[string]interface{}{
+		"combinator": "\"and\"",
+		"rules": []interface{}{
+			map[string]interface{}{
+				"property": "\"$identifier\"",
+				"operator": "\"in\"",
+				"value":    fmt.Sprintf("[\"%s\", \"%s\"]", exampleTeamName, searchTeamName),
+			},
+		},
+	}
+	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
+	// Create test team
+	teamBody := &port.Team{
+		Name: searchTeamName,
+	}
+	pb := &port.ResponseBody{}
+	resp, err := f.controller.portClient.Client.R().
+		SetBody(teamBody).
+		SetHeader("Accept", "application/json").
+		SetResult(&pb).
+		Post("v1/teams")
+	if err != nil {
+		t.Errorf("error creating team: %v", err)
+	}
+	if !pb.OK {
+		t.Errorf("failed to create team, got: %s", resp.Body())
+	}
+	defer tearDownFixture(t, f)
+
+	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprintId, id): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
+
+	entity, err := f.controller.portClient.ReadEntity(context.Background(), id, blueprintId)
+	if err != nil {
+		t.Errorf("error reading entity: %v", err)
+	}
+	expectedTeams := []string{exampleTeamName, searchTeamName}
+	teamsArray := entity.Team.([]interface{})
+	assert.ElementsMatch(t, expectedTeams, teamsArray)
+
+	// Cleanup test team
+	pc := &port.ResponseBody{}
+	res, err := f.controller.portClient.Client.R().
+		SetHeader("Accept", "application/json").
+		SetResult(&pc).
+		SetPathParam("name", searchTeamName).
+		Delete("v1/teams/{name}")
+	if err != nil {
+		t.Errorf("error deleting team: %v", err)
+	}
+	if !pc.OK {
+		t.Errorf("failed to delete team, got: %s", res.Body())
+	}
+}

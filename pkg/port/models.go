@@ -139,6 +139,11 @@ type (
 		MirrorProperties      map[string]BlueprintMirrorProperty      `json:"mirrorProperties,omitempty"`
 		ChangelogDestination  *ChangelogDestination                   `json:"changelogDestination,omitempty"`
 		Relations             map[string]Relation                     `json:"relations,omitempty"`
+		Ownership             *Ownership                              `json:"ownership,omitempty"`
+	}
+
+	Ownership struct {
+		Type string `json:"type,omitempty"`
 	}
 
 	Page struct {
@@ -246,7 +251,7 @@ type EntityMapping struct {
 	Title      string                 `json:"title,omitempty" yaml:"title,omitempty"`
 	Blueprint  string                 `json:"blueprint" yaml:"blueprint"`
 	Icon       string                 `json:"icon,omitempty" yaml:"icon,omitempty"`
-	Team       string                 `json:"team,omitempty" yaml:"team,omitempty"`
+	Team       interface{}            `json:"team,omitempty" yaml:"team,omitempty"`
 	Properties map[string]string      `json:"properties,omitempty" yaml:"properties,omitempty"`
 	Relations  map[string]interface{} `json:"relations,omitempty" yaml:"relations,omitempty"`
 }
@@ -328,4 +333,8 @@ type Config struct {
 	OverwriteCRDsActions         bool       `yaml:"overwriteCrdsActions,omitempty"`
 	DeleteDependents             bool       `yaml:"deleteDependents,omitempty"`
 	CreateMissingRelatedEntities bool       `yaml:"createMissingRelatedEntities,omitempty"`
+}
+
+type Team struct {
+	Name string `json:"name"`
 }
