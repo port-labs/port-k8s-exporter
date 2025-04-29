@@ -839,7 +839,7 @@ func TestCreateDeploymentWithSearchRelation(t *testing.T) {
 	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprintId, d.Name): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
 } */
 
-func TestCreateDeploymentWithTeam(t *testing.T) {
+func TestCreateDeploymentWithTeamString(t *testing.T) {
 	stateKey := guuid.NewString()
 	blueprintId := getBlueprintId(stateKey)
 	id := guuid.NewString()
@@ -851,6 +851,7 @@ func TestCreateDeploymentWithTeam(t *testing.T) {
 	resource.Port.Entity.Mappings[0].Team = fmt.Sprintf("\"%s\"", exampleTeamName)
 	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
 	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
+	defer tearDownFixture(t, f)
 
 	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprintId, id): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
 
@@ -861,13 +862,35 @@ func TestCreateDeploymentWithTeam(t *testing.T) {
 	teamArray := entity.Team.([]interface{})
 	teamValue := teamArray[0].(string)
 	assert.Equal(t, exampleTeamName, teamValue)
+}
 
+func TestCreateDeploymentWithTeamSearch(t *testing.T) {
+	stateKey := guuid.NewString()
+	blueprintId := getBlueprintId(stateKey)
+	id := guuid.NewString()
 	searchTeamName := "search_team"
+	d := newDeployment(stateKey)
+	ud := newUnstructured(d)
 
+	resource := getBaseDeploymentResource(stateKey)
+	resource.Port.Entity.Mappings[0].Identifier = fmt.Sprintf("\"%s\"", id)
+	resource.Port.Entity.Mappings[0].Team = map[string]interface{}{
+		"combinator": "\"and\"",
+		"rules": []interface{}{
+			map[string]interface{}{
+				"property": "\"$identifier\"",
+				"operator": "\"=\"",
+				"value":    fmt.Sprintf("\"%s\"", searchTeamName),
+			},
+		},
+	}
+	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
+	defer tearDownFixture(t, f)
+	// Create test team
 	teamBody := &port.Team{
 		Name: searchTeamName,
 	}
-	// create test team
 	pb := &port.ResponseBody{}
 	resp, err := f.controller.portClient.Client.R().
 		SetBody(teamBody).
@@ -880,32 +903,43 @@ func TestCreateDeploymentWithTeam(t *testing.T) {
 	if !pb.OK {
 		t.Errorf("failed to create team, got: %s", resp.Body())
 	}
-	// Test with map type team
-	item = EventItem{Key: getKey(d, t), ActionType: CreateAction}
-	resource.Port.Entity.Mappings[0].Team = map[string]interface{}{
-		"combinator": "\"and\"",
-		"rules": []interface{}{
-			map[string]interface{}{
-				"property": "\"$identifier\"",
-				"operator": "\"=\"",
-				"value":    fmt.Sprintf("\"%s\"", searchTeamName),
-			},
-		},
-	}
-	defer tearDownFixture(t, f)
-	f = newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
 
 	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprintId, id): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
 
-	entity, err = f.controller.portClient.ReadEntity(context.Background(), id, blueprintId)
+	entity, err := f.controller.portClient.ReadEntity(context.Background(), id, blueprintId)
 	if err != nil {
 		t.Errorf("error reading entity: %v", err)
 	}
 	searchTeamArray := entity.Team.([]interface{})
 	searchTeamValue := searchTeamArray[0].(string)
-	assert.Equal(t, "search_team", searchTeamValue)
+	assert.Equal(t, searchTeamName, searchTeamValue)
 
-	item = EventItem{Key: getKey(d, t), ActionType: CreateAction}
+	// Cleanup test team
+	pc := &port.ResponseBody{}
+	res, err := f.controller.portClient.Client.R().
+		SetHeader("Accept", "application/json").
+		SetResult(&pc).
+		SetPathParam("name", searchTeamName).
+		Delete("v1/teams/{name}")
+	if err != nil {
+		t.Errorf("error deleting team: %v", err)
+	}
+	if !pc.OK {
+		t.Errorf("failed to delete team, got: %s", res.Body())
+	}
+}
+
+func TestCreateDeploymentWithMultiTeamSearch(t *testing.T) {
+	stateKey := guuid.NewString()
+	blueprintId := getBlueprintId(stateKey)
+	id := guuid.NewString()
+	exampleTeamName := "example_team"
+	searchTeamName := "search_team"
+	d := newDeployment(stateKey)
+	ud := newUnstructured(d)
+
+	resource := getBaseDeploymentResource(stateKey)
+	resource.Port.Entity.Mappings[0].Identifier = fmt.Sprintf("\"%s\"", id)
 	resource.Port.Entity.Mappings[0].Team = map[string]interface{}{
 		"combinator": "\"and\"",
 		"rules": []interface{}{
@@ -916,19 +950,37 @@ func TestCreateDeploymentWithTeam(t *testing.T) {
 			},
 		},
 	}
+	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
+	// Create test team
+	teamBody := &port.Team{
+		Name: searchTeamName,
+	}
+	pb := &port.ResponseBody{}
+	resp, err := f.controller.portClient.Client.R().
+		SetBody(teamBody).
+		SetHeader("Accept", "application/json").
+		SetResult(&pb).
+		Post("v1/teams")
+	if err != nil {
+		t.Errorf("error creating team: %v", err)
+	}
+	if !pb.OK {
+		t.Errorf("failed to create team, got: %s", resp.Body())
+	}
 	defer tearDownFixture(t, f)
 
-	f = newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
 	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprintId, id): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
 
-	entity, err = f.controller.portClient.ReadEntity(context.Background(), id, blueprintId)
+	entity, err := f.controller.portClient.ReadEntity(context.Background(), id, blueprintId)
 	if err != nil {
 		t.Errorf("error reading entity: %v", err)
 	}
 	expectedTeams := []string{exampleTeamName, searchTeamName}
 	teamsArray := entity.Team.([]interface{})
 	assert.ElementsMatch(t, expectedTeams, teamsArray)
-	// delete test team
+
+	// Cleanup test team
 	pc := &port.ResponseBody{}
 	res, err := f.controller.portClient.Client.R().
 		SetHeader("Accept", "application/json").
@@ -936,7 +988,7 @@ func TestCreateDeploymentWithTeam(t *testing.T) {
 		SetPathParam("name", searchTeamName).
 		Delete("v1/teams/{name}")
 	if err != nil {
-		t.Errorf("error creating team: %v", err)
+		t.Errorf("error deleting team: %v", err)
 	}
 	if !pc.OK {
 		t.Errorf("failed to delete team, got: %s", res.Body())
