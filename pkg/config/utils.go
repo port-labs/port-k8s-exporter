@@ -2,6 +2,8 @@ package config
 
 import (
 	"flag"
+	"fmt"
+	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"strings"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
@@ -34,4 +36,14 @@ func NewUInt(v *uint, key string, defaultValue uint, description string) {
 func NewBool(v *bool, key string, defaultValue bool, description string) {
 	value := goutils.GetBoolEnvOrDefault(prepareEnvKey(key), defaultValue)
 	flag.BoolVar(v, key, value, description)
+}
+
+func NewCreatePortResourcesOrigin(target *port.CreatePortResourcesOrigin, key, defaultValue, description string) {
+	var value string
+	flag.StringVar(&value, key, defaultValue, description)
+
+	*target = port.CreatePortResourcesOrigin(value)
+	if *target != port.CreatePortResourcesOriginPort && *target != port.CreatePortResourcesOriginK8S {
+		panic(fmt.Sprintf("Invalid value for %s: %s. Must be one of [Port, K8S]", key, value))
+	}
 }

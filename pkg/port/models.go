@@ -139,6 +139,11 @@ type (
 		MirrorProperties      map[string]BlueprintMirrorProperty      `json:"mirrorProperties,omitempty"`
 		ChangelogDestination  *ChangelogDestination                   `json:"changelogDestination,omitempty"`
 		Relations             map[string]Relation                     `json:"relations,omitempty"`
+		Ownership             *Ownership                              `json:"ownership,omitempty"`
+	}
+
+	Ownership struct {
+		Type string `json:"type,omitempty"`
 	}
 
 	Page struct {
@@ -207,7 +212,8 @@ type (
 	}
 
 	OrgDetails struct {
-		OrgId string `json:"id"`
+		OrgId        string   `json:"id"`
+		FeatureFlags []string `json:"featureFlags,omitempty"`
 	}
 )
 
@@ -245,7 +251,7 @@ type EntityMapping struct {
 	Title      string                 `json:"title,omitempty" yaml:"title,omitempty"`
 	Blueprint  string                 `json:"blueprint" yaml:"blueprint"`
 	Icon       string                 `json:"icon,omitempty" yaml:"icon,omitempty"`
-	Team       string                 `json:"team,omitempty" yaml:"team,omitempty"`
+	Team       interface{}            `json:"team,omitempty" yaml:"team,omitempty"`
 	Properties map[string]string      `json:"properties,omitempty" yaml:"properties,omitempty"`
 	Relations  map[string]interface{} `json:"relations,omitempty" yaml:"relations,omitempty"`
 }
@@ -303,16 +309,32 @@ type IntegrationAppConfig struct {
 	SendRawDataExamples          *bool      `json:"sendRawDataExamples,omitempty"`
 }
 
+const (
+	OrgUseProvisionedDefaultsFeatureFlag = "USE_PROVISIONED_DEFAULTS"
+)
+
+type CreatePortResourcesOrigin string
+
+const (
+	CreatePortResourcesOriginPort CreatePortResourcesOrigin = "Port"
+	CreatePortResourcesOriginK8S  CreatePortResourcesOrigin = "K8S"
+)
+
 type Config struct {
-	ResyncInterval                  uint   `yaml:"resyncInterval,omitempty"`
-	StateKey                        string `yaml:"stateKey,omitempty"`
-	EventListenerType               string `yaml:"eventListenerType,omitempty"`
-	CreateDefaultResources          bool   `yaml:"createDefaultResources,omitempty"`
-	OverwriteConfigurationOnRestart bool   `yaml:"overwriteConfigurationOnRestart,omitempty"`
+	ResyncInterval                  uint                      `yaml:"resyncInterval,omitempty"`
+	StateKey                        string                    `yaml:"stateKey,omitempty"`
+	EventListenerType               string                    `yaml:"eventListenerType,omitempty"`
+	CreateDefaultResources          bool                      `yaml:"createDefaultResources,omitempty"`
+	CreatePortResourcesOrigin       CreatePortResourcesOrigin `yaml:"createPortResourcesOrigin,omitempty"`
+	OverwriteConfigurationOnRestart bool                      `yaml:"overwriteConfigurationOnRestart,omitempty"`
 	// These Configurations are used only for setting up the Integration on installation or when using OverwriteConfigurationOnRestart flag.
 	Resources                    []Resource `yaml:"resources,omitempty"`
 	CRDSToDiscover               string     `yaml:"crdsToDiscover,omitempty"`
 	OverwriteCRDsActions         bool       `yaml:"overwriteCrdsActions,omitempty"`
 	DeleteDependents             bool       `yaml:"deleteDependents,omitempty"`
 	CreateMissingRelatedEntities bool       `yaml:"createMissingRelatedEntities,omitempty"`
+}
+
+type Team struct {
+	Name string `json:"name"`
 }

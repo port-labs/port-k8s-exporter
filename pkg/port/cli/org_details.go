@@ -23,3 +23,17 @@ func (c *PortClient) GetOrgId() (string, error) {
 	}
 	return pb.OrgDetails.OrgId, nil
 }
+
+func (c *PortClient) GetOrganizationFeatureFlags() ([]string, error) {
+	pb := &port.ResponseBody{}
+	resp, err := c.Client.R().
+		SetResult(&pb).
+		Get("v1/organization")
+	if err != nil {
+		return nil, err
+	}
+	if !pb.OK {
+		return nil, fmt.Errorf("failed to get organization feature flags, got: %s", resp.Body())
+	}
+	return pb.OrgDetails.FeatureFlags, nil
+}

@@ -2,6 +2,9 @@ package handlers
 
 import (
 	"context"
+	"sync"
+	"time"
+
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/crd"
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
@@ -13,8 +16,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/klog/v2"
-	"sync"
-	"time"
 )
 
 type ControllersHandler struct {
@@ -24,6 +25,7 @@ type ControllersHandler struct {
 	portClient       *cli.PortClient
 	stopCh           chan struct{}
 	isStopped        bool
+	portConfig       *port.IntegrationAppConfig
 }
 
 func NewControllersHandler(exporterConfig *port.Config, portConfig *port.IntegrationAppConfig, k8sClient *k8s.Client, portClient *cli.PortClient) *ControllersHandler {
@@ -63,6 +65,7 @@ func NewControllersHandler(exporterConfig *port.Config, portConfig *port.Integra
 		stateKey:         exporterConfig.StateKey,
 		portClient:       portClient,
 		stopCh:           signal.SetupSignalHandler(),
+		portConfig:       portConfig,
 	}
 
 	return controllersHandler
@@ -72,6 +75,25 @@ func (c *ControllersHandler) Handle() {
 	klog.Info("Starting informers")
 	c.informersFactory.Start(c.stopCh)
 
+	currentEntitiesSets, shouldDeleteStaleEntities := syncAllControllers(c)
+
+	ctx, cancelCtx := context.WithCancel(context.Background())
+	defer cancelCtx()
+	go func() {
+		<-c.stopCh
+		cancelCtx()
+	}()
+
+	if shouldDeleteStaleEntities {
+		klog.Info("Deleting stale entities")
+		c.runDeleteStaleEntities(ctx, currentEntitiesSets)
+		klog.Info("Done deleting stale entities")
+	} else {
+		klog.Warning("Skipping delete of stale entities due to a failure in getting all current entities from k8s")
+	}
+}
+
+func syncAllControllers(c *ControllersHandler) ([]map[string]interface{}, bool) {
 	currentEntitiesSets := make([]map[string]interface{}, 0)
 	shouldDeleteStaleEntities := true
 	var syncWg sync.WaitGroup
@@ -91,41 +113,40 @@ func (c *ControllersHandler) Handle() {
 			klog.Fatalf("Error while waiting for informer cache sync: %s", err.Error())
 		}
 
-		syncWg.Add(1)
-		go func() {
-			defer syncWg.Done()
-			klog.Infof("Starting full initial resync for resource '%s'", controller.Resource.Kind)
-			initialSyncResult := controller.RunInitialSync()
-			klog.Infof("Done full initial resync, starting live events sync for resource '%s'", controller.Resource.Kind)
-			controller.RunEventsSync(1, c.stopCh)
-			if initialSyncResult.EntitiesSet != nil {
-				currentEntitiesSets = append(currentEntitiesSets, initialSyncResult.EntitiesSet)
-			}
-			if len(initialSyncResult.RawDataExamples) > 0 {
-				err := integration.PostIntegrationKindExample(c.portClient, c.stateKey, controller.Resource.Kind, initialSyncResult.RawDataExamples)
-				if err != nil {
-					klog.Warningf("failed to post integration kind example: %s", err.Error())
-				}
-			}
-			shouldDeleteStaleEntities = shouldDeleteStaleEntities && initialSyncResult.ShouldDeleteStaleEntities
-		}()
+		if c.portConfig.CreateMissingRelatedEntities {
+			syncWg.Add(1)
+			go func() {
+				defer syncWg.Done()
+				controllerEntitiesSet, controllerShouldDeleteStaleEntities := syncController(controller, c)
+				currentEntitiesSets = append(currentEntitiesSets, controllerEntitiesSet)
+				shouldDeleteStaleEntities = shouldDeleteStaleEntities && controllerShouldDeleteStaleEntities
+			}()
+			continue
+		}
+		controllerEntitiesSet, controllerShouldDeleteStaleEntities := syncController(controller, c)
+		currentEntitiesSets = append(currentEntitiesSets, controllerEntitiesSet)
+		shouldDeleteStaleEntities = shouldDeleteStaleEntities && controllerShouldDeleteStaleEntities
 	}
 	syncWg.Wait()
+	return currentEntitiesSets, shouldDeleteStaleEntities
+}
 
-	ctx, cancelCtx := context.WithCancel(context.Background())
-	defer cancelCtx()
-	go func() {
-		<-c.stopCh
-		cancelCtx()
-	}()
-
-	if shouldDeleteStaleEntities {
-		klog.Info("Deleting stale entities")
-		c.runDeleteStaleEntities(ctx, currentEntitiesSets)
-		klog.Info("Done deleting stale entities")
-	} else {
-		klog.Warning("Skipping delete of stale entities due to a failure in getting all current entities from k8s")
+func syncController(controller *k8s.Controller, c *ControllersHandler) (map[string]interface{}, bool) {
+	klog.Infof("Starting full initial resync for resource '%s'", controller.Resource.Kind)
+	initialSyncResult := controller.RunInitialSync()
+	klog.Infof("Done full initial resync, starting live events sync for resource '%s'", controller.Resource.Kind)
+	controller.RunEventsSync(1, c.stopCh)
+	if len(initialSyncResult.RawDataExamples) > 0 {
+		err := integration.PostIntegrationKindExample(c.portClient, c.stateKey, controller.Resource.Kind, initialSyncResult.RawDataExamples)
+		if err != nil {
+			klog.Warningf("failed to post integration kind example: %s", err.Error())
+		}
 	}
+	if initialSyncResult.EntitiesSet != nil {
+		return initialSyncResult.EntitiesSet, initialSyncResult.ShouldDeleteStaleEntities
+	}
+
+	return map[string]interface{}{}, initialSyncResult.ShouldDeleteStaleEntities
 }
 
 func (c *ControllersHandler) runDeleteStaleEntities(ctx context.Context, currentEntitiesSet []map[string]interface{}) {
