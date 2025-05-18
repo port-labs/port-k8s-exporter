@@ -248,42 +248,80 @@ func (c *Controller) objectHandler(obj interface{}, item EventItem) (*SyncResult
 	errors := make([]error, 0)
 	entitiesSet := make(map[string]interface{})
 	rawDataExamplesToReturn := make([]interface{}, 0)
+	shouldDeleteStaleEntities := true
+
 	for _, kindConfig := range c.Resource.KindConfigs {
-		portEntities, rawDataExamples, err := c.getObjectEntities(obj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
+		entities, rawDataExamples, err := c.getObjectEntities(obj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
 		if err != nil {
-			entitiesSet = nil
-			utilruntime.HandleError(fmt.Errorf("error getting entities for object key '%s': %v", item.Key, err))
+			errors = append(errors, fmt.Errorf("error getting entities for resource '%s': %v", c.Resource.Kind, err))
 			continue
 		}
 
-		if rawDataExamplesToReturn != nil {
+		if len(entities) == 0 {
+			continue
+		}
+
+		// Get the blueprint from the first entity
+		blueprint := entities[0].Blueprint
+		if blueprint == "" {
+			errors = append(errors, fmt.Errorf("blueprint is empty for resource '%s'", c.Resource.Kind))
+			continue
+		}
+
+		// Calculate batch size and create batches
+		maxEntitiesPerBatch := goutils.CalculateEntitiesBatchSize(entities)
+		entitiesBatches := make([][]port.EntityRequest, 0)
+		for i := 0; i < len(entities); i += maxEntitiesPerBatch {
+			end := i + maxEntitiesPerBatch
+			if end > len(entities) {
+				end = len(entities)
+			}
+			entitiesBatches = append(entitiesBatches, entities[i:end])
+		}
+
+		// Process each batch
+		for _, batch := range entitiesBatches {
+			options := struct {
+				Merge                    bool
+				UserAgent               string
+				ValidationOnly          bool
+				CreateMissingRelatedEntities bool
+			}{
+				Merge: true,
+				UserAgent: "port-k8s-exporter",
+				CreateMissingRelatedEntities: c.integrationConfig.CreateMissingRelatedEntities,
+			}
+
+			result, err := c.portClient.CreateEntitiesBulk(context.Background(), blueprint, batch, options)
+			if err != nil {
+				errors = append(errors, fmt.Errorf("error creating entities in bulk for resource '%s': %v", c.Resource.Kind, err))
+				continue
+			}
+
+			// Add successful entities to the set
+			for _, entity := range result.Entities {
+				entitiesSet[c.portClient.GetEntityIdentifierKey(&entity)] = nil
+			}
+
+			// Log any errors from the bulk operation
+			for _, err := range result.Errors {
+				errors = append(errors, fmt.Errorf("error creating entity '%s' of blueprint '%s': %s", 
+					err.Entity.Identifier, err.Entity.Blueprint, err.Message))
+			}
+		}
+
+		// Add raw data examples if configured
+		if c.integrationConfig.SendRawDataExamples != nil && *c.integrationConfig.SendRawDataExamples {
 			amountOfExamplesToAdd := min(len(rawDataExamples), MaxRawDataExamplesToSend-len(rawDataExamplesToReturn))
 			rawDataExamplesToReturn = append(rawDataExamplesToReturn, rawDataExamples[:amountOfExamplesToAdd]...)
 		}
-
-		for _, portEntity := range portEntities {
-			handledEntity, err := c.entityHandler(portEntity, item.ActionType)
-			if err != nil {
-				errors = append(errors, err)
-				entitiesSet = nil
-			}
-
-			if entitiesSet != nil && item.ActionType != DeleteAction {
-				entitiesSet[c.portClient.GetEntityIdentifierKey(handledEntity)] = nil
-			}
-		}
-	}
-
-	var err error
-	if len(errors) > 0 {
-		err = fmt.Errorf("error handling entity for object key '%s': %v", item.Key, errors)
 	}
 
 	return &SyncResult{
 		EntitiesSet:               entitiesSet,
 		RawDataExamples:           rawDataExamplesToReturn,
-		ShouldDeleteStaleEntities: entitiesSet != nil,
-	}, err
+		ShouldDeleteStaleEntities: shouldDeleteStaleEntities,
+	}, nil
 }
 
 func isPassSelector(obj interface{}, selector port.Selector) (bool, error) {
@@ -431,4 +469,11 @@ func (c *Controller) shouldSendUpdateEvent(old interface{}, new interface{}, upd
 	}
 
 	return false
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
