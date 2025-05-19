@@ -146,7 +146,6 @@ func (c *PortClient) CreateEntitiesBulk(ctx context.Context, blueprint string, e
 	ValidationOnly               bool
 	CreateMissingRelatedEntities bool
 }) (*BulkCreationResult, error) {
-	// Authenticate first
 	_, err := c.Authenticate(ctx, c.ClientID, c.ClientSecret)
 	if err != nil {
 		return nil, fmt.Errorf("error authenticating with Port: %v", err)
