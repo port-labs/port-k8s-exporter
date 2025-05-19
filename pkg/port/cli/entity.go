@@ -11,13 +11,6 @@ import (
 	"k8s.io/klog/v2"
 )
 
-const (
-	DefaultMaxBatchLength = 100
-	DefaultMaxBatchSize   = 1024 * 1024 // 1MB
-	SampleSize            = 10
-	SizeMultiplier        = 1.5
-)
-
 func (c *PortClient) SearchEntities(ctx context.Context, body port.SearchBody) ([]port.Entity, error) {
 	pb := &port.ResponseBody{}
 	resp, err := c.Client.R().
