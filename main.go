@@ -49,7 +49,7 @@ func main() {
 	}
 	portClient := cli.New(config.ApplicationConfig)
 
-	if err := defaults.InitIntegration(portClient, applicationConfig); err != nil {
+	if err := defaults.InitIntegration(portClient, applicationConfig, false); err != nil {
 		klog.Fatalf("Error initializing Port integration: %s", err.Error())
 	}
 

@@ -9,10 +9,19 @@ import (
 )
 
 func CreateBlueprint(portClient *PortClient, blueprint port.Blueprint) (*port.Blueprint, error) {
+	return InnerCreateBlueprint(portClient, blueprint, true)
+}
+
+func CreateBlueprintWithoutPage(portClient *PortClient, blueprint port.Blueprint) (*port.Blueprint, error) {
+	return InnerCreateBlueprint(portClient, blueprint, false)
+}
+
+func InnerCreateBlueprint(portClient *PortClient, blueprint port.Blueprint, shouldCreatePage bool) (*port.Blueprint, error) {
 	pb := &port.ResponseBody{}
 	resp, err := portClient.Client.R().
 		SetResult(&pb).
 		SetBody(blueprint).
+		SetQueryParam("create_catalog_page", fmt.Sprintf("%t", shouldCreatePage)).
 		Post("v1/blueprints")
 	if err != nil {
 		return nil, err

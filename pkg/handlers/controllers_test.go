@@ -264,7 +264,7 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 		}
 	}
 
-	err := defaults.InitIntegration(portClient, exporterConfig)
+	err := defaults.InitIntegration(portClient, exporterConfig, true)
 	if err != nil {
 		t.Errorf("error initializing integration: %v", err)
 	}

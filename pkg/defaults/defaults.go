@@ -130,7 +130,7 @@ func (e *AbortDefaultCreationError) Error() string {
 	return "AbortDefaultCreationError"
 }
 
-func createResources(portClient *cli.PortClient, defaults *Defaults) error {
+func createResources(portClient *cli.PortClient, defaults *Defaults, shouldCreatePageForBlueprints bool) error {
 	existingBlueprints := []string{}
 	for _, bp := range defaults.Blueprints {
 		if _, err := blueprint.GetBlueprint(portClient, bp.Identifier); err == nil {
@@ -153,7 +153,13 @@ func createResources(portClient *cli.PortClient, defaults *Defaults) error {
 		waitGroup.Add(1)
 		go func(bp port.Blueprint) {
 			defer waitGroup.Done()
-			result, err := blueprint.NewBlueprint(portClient, bp)
+			var result *port.Blueprint
+			var err error
+			if shouldCreatePageForBlueprints {
+				result, err = blueprint.NewBlueprint(portClient, bp)
+			} else {
+				result, err = blueprint.NewBlueprintWithoutPage(portClient, bp)
+			}
 			mutex.Lock()
 			if err != nil {
 				klog.Warningf("Failed to create blueprint %s: %v", bp.Identifier, err.Error())
@@ -226,8 +232,8 @@ func createResources(portClient *cli.PortClient, defaults *Defaults) error {
 	return nil
 }
 
-func initializeDefaults(portClient *cli.PortClient, defaults *Defaults) error {
-	if err := createResources(portClient, defaults); err != nil {
+func initializeDefaults(portClient *cli.PortClient, defaults *Defaults, shouldCreatePageForBlueprints bool) error {
+	if err := createResources(portClient, defaults, shouldCreatePageForBlueprints); err != nil {
 		if abortErr, ok := err.(*AbortDefaultCreationError); ok {
 			klog.Warningf("Rolling back blueprints due to creation error")
 			for _, blueprintID := range abortErr.BlueprintsToRollback {

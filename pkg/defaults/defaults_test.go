@@ -74,7 +74,7 @@ func Test_InitIntegration_InitDefaults(t *testing.T) {
 		EventListenerType:         "POLLING",
 		CreateDefaultResources:    true,
 		CreatePortResourcesOrigin: port.CreatePortResourcesOriginK8S,
-	})
+	}, true)
 	assert.Nil(t, e)
 
 	_, err := integration.GetIntegration(f.portClient, f.stateKey)
@@ -104,7 +104,7 @@ func Test_InitIntegration_InitDefaults_CreateDefaultResources_False(t *testing.T
 		EventListenerType:         "POLLING",
 		CreateDefaultResources:    false,
 		CreatePortResourcesOrigin: port.CreatePortResourcesOriginK8S,
-	})
+	}, true)
 	assert.Nil(t, e)
 
 	_, err := integration.GetIntegration(f.portClient, f.stateKey)
@@ -130,7 +130,7 @@ func Test_InitIntegration_BlueprintExists(t *testing.T) {
 		EventListenerType:         "POLLING",
 		CreateDefaultResources:    true,
 		CreatePortResourcesOrigin: port.CreatePortResourcesOriginK8S,
-	})
+	}, true)
 	assert.Nil(t, e)
 
 	i, err := integration.GetIntegration(f.portClient, f.stateKey)
@@ -157,7 +157,7 @@ func Test_InitIntegration_PageExists(t *testing.T) {
 		EventListenerType:         "POLLING",
 		CreateDefaultResources:    true,
 		CreatePortResourcesOrigin: port.CreatePortResourcesOriginK8S,
-	})
+	}, true)
 	assert.Nil(t, e)
 
 	i, err := integration.GetIntegration(f.portClient, f.stateKey)
@@ -182,7 +182,7 @@ func Test_InitIntegration_ExistingIntegration(t *testing.T) {
 		EventListenerType:         "POLLING",
 		CreateDefaultResources:    true,
 		CreatePortResourcesOrigin: port.CreatePortResourcesOriginK8S,
-	})
+	}, true)
 	assert.Nil(t, e)
 
 	_, err = integration.GetIntegration(f.portClient, f.stateKey)
@@ -224,7 +224,7 @@ func Test_InitIntegration_LocalResourcesConfiguration(t *testing.T) {
 		Resources:                 expectedResources,
 		CreateDefaultResources:    true,
 		CreatePortResourcesOrigin: port.CreatePortResourcesOriginK8S,
-	})
+	}, true)
 	assert.Nil(t, e)
 
 	i, err := integration.GetIntegration(f.portClient, f.stateKey)
@@ -247,7 +247,7 @@ func Test_InitIntegration_LocalResourcesConfiguration_ExistingIntegration_EmptyC
 		Resources:                 nil,
 		CreateDefaultResources:    true,
 		CreatePortResourcesOrigin: port.CreatePortResourcesOriginK8S,
-	})
+	}, true)
 	assert.Nil(t, e)
 
 	i, err := integration.GetIntegration(f.portClient, f.stateKey)
@@ -296,7 +296,7 @@ func Test_InitIntegration_LocalResourcesConfiguration_ExistingIntegration_WithCo
 		CreateDefaultResources:          true,
 		CreatePortResourcesOrigin:       port.CreatePortResourcesOriginK8S,
 		OverwriteConfigurationOnRestart: true,
-	})
+	}, true)
 	assert.Nil(t, e)
 
 	i, err := integration.GetIntegration(f.portClient, f.stateKey)
