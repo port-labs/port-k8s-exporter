@@ -34,7 +34,7 @@ func isPortProvisioningSupported(portClient *cli.PortClient) (bool, error) {
 	return false, nil
 }
 
-func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config) error {
+func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config, isTest bool) error {
 	klog.Infof("Initializing Port integration")
 	defaults, err := getDefaults()
 	if err != nil {
@@ -91,7 +91,7 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config)
 
 	if applicationConfig.CreateDefaultResources && applicationConfig.CreatePortResourcesOrigin != port.CreatePortResourcesOriginPort {
 		klog.Infof("Creating default resources (blueprints, pages, etc..)")
-		if err := initializeDefaults(portClient, defaults); err != nil {
+		if err := initializeDefaults(portClient, defaults, !isTest); err != nil {
 			klog.Warningf("Error initializing defaults: %s", err.Error())
 			klog.Warningf("Some default resources may not have been created. The integration will continue running.")
 		}

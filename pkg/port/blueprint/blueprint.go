@@ -9,13 +9,28 @@ import (
 )
 
 func NewBlueprint(portClient *cli.PortClient, blueprint port.Blueprint) (*port.Blueprint, error) {
-	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
+	return InnerNewBlueprint(portClient, blueprint, true)
+}
+
+func NewBlueprintWithoutPage(portClient *cli.PortClient, blueprint port.Blueprint) (*port.Blueprint, error) {
+	return InnerNewBlueprint(portClient, blueprint, false)
+}
+
+func InnerNewBlueprint(portClient *cli.PortClient, blueprint port.Blueprint, shouldCreatePage bool) (*port.Blueprint, error) {
+	var err error
+	_, err = portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
 
 	if err != nil {
 		return nil, fmt.Errorf("error authenticating with Port: %v", err)
 	}
 
-	bp, err := cli.CreateBlueprint(portClient, blueprint)
+	var bp *port.Blueprint
+	if shouldCreatePage {
+		bp, err = cli.CreateBlueprint(portClient, blueprint)
+	} else {
+		bp, err = cli.CreateBlueprintWithoutPage(portClient, blueprint)
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("error creating blueprint: %v", err)
 	}
