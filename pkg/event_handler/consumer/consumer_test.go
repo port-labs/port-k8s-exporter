@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 )
@@ -96,9 +97,7 @@ func TestConsumer_HandleJson(t *testing.T) {
 	f.Consume(mockHandler.HandleJson)
 
 	f.Produce(t, []byte("test-value"))
-	time.Sleep(time.Second * 2)
-
-	if len(mockHandler.CapturedValue) == 0 {
-		t.Error("Handler was not called")
-	}
+	assert.Eventually(t, func() bool {
+		return len(mockHandler.CapturedValue) > 0
+	}, time.Second*5, time.Millisecond*100)
 }
