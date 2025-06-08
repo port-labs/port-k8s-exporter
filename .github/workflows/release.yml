@@ -54,6 +54,14 @@ jobs:
         with:
           version: latest
 
+      - name: Make zig-cc wrappers
+        run: |
+          cat > /usr/local/bin/zigcc-arm64 <<'EOF'
+          #!/usr/bin/env sh
+          exec zig cc -target aarch64-linux-musl "$@"
+          EOF 
+          chmod +x /usr/local/bin/zigcc-arm64
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
