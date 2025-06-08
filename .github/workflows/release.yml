@@ -50,7 +50,7 @@ jobs:
           cache: true
 
       - name: Install Zig
-        uses: goto-bus-stop/setup-zig@v2
+        uses: mlugg/setup-zig@v2
         with:
           version: latest
 
