@@ -16,7 +16,7 @@ builds:
   - -extldflags=-static
   env:
   - CGO_ENABLED=1
-  - CC='zig cc -target aarch64-linux-musl'
+  - CC='zigcc-arm64'
   binary: "{{ .ProjectName }}"
   goos:
   - linux
