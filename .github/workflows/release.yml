@@ -56,11 +56,11 @@ jobs:
 
       - name: Make zig-cc wrappers
         run: |
-          cat > /usr/local/bin/zigcc-arm64 <<'EOF'
           #!/usr/bin/env sh
+          sudo tee /usr/local/bin/zigcc-arm64 >/dev/null <<'EOF'
           exec zig cc -target aarch64-linux-musl "$@"
-          EOF 
-          chmod 755 /usr/local/bin/zigcc-arm64
+          EOF
+          sudo chmod 755 /usr/local/bin/zigcc-arm64
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
