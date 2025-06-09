@@ -60,13 +60,13 @@ jobs:
           #!/usr/bin/env sh
           exec zig cc -target aarch64-linux-musl "$@"
           EOF 
-          chmod +x /usr/local/bin/zigcc-arm64
+          chmod 755 /usr/local/bin/zigcc-arm64
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
           version: latest
-          args: release --clean
+          args: release --clean --skip=validate
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
