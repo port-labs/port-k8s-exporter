@@ -1,8 +1,6 @@
 module github.com/port-labs/port-k8s-exporter
 
-go 1.23.0
-
-toolchain go1.23.7
+go 1.24.4
 
 require (
 	github.com/confluentinc/confluent-kafka-go/v2 v2.2.0
