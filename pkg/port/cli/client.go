@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/oauth2"
 	"strings"
 
 	"github.com/go-resty/resty/v2"
@@ -51,6 +52,22 @@ func New(applicationConfig *config.ApplicationConfiguration, opts ...Option) *Po
 	}
 
 	return c
+}
+
+func NewAuthenticated(applicationConfig *config.ApplicationConfiguration) *PortClient {
+	rawSource := NewTokenSource(applicationConfig)
+	cachedSource := oauth2.ReuseTokenSource(nil, rawSource)
+	authedHttpClient := oauth2.NewClient(context.Background(), cachedSource)
+
+	restyClient := resty.New().
+		SetBaseURL(applicationConfig.PortBaseURL).
+		SetTransport(authedHttpClient.Transport) //use oath2 transport
+
+	return &PortClient{
+		Client:       restyClient,
+		ClientID:     applicationConfig.PortClientId,
+		ClientSecret: applicationConfig.PortClientSecret,
+	}
 }
 
 func (c *PortClient) Authenticate(ctx context.Context, clientID, clientSecret string) (string, error) {

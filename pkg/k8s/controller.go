@@ -58,7 +58,7 @@ type Controller struct {
 
 func NewController(resource port.AggregatedResource, informer informers.GenericInformer, integrationConfig *port.IntegrationAppConfig, applicationConfig *config.ApplicationConfiguration) *Controller {
 	// We create a new Port client for each controller because the Resty client is not thread-safe.
-	portClient := cli.New(applicationConfig)
+	portClient := cli.NewAuthenticated(applicationConfig)
 
 	cli.WithDeleteDependents(integrationConfig.DeleteDependents)(portClient)
 	cli.WithCreateMissingRelatedEntities(integrationConfig.CreateMissingRelatedEntities)(portClient)
@@ -361,11 +361,6 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 }
 
 func (c *Controller) entityHandler(portEntity port.EntityRequest, action EventActionType) (*port.Entity, error) {
-	_, err := c.portClient.Authenticate(context.Background(), c.portClient.ClientID, c.portClient.ClientSecret)
-	if err != nil {
-		return nil, fmt.Errorf("error authenticating with Port: %v", err)
-	}
-
 	switch action {
 	case CreateAction, UpdateAction:
 		upsertedEntity, err := c.portClient.CreateEntity(context.Background(), &portEntity, "", c.portClient.CreateMissingRelatedEntities)
