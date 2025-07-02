@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type PortTokenSource struct {
@@ -61,5 +62,6 @@ func (ts *PortTokenSource) Token() (*oauth2.Token, error) {
 	return &oauth2.Token{
 		AccessToken: tokenResp.AccessToken,
 		TokenType:   "Bearer",
+		Expiry:      time.Now().Add(1 * time.Hour),
 	}, nil
 }
