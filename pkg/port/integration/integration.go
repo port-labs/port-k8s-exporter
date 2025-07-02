@@ -60,11 +60,6 @@ func CreateIntegration(portClient *cli.PortClient, stateKey string, eventListene
 }
 
 func GetIntegration(portClient *cli.PortClient, stateKey string) (*port.Integration, error) {
-	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
-	if err != nil {
-		return nil, fmt.Errorf("error authenticating with Port: %v", err)
-	}
-
 	apiIntegration, err := portClient.GetIntegration(stateKey)
 	if err != nil {
 		return nil, fmt.Errorf("error getting Port integration: %v", err)
