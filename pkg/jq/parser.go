@@ -30,7 +30,7 @@ func runJQQuery(jqQuery string, obj interface{}) (interface{}, error) {
 	queryRes, ok := code.Run(obj).Next()
 
 	if !ok {
-		return nil, fmt.Errorf("query should return at least one value")
+		return nil, nil
 	}
 
 	err, ok = queryRes.(error)
@@ -47,6 +47,10 @@ func ParseBool(jqQuery string, obj interface{}) (bool, error) {
 		return false, err
 	}
 
+	if queryRes == nil {
+		return false, nil
+	}
+
 	boolean, ok := queryRes.(bool)
 	if !ok {
 		return false, fmt.Errorf("failed to parse bool: %#v", queryRes)
@@ -61,6 +65,10 @@ func ParseString(jqQuery string, obj interface{}) (string, error) {
 		return "", err
 	}
 
+	if queryRes == nil {
+		return "", nil
+	}
+
 	str, ok := queryRes.(string)
 	if !ok {
 		return "", fmt.Errorf("failed to parse string with jq '%#v': %#v", jqQuery, queryRes)
@@ -72,7 +80,7 @@ func ParseString(jqQuery string, obj interface{}) (string, error) {
 func ParseInterface(jqQuery string, obj interface{}) (interface{}, error) {
 	queryRes, err := runJQQuery(jqQuery, obj)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	return queryRes, nil
@@ -83,6 +91,10 @@ func ParseArray(jqQuery string, obj interface{}) ([]interface{}, error) {
 
 	if err != nil {
 		return nil, err
+	}
+
+	if queryRes == nil {
+		return []interface{}{}, nil
 	}
 
 	items, ok := queryRes.([]interface{})
@@ -105,10 +117,12 @@ func ParseMapInterface(jqQueries map[string]string, obj interface{}) (map[string
 		if key != "*" {
 			mapInterface[key] = queryRes
 		} else {
-			if _, ok := queryRes.(map[string]interface{}); ok {
-				mapInterface = goutils.MergeMaps(mapInterface, queryRes.(map[string]interface{}))
-			} else {
-				mapInterface[key] = queryRes
+			if queryRes != nil {
+				if _, ok := queryRes.(map[string]interface{}); ok {
+					mapInterface = goutils.MergeMaps(mapInterface, queryRes.(map[string]interface{}))
+				} else {
+					mapInterface[key] = queryRes
+				}
 			}
 		}
 
