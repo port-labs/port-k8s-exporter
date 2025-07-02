@@ -226,7 +226,14 @@ func (w *HTTPWriter) refreshTokenTimer(authFunc func() (string, error), expiresI
 // Close gracefully shuts down the HTTP writer
 func (w *HTTPWriter) Close() error {
 	w.cancel()
-	close(w.done)
+
+	// Only close the channel if it's still open
+	select {
+	case <-w.done:
+		// Already closed
+	default:
+		close(w.done)
+	}
 
 	// Flush any remaining logs
 	w.flush()
@@ -282,62 +289,14 @@ func SetHttpWriterParametersAndStart(url string, authFunc func() (string, error)
 	go httpWriter.refreshTokenTimer(authFunc, time.Minute*1)
 }
 
-// Init initializes the global zap logger with production configuration (console only)
-func Init() error {
-	config := zap.NewProductionConfig()
-	config.Level = zap.NewAtomicLevelAt(zap.InfoLevel)
-	config.OutputPaths = []string{"stdout"}
-	config.ErrorOutputPaths = []string{"stderr"}
-	config.EncoderConfig.TimeKey = "timestamp"
-	config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
-	config.EncoderConfig.MessageKey = "message"
-	config.EncoderConfig.LevelKey = "level"
-
-	zapLogger, err := config.Build()
-	if err != nil {
-		return err
-	}
-
-	Logger = zapLogger.Sugar()
-	return nil
-}
-
-// InitWithHTTP initializes the global zap logger with both console and HTTP output
-func InitWithHTTP() error {
-	// Console encoder configuration
-	consoleEncoderConfig := zap.NewProductionEncoderConfig()
-	consoleEncoderConfig.TimeKey = "timestamp"
-	consoleEncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
-	consoleEncoderConfig.MessageKey = "message"
-	consoleEncoderConfig.LevelKey = "level"
-	consoleEncoder := zapcore.NewJSONEncoder(consoleEncoderConfig)
-
-	// HTTP encoder configuration (same as console for consistency)
-	httpEncoderConfig := zap.NewProductionEncoderConfig()
-	httpEncoderConfig.TimeKey = "timestamp"
-	httpEncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
-	httpEncoderConfig.MessageKey = "message"
-	httpEncoderConfig.LevelKey = "level"
-	httpEncoder := zapcore.NewJSONEncoder(httpEncoderConfig)
-
-	// Create HTTP writer and store reference for cleanup
-	httpWriter = NewHTTPWriter()
-
-	// Create the tee core with both console and HTTP output
-	core := zapcore.NewTee(
-		zapcore.NewCore(consoleEncoder, zapcore.AddSync(os.Stdout), zap.DebugLevel),
-		zapcore.NewCore(httpEncoder, zapcore.AddSync(httpWriter), zap.InfoLevel),
-	)
-
-	zapLogger := zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
-	Logger = zapLogger.Sugar()
-	return nil
-}
-
 // InitWithLevel initializes the global zap logger with a specific log level (console only)
-func InitWithLevel(level zapcore.Level) error {
+func Init(level string) error {
 	config := zap.NewProductionConfig()
-	config.Level = zap.NewAtomicLevelAt(level)
+	parsedLevel, err := zap.ParseAtomicLevel(level)
+	if err != nil {
+		parsedLevel = zap.NewAtomicLevelAt(zap.InfoLevel)
+	}
+	config.Level = parsedLevel
 	config.OutputPaths = []string{"stdout"}
 	config.ErrorOutputPaths = []string{"stderr"}
 	config.EncoderConfig.TimeKey = "timestamp"
@@ -355,7 +314,7 @@ func InitWithLevel(level zapcore.Level) error {
 }
 
 // InitWithLevelAndHTTP initializes the global zap logger with specific log level and HTTP output
-func InitWithLevelAndHTTP(level zapcore.Level) error {
+func InitWithHTTP(level string) error {
 	// Console encoder configuration
 	consoleEncoderConfig := zap.NewProductionEncoderConfig()
 	consoleEncoderConfig.TimeKey = "timestamp"
@@ -374,10 +333,13 @@ func InitWithLevelAndHTTP(level zapcore.Level) error {
 
 	// Create HTTP writer and store reference for cleanup
 	httpWriter = NewHTTPWriter()
-
+	parsedLevel, err := zap.ParseAtomicLevel(level)
+	if err != nil {
+		parsedLevel = zap.NewAtomicLevelAt(zap.InfoLevel)
+	}
 	// Create the tee core with both console and HTTP output
 	core := zapcore.NewTee(
-		zapcore.NewCore(consoleEncoder, zapcore.AddSync(os.Stdout), level),
+		zapcore.NewCore(consoleEncoder, zapcore.AddSync(os.Stdout), parsedLevel),
 		zapcore.NewCore(httpEncoder, zapcore.AddSync(httpWriter), zap.InfoLevel),
 	)
 
@@ -390,7 +352,7 @@ func InitWithLevelAndHTTP(level zapcore.Level) error {
 func GetLogger() *zap.SugaredLogger {
 	if Logger == nil {
 		// Fallback initialization if not already initialized
-		if err := Init(); err != nil {
+		if err := Init("info"); err != nil {
 			panic("Failed to initialize logger: " + err.Error())
 		}
 	}

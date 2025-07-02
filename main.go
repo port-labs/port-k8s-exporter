@@ -79,13 +79,13 @@ func init() {
 		initHTTPLogger()
 		return
 	}
-	if err := logger.Init(); err != nil {
+	if err := logger.Init(config.ApplicationConfig.LoggingLevel); err != nil {
 		panic(fmt.Sprintf("Failed to initialize logger: %v", err))
 	}
 }
 
 func initHTTPLogger() {
-	if err := logger.InitWithHTTP(); err != nil {
+	if err := logger.InitWithHTTP(config.ApplicationConfig.LoggingLevel); err != nil {
 		panic(fmt.Sprintf("Failed to initialize logger with HTTP: %v", err))
 	}
 }
