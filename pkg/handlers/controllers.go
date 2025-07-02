@@ -106,8 +106,8 @@ func syncAllControllers(c *ControllersHandler) ([]map[string]interface{}, bool) 
 			logger.Info("Shutting down controllers")
 			controller.Shutdown()
 			// Flush any remaining logs before exit
-			logger.Shutdown()
 			logger.Info("Exporter exiting")
+			logger.Shutdown()
 		}()
 
 		logger.Infof("Waiting for informer cache to sync for resource '%s'", controller.Resource.Kind)
