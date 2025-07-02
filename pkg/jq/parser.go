@@ -8,13 +8,13 @@ import (
 
 	"github.com/itchyny/gojq"
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
-	"k8s.io/klog/v2"
+	"github.com/port-labs/port-k8s-exporter/pkg/logger"
 )
 
 func runJQQuery(jqQuery string, obj interface{}) (interface{}, error) {
 	query, err := gojq.Parse(jqQuery)
 	if err != nil {
-		klog.Warningf("failed to parse jq query: %s", jqQuery)
+		logger.Warningf("failed to parse jq query: %s", jqQuery)
 		return nil, err
 	}
 	code, err := gojq.Compile(
@@ -24,7 +24,7 @@ func runJQQuery(jqQuery string, obj interface{}) (interface{}, error) {
 		}),
 	)
 	if err != nil {
-		klog.Warningf("failed to compile jq query: %s", jqQuery)
+		logger.Warningf("failed to compile jq query: %s", jqQuery)
 		return nil, err
 	}
 	queryRes, ok := code.Run(obj).Next()

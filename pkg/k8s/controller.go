@@ -3,24 +3,23 @@ package k8s
 import (
 	"context"
 	"fmt"
-	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
-	"github.com/port-labs/port-k8s-exporter/pkg/port/entity"
 	"reflect"
 	"time"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
+	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
 	"github.com/port-labs/port-k8s-exporter/pkg/jq"
+	"github.com/port-labs/port-k8s-exporter/pkg/logger"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
+	"github.com/port-labs/port-k8s-exporter/pkg/port/entity"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/informers"
-
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/klog/v2"
 )
 
 type EventActionType string
@@ -115,7 +114,7 @@ func NewController(resource port.AggregatedResource, informer informers.GenericI
 
 			_, err = controller.objectHandler(obj, item)
 			if err != nil {
-				klog.Errorf("Error deleting item '%s' of resource '%s': %s", item.Key, resource.Kind, err.Error())
+				logger.Errorf("Error deleting item '%s' of resource '%s': %s", item.Key, resource.Kind, err.Error())
 			}
 		},
 	})
@@ -225,6 +224,7 @@ func (c *Controller) processNextWorkItem(workqueue workqueue.RateLimitingInterfa
 	}(obj)
 
 	if err != nil {
+		logger.Errorw("error syncing", "error", err.Error(), "resource", c.Resource.Kind)
 		utilruntime.HandleError(err)
 	}
 
@@ -237,6 +237,7 @@ func (c *Controller) syncHandler(item EventItem) (*SyncResult, error) {
 		return nil, fmt.Errorf("error fetching object with key '%s' from informer cache: %v", item.Key, err)
 	}
 	if !exists {
+		logger.Errorw("object no longer exists", "key", item.Key, "resource", c.Resource.Kind)
 		utilruntime.HandleError(fmt.Errorf("'%s' in work queue no longer exists", item.Key))
 		return nil, nil
 	}
@@ -251,6 +252,7 @@ func (c *Controller) objectHandler(obj interface{}, item EventItem) (*SyncResult
 	for _, kindConfig := range c.Resource.KindConfigs {
 		portEntities, rawDataExamples, err := c.getObjectEntities(obj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
 		if err != nil {
+			logger.Errorw("error getting entities", "error", err.Error(), "key", item.Key, "resource", c.Resource.Kind)
 			entitiesSet = nil
 			utilruntime.HandleError(fmt.Errorf("error getting entities for object key '%s': %v", item.Key, err))
 			continue
@@ -372,7 +374,7 @@ func (c *Controller) entityHandler(portEntity port.EntityRequest, action EventAc
 		if err != nil {
 			return nil, fmt.Errorf("error upserting Port entity '%s' of blueprint '%s': %v", portEntity.Identifier, portEntity.Blueprint, err)
 		}
-		klog.V(0).Infof("Successfully upserted entity '%s' of blueprint '%s'", upsertedEntity.Identifier, upsertedEntity.Blueprint)
+		logger.Infof("Successfully upserted entity '%s' of blueprint '%s'", upsertedEntity.Identifier, upsertedEntity.Blueprint)
 		return upsertedEntity, nil
 	case DeleteAction:
 		if reflect.TypeOf(portEntity.Identifier).Kind() != reflect.String {
@@ -389,9 +391,9 @@ func (c *Controller) entityHandler(portEntity port.EntityRequest, action EventAc
 			if err != nil {
 				return nil, fmt.Errorf("error deleting Port entity '%s' of blueprint '%s': %v", portEntity.Identifier, portEntity.Blueprint, err)
 			}
-			klog.V(0).Infof("Successfully deleted entity '%s' of blueprint '%s'", portEntity.Identifier, portEntity.Blueprint)
+			logger.Infof("Successfully deleted entity '%s' of blueprint '%s'", portEntity.Identifier, portEntity.Blueprint)
 		} else {
-			klog.Warningf("trying to delete entity but didn't find it in port with this exporter ownership, entity id: '%s', blueprint:'%s'", portEntity.Identifier, portEntity.Blueprint)
+			logger.Warningf("trying to delete entity but didn't find it in port with this exporter ownership, entity id: '%s', blueprint:'%s'", portEntity.Identifier, portEntity.Blueprint)
 		}
 	}
 
@@ -406,22 +408,22 @@ func (c *Controller) shouldSendUpdateEvent(old interface{}, new interface{}, upd
 	for _, kindConfig := range c.Resource.KindConfigs {
 		oldEntities, _, err := c.getObjectEntities(old, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
 		if err != nil {
-			klog.Errorf("Error getting old entities: %v", err)
+			logger.Errorf("Error getting old entities: %v", err)
 			return true
 		}
 		newEntities, _, err := c.getObjectEntities(new, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
 		if err != nil {
-			klog.Errorf("Error getting new entities: %v", err)
+			logger.Errorf("Error getting new entities: %v", err)
 			return true
 		}
 		oldEntitiesHash, err := entity.HashAllEntities(oldEntities)
 		if err != nil {
-			klog.Errorf("Error hashing old entities: %v", err)
+			logger.Errorf("Error hashing old entities: %v", err)
 			return true
 		}
 		newEntitiesHash, err := entity.HashAllEntities(newEntities)
 		if err != nil {
-			klog.Errorf("Error hashing new entities: %v", err)
+			logger.Errorf("Error hashing new entities: %v", err)
 			return true
 		}
 

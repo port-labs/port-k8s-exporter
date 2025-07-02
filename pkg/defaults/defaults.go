@@ -5,13 +5,13 @@ import (
 	"os"
 	"sync"
 
+	"github.com/port-labs/port-k8s-exporter/pkg/logger"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/blueprint"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/page"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/scorecards"
 	"gopkg.in/yaml.v3"
-	"k8s.io/klog/v2"
 )
 
 type ScorecardDefault struct {
@@ -35,7 +35,7 @@ func getDefaults() (*Defaults, error) {
 	var bp []port.Blueprint
 	file, err := os.ReadFile(BlueprintsAsset)
 	if err != nil {
-		klog.Infof("No default blueprints found. Skipping...")
+		logger.Infof("No default blueprints found. Skipping...")
 	} else {
 		err = json.Unmarshal(file, &bp)
 		if err != nil {
@@ -46,7 +46,7 @@ func getDefaults() (*Defaults, error) {
 	var sc []ScorecardDefault
 	file, err = os.ReadFile(ScorecardsAsset)
 	if err != nil {
-		klog.Infof("No default scorecards found. Skipping...")
+		logger.Infof("No default scorecards found. Skipping...")
 	} else {
 		err = json.Unmarshal(file, &sc)
 		if err != nil {
@@ -57,7 +57,7 @@ func getDefaults() (*Defaults, error) {
 	var appConfig *port.IntegrationAppConfig
 	file, err = os.ReadFile(AppConfigAsset)
 	if err != nil {
-		klog.Infof("No default appConfig found. Skipping...")
+		logger.Infof("No default appConfig found. Skipping...")
 	} else {
 		err = yaml.Unmarshal(file, &appConfig)
 		if err != nil {
@@ -68,7 +68,7 @@ func getDefaults() (*Defaults, error) {
 	var pages []port.Page
 	file, err = os.ReadFile(PagesAsset)
 	if err != nil {
-		klog.Infof("No default pages found. Skipping...")
+		logger.Infof("No default pages found. Skipping...")
 	} else {
 		err = yaml.Unmarshal(file, &pages)
 		if err != nil {
@@ -139,7 +139,7 @@ func createResources(portClient *cli.PortClient, defaults *Defaults, shouldCreat
 	}
 
 	if len(existingBlueprints) > 0 {
-		klog.Infof("Found existing blueprints: %v, skipping default resources creation", existingBlueprints)
+		logger.Infof("Found existing blueprints: %v, skipping default resources creation", existingBlueprints)
 		return nil
 	}
 
@@ -162,10 +162,10 @@ func createResources(portClient *cli.PortClient, defaults *Defaults, shouldCreat
 			}
 			mutex.Lock()
 			if err != nil {
-				klog.Warningf("Failed to create blueprint %s: %v", bp.Identifier, err.Error())
+				logger.Warningf("Failed to create blueprint %s: %v", bp.Identifier, err.Error())
 				resourceErrors = append(resourceErrors, err)
 			} else {
-				klog.Infof("Created blueprint %s", result.Identifier)
+				logger.Infof("Created blueprint %s", result.Identifier)
 				createdBlueprints = append(createdBlueprints, bp.Identifier)
 			}
 			mutex.Unlock()
@@ -187,7 +187,7 @@ func createResources(portClient *cli.PortClient, defaults *Defaults, shouldCreat
 				defer waitGroup.Done()
 				if _, err := blueprint.PatchBlueprint(portClient, bp); err != nil {
 					mutex.Lock()
-					klog.Warningf("Failed to patch blueprint %s: %v", bp.Identifier, err.Error())
+					logger.Warningf("Failed to patch blueprint %s: %v", bp.Identifier, err.Error())
 					resourceErrors = append(resourceErrors, err)
 					mutex.Unlock()
 				}
@@ -209,7 +209,7 @@ func createResources(portClient *cli.PortClient, defaults *Defaults, shouldCreat
 			go func(blueprintIdentifier string, scorecard port.Scorecard) {
 				defer waitGroup.Done()
 				if err := scorecards.CreateScorecard(portClient, blueprintIdentifier, scorecard); err != nil {
-					klog.Warningf("Failed to create scorecard for blueprint %s: %v", blueprintIdentifier, err.Error())
+					logger.Warningf("Failed to create scorecard for blueprint %s: %v", blueprintIdentifier, err.Error())
 				}
 			}(blueprintScorecards.Blueprint, scorecard)
 		}
@@ -221,9 +221,9 @@ func createResources(portClient *cli.PortClient, defaults *Defaults, shouldCreat
 		go func(p port.Page) {
 			defer waitGroup.Done()
 			if err := page.CreatePage(portClient, p); err != nil {
-				klog.Warningf("Failed to create page %s: %v", p.Identifier, err.Error())
+				logger.Warningf("Failed to create page %s: %v", p.Identifier, err.Error())
 			} else {
-				klog.Infof("Created page %s", p.Identifier)
+				logger.Infof("Created page %s", p.Identifier)
 			}
 		}(pageToCreate)
 	}
@@ -235,16 +235,16 @@ func createResources(portClient *cli.PortClient, defaults *Defaults, shouldCreat
 func initializeDefaults(portClient *cli.PortClient, defaults *Defaults, shouldCreatePageForBlueprints bool) error {
 	if err := createResources(portClient, defaults, shouldCreatePageForBlueprints); err != nil {
 		if abortErr, ok := err.(*AbortDefaultCreationError); ok {
-			klog.Warningf("Rolling back blueprints due to creation error")
+			logger.Warningf("Rolling back blueprints due to creation error")
 			for _, blueprintID := range abortErr.BlueprintsToRollback {
 				if err := blueprint.DeleteBlueprint(portClient, blueprintID); err != nil {
-					klog.Warningf("Failed to rollback blueprint %s: %v", blueprintID, err)
+					logger.Warningf("Failed to rollback blueprint %s: %v", blueprintID, err)
 				} else {
-					klog.Infof("Successfully rolled back blueprint %s", blueprintID)
+					logger.Infof("Successfully rolled back blueprint %s", blueprintID)
 				}
 			}
 		}
-		klog.Warningf("Error creating default resources: %v", err)
+		logger.Warningf("Error creating default resources: %v", err)
 		return err
 	}
 

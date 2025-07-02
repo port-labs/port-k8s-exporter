@@ -6,6 +6,8 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+
+	"github.com/port-labs/port-k8s-exporter/pkg/logger"
 )
 
 func SetupSignalHandler() (stopCh chan struct{}) {
@@ -19,6 +21,8 @@ func SetupSignalHandler() (stopCh chan struct{}) {
 		mutex.Lock()
 		if gracefulStop == false {
 			fmt.Fprint(os.Stderr, "Received SIGTERM, exiting gracefully...\n")
+			// Flush any pending logs before shutdown
+			logger.Shutdown()
 			close(stop)
 		}
 		mutex.Unlock()
@@ -26,6 +30,8 @@ func SetupSignalHandler() (stopCh chan struct{}) {
 		mutex.Lock()
 		if gracefulStop == false {
 			fmt.Fprint(os.Stderr, "Received SIGTERM again, exiting forcefully...\n")
+			// Force flush logs before forceful exit
+			logger.Shutdown()
 			os.Exit(1)
 		}
 		mutex.Unlock()

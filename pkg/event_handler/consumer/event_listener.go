@@ -3,12 +3,13 @@ package consumer
 import (
 	"encoding/json"
 	"fmt"
+
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
+	"github.com/port-labs/port-k8s-exporter/pkg/logger"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/kafka_credentials"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/org_details"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/klog/v2"
 )
 
 type EventListener struct {
@@ -27,7 +28,7 @@ type IncomingMessage struct {
 }
 
 func NewEventListener(stateKey string, portClient *cli.PortClient) (*EventListener, error) {
-	klog.Infof("Getting Consumer Information")
+	logger.Info("Getting Consumer Information")
 	credentials, err := kafka_credentials.GetKafkaCredentials(portClient)
 	if err != nil {
 		return nil, err
@@ -68,16 +69,17 @@ func shouldResync(stateKey string, message *IncomingMessage) bool {
 }
 
 func (l *EventListener) Run(resync func()) error {
-	klog.Infof("Starting Kafka event listener")
+	logger.Info("Starting Kafka event listener")
 
-	klog.Infof("Starting consumer for topic %s", l.topic)
+	logger.Infow("Starting consumer for topic", "topic", l.topic)
 	l.consumer.Consume(l.topic, func(value []byte) {
 		incomingMessage := &IncomingMessage{}
 		parsingError := json.Unmarshal(value, &incomingMessage)
 		if parsingError != nil {
+			logger.Errorw("error handling message", "error", parsingError.Error())
 			utilruntime.HandleError(fmt.Errorf("error handling message: %s", parsingError.Error()))
 		} else if shouldResync(l.stateKey, incomingMessage) {
-			klog.Infof("Changes detected. Resyncing...")
+			logger.Info("Changes detected. Resyncing...")
 			resync()
 		}
 	}, nil)
