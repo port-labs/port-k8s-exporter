@@ -23,8 +23,10 @@ type (
 	}
 )
 
-var cachedTokenSource oauth2.TokenSource
-var tokenSourceMu sync.RWMutex
+var (
+	cachedTokenSource oauth2.TokenSource
+	tokenSourceMu     sync.RWMutex
+)
 
 func New(applicationConfig *config.ApplicationConfiguration, opts ...Option) *PortClient {
 	c := &PortClient{
@@ -58,13 +60,7 @@ func New(applicationConfig *config.ApplicationConfiguration, opts ...Option) *Po
 }
 
 func (c *PortClient) Authenticate(ctx context.Context, clientID, clientSecret string) (string, error) {
-
-	appCfg := &config.ApplicationConfiguration{
-		PortClientId:     clientID,
-		PortClientSecret: clientSecret,
-		PortBaseURL:      c.Client.BaseURL,
-	}
-	token, err := getCachedToken(ctx, appCfg)
+	token, err := getToken(clientID, clientSecret, c.Client.BaseURL)
 
 	if err != nil {
 		return "", fmt.Errorf("error getting token: %s", err.Error())
@@ -103,7 +99,7 @@ func WithCreateMissingRelatedEntities(createMissingRelatedEntities bool) Option 
 	}
 }
 
-func getCachedToken(ctx context.Context, cfg *config.ApplicationConfiguration) (*oauth2.Token, error) {
+func getToken(clientID, clientSecret, baseURL string) (*oauth2.Token, error) {
 	tokenSourceMu.RLock()
 	if cachedTokenSource != nil {
 		tokenSourceMu.RUnlock()
@@ -114,7 +110,7 @@ func getCachedToken(ctx context.Context, cfg *config.ApplicationConfiguration) (
 	tokenSourceMu.Lock()
 	defer tokenSourceMu.Unlock()
 	if cachedTokenSource == nil {
-		raw := newTokenSource(cfg)
+		raw := newTokenSource(clientID, clientSecret, baseURL)
 		cachedTokenSource = oauth2.ReuseTokenSource(nil, raw)
 	}
 	return cachedTokenSource.Token()

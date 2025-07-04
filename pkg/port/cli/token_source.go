@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"golang.org/x/oauth2"
 	"io"
 	"net/http"
@@ -24,11 +23,11 @@ type accessTokenResponse struct {
 	ExpiresIn   int    `json:"expiresIn"`
 }
 
-func newTokenSource(cfg *config.ApplicationConfiguration) oauth2.TokenSource {
+func newTokenSource(clientID, clientSecret, baseURL string) oauth2.TokenSource {
 	return &portTokenSource{
-		ClientID:     cfg.PortClientId,
-		ClientSecret: cfg.PortClientSecret,
-		Endpoint:     cfg.PortBaseURL,
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		Endpoint:     baseURL,
 		HTTPClient:   http.DefaultClient,
 	}
 }
