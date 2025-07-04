@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-type PortTokenSource struct {
+type portTokenSource struct {
 	ClientID     string
 	ClientSecret string
 	Endpoint     string
@@ -23,8 +23,8 @@ type accessTokenResponse struct {
 	ExpiresIn   int    `json:"expiresIn"`
 }
 
-func NewTokenSource(cfg *config.ApplicationConfiguration) oauth2.TokenSource {
-	return &PortTokenSource{
+func newTokenSource(cfg *config.ApplicationConfiguration) oauth2.TokenSource {
+	return &portTokenSource{
 		ClientID:     cfg.PortClientId,
 		ClientSecret: cfg.PortClientSecret,
 		Endpoint:     cfg.PortBaseURL,
@@ -32,7 +32,7 @@ func NewTokenSource(cfg *config.ApplicationConfiguration) oauth2.TokenSource {
 	}
 }
 
-func (ts *PortTokenSource) Token() (*oauth2.Token, error) {
+func (ts *portTokenSource) Token() (*oauth2.Token, error) {
 	reqBody := strings.NewReader(fmt.Sprintf(`{"clientId":"%s","clientSecret":"%s"}`, ts.ClientID, ts.ClientSecret))
 	req, err := http.NewRequest("POST", fmt.Sprintf("%s/v1/auth/access_token", ts.Endpoint), reqBody)
 	if err != nil {
