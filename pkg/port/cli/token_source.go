@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
@@ -33,8 +34,11 @@ func newTokenSource(cfg *config.ApplicationConfiguration) oauth2.TokenSource {
 }
 
 func (ts *portTokenSource) Token() (*oauth2.Token, error) {
+	// Create a timeout context for the token request
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	reqBody := strings.NewReader(fmt.Sprintf(`{"clientId":"%s","clientSecret":"%s"}`, ts.ClientID, ts.ClientSecret))
-	req, err := http.NewRequest("POST", fmt.Sprintf("%s/v1/auth/access_token", ts.Endpoint), reqBody)
+	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/v1/auth/access_token", ts.Endpoint), reqBody)
 	if err != nil {
 		return nil, err
 	}
