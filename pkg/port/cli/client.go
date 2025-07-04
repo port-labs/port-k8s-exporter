@@ -27,32 +27,27 @@ var cachedTokenSource oauth2.TokenSource
 var tokenSourceMu sync.RWMutex
 
 func New(applicationConfig *config.ApplicationConfiguration, opts ...Option) *PortClient {
-	raw := newTokenSource(applicationConfig)
-	cached := oauth2.ReuseTokenSource(nil, raw)
-	authedHttpClient := oauth2.NewClient(context.Background(), cached)
-
-	restyClient := resty.New().
-		SetBaseURL(applicationConfig.PortBaseURL).
-		SetTransport(authedHttpClient.Transport).
-		SetRetryCount(5).
-		SetRetryWaitTime(300).
-		AddRetryCondition(func(r *resty.Response, err error) bool {
-			if err != nil {
-				return true
-			}
-			if !strings.Contains(r.Request.URL, "/permissions") {
-				return false
-			}
-			b := make(map[string]interface{})
-			err = json.Unmarshal(r.Body(), &b)
-			return err != nil || b["ok"] != true
-		})
 	c := &PortClient{
-		Client:       restyClient,
-		ClientID:     applicationConfig.PortClientId,
-		ClientSecret: applicationConfig.PortClientSecret,
+		Client: resty.New().
+			SetBaseURL(applicationConfig.PortBaseURL).
+			SetRetryCount(5).
+			SetRetryWaitTime(300).
+			// retry when create permission fails because scopes are created async-ly and sometimes (mainly in tests) the scope doesn't exist yet.
+			AddRetryCondition(func(r *resty.Response, err error) bool {
+				if err != nil {
+					return true
+				}
+				if !strings.Contains(r.Request.URL, "/permissions") {
+					return false
+				}
+				b := make(map[string]interface{})
+				err = json.Unmarshal(r.Body(), &b)
+				return err != nil || b["ok"] != true
+			}),
 	}
 
+	WithClientID(applicationConfig.PortClientId)(c)
+	WithClientSecret(applicationConfig.PortClientSecret)(c)
 	WithHeader("User-Agent", fmt.Sprintf("port-k8s-exporter/^0.3.4 (statekey/%s)", applicationConfig.StateKey))(c)
 
 	for _, opt := range opts {
