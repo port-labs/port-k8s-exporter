@@ -20,6 +20,7 @@ type PortTokenSource struct {
 
 type accessTokenResponse struct {
 	AccessToken string `json:"accessToken"`
+	ExpiresIn   int    `json:"expiresIn"`
 }
 
 func NewTokenSource(cfg *config.ApplicationConfiguration) oauth2.TokenSource {
@@ -62,6 +63,6 @@ func (ts *PortTokenSource) Token() (*oauth2.Token, error) {
 	return &oauth2.Token{
 		AccessToken: tokenResp.AccessToken,
 		TokenType:   "Bearer",
-		Expiry:      time.Now().Add(1 * time.Hour),
+		Expiry:      time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second),
 	}, nil
 }
