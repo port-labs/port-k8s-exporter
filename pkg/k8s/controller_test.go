@@ -868,7 +868,7 @@ func TestCreateDeploymentWithTeamSearch(t *testing.T) {
 	stateKey := guuid.NewString()
 	blueprintId := getBlueprintId(stateKey)
 	id := guuid.NewString()
-	searchTeamName := "search_team"
+	searchTeamName := guuid.NewString()
 	d := newDeployment(stateKey)
 	ud := newUnstructured(d)
 

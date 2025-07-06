@@ -148,7 +148,6 @@ func (c *Controller) RunInitialSync() *SyncResult {
 	rawDataExamples := make([]interface{}, 0)
 	shouldDeleteStaleEntities := true
 	
-	// Use a batch collector to group entities while still using the queue
 	totalBatchSize := c.calculateTotalBatchSize()
 	batchTimeout := c.getBulkBatchTimeout()
 	batchCollector := NewBatchCollector(totalBatchSize, batchTimeout)
@@ -178,6 +177,10 @@ func (c *Controller) RunInitialSync() *SyncResult {
 		shouldDeleteStaleEntities = shouldDeleteStaleEntities && finalSyncResult.ShouldDeleteStaleEntities
 	}
 	
+	if batchCollector.HasErrors() {
+		shouldDeleteStaleEntities = false
+	}
+	
 	return &SyncResult{
 		EntitiesSet:               entitiesSet,
 		RawDataExamples:           rawDataExamples,
@@ -185,12 +188,12 @@ func (c *Controller) RunInitialSync() *SyncResult {
 	}
 }
 
-// BatchCollector collects entities for bulk processing
 type BatchCollector struct {
 	entitiesByBlueprint map[string][]port.EntityRequest
 	maxBatchSize        int
 	timeout             time.Duration
 	lastFlush           time.Time
+	hasErrors           bool
 }
 
 func NewBatchCollector(maxBatchSize int, timeout time.Duration) *BatchCollector {
@@ -199,6 +202,7 @@ func NewBatchCollector(maxBatchSize int, timeout time.Duration) *BatchCollector 
 		maxBatchSize:        maxBatchSize,
 		timeout:             timeout,
 		lastFlush:           time.Now(),
+		hasErrors:           false,
 	}
 }
 
@@ -207,6 +211,14 @@ func (bc *BatchCollector) AddEntity(entity port.EntityRequest) {
 		bc.entitiesByBlueprint[entity.Blueprint] = make([]port.EntityRequest, 0)
 	}
 	bc.entitiesByBlueprint[entity.Blueprint] = append(bc.entitiesByBlueprint[entity.Blueprint], entity)
+}
+
+func (bc *BatchCollector) MarkError() {
+	bc.hasErrors = true
+}
+
+func (bc *BatchCollector) HasErrors() bool {
+	return bc.hasErrors
 }
 
 func (bc *BatchCollector) ShouldFlush() bool {
@@ -246,11 +258,15 @@ func (c *Controller) calculateTotalBatchSize() int {
 
 func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 	if len(bc.entitiesByBlueprint) == 0 {
-		return nil
+		return &SyncResult{
+			EntitiesSet:               make(map[string]interface{}),
+			RawDataExamples:           make([]interface{}, 0),
+			ShouldDeleteStaleEntities: !bc.hasErrors,
+		}
 	}
 	
 	entitiesSet := make(map[string]interface{})
-	shouldDeleteStaleEntities := true
+	shouldDeleteStaleEntities := !bc.hasErrors
 	maxPayloadBytes := controller.getBulkMaxPayloadBytes()
 	maxEntitiesPerBlueprintBatch := controller.getBulkMaxEntitiesPerBlueprintBatch()
 	
@@ -421,6 +437,8 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 		for _, kindConfig := range c.Resource.KindConfigs {
 			portEntities, rawDataExamplesForObj, err := c.getObjectEntities(k8sObj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
 			if err != nil {
+				batchCollector.MarkError()
+				
 				if numRequeues >= MaxNumRequeues {
 					workqueue.Forget(obj)
 					return nil, requeueCounterDiff, fmt.Errorf("error getting entities for object '%s': %v, giving up", item.Key, err)
@@ -447,7 +465,7 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 		
 		workqueue.Forget(obj)
 		return &SyncResult{
-			EntitiesSet:               make(map[string]interface{}), // Will be populated when batch is processed
+			EntitiesSet:               make(map[string]interface{}),
 			RawDataExamples:           rawDataExamples,
 			ShouldDeleteStaleEntities: true,
 		}, requeueCounterDiff, nil
