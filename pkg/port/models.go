@@ -237,6 +237,31 @@ type ResponseBody struct {
 	Migration        Migration           `json:"migration"`
 }
 
+type BulkUpsertRequest struct {
+	Entities []EntityRequest `json:"entities"`
+}
+
+type BulkEntityResult struct {
+	Created        bool                   `json:"created"`
+	Identifier     string                 `json:"identifier"`
+	Index          int                    `json:"index"`
+	AdditionalData map[string]interface{} `json:"additionalData,omitempty"`
+}
+
+type BulkEntityError struct {
+	Identifier string `json:"identifier"`
+	Index      int    `json:"index"`
+	StatusCode int    `json:"statusCode"`
+	Error      string `json:"error"`
+	Message    string `json:"message"`
+}
+
+type BulkUpsertResponse struct {
+	OK       bool               `json:"ok"`
+	Entities []BulkEntityResult `json:"entities"`
+	Errors   []BulkEntityError  `json:"errors"`
+}
+
 type Migration struct {
 	Status string `json:"status"`
 }
@@ -307,6 +332,9 @@ type IntegrationAppConfig struct {
 	OverwriteCRDsActions         bool       `json:"overwriteCrdsActions,omitempty"`
 	UpdateEntityOnlyOnDiff       *bool      `json:"updateEntityOnlyOnDiff,omitempty"`
 	SendRawDataExamples          *bool      `json:"sendRawDataExamples,omitempty"`
+	BulkSyncMaxPayloadBytes      *int       `json:"bulkSyncMaxPayloadBytes,omitempty" yaml:"bulkSyncMaxPayloadBytes,omitempty"`
+	BulkSyncMaxEntitiesPerBatch  *int       `json:"bulkSyncMaxEntitiesPerBatch,omitempty" yaml:"bulkSyncMaxEntitiesPerBatch,omitempty"`
+	BulkSyncBatchTimeoutSeconds  *int       `json:"bulkSyncBatchTimeoutSeconds,omitempty" yaml:"bulkSyncBatchTimeoutSeconds,omitempty"`
 }
 
 const (

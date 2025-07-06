@@ -2,11 +2,14 @@ package k8s
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
-	"github.com/port-labs/port-k8s-exporter/pkg/port/entity"
+	"math"
 	"reflect"
 	"time"
+
+	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
+	"github.com/port-labs/port-k8s-exporter/pkg/port/entity"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/jq"
@@ -31,6 +34,10 @@ const (
 	DeleteAction             EventActionType = "delete"
 	MaxNumRequeues           int             = 4
 	MaxRawDataExamplesToSend                 = 5
+	DefaultMaxBulkPayloadBytes     = 1024 * 1024 // 1MiB
+	DefaultMaxBulkEntitiesPerBatch = 20
+	DefaultBulkBatchTimeoutSeconds = 5
+	BlueprintBatchMultiplier = 5
 )
 
 type EventItem struct {
@@ -140,12 +147,21 @@ func (c *Controller) RunInitialSync() *SyncResult {
 	entitiesSet := make(map[string]interface{})
 	rawDataExamples := make([]interface{}, 0)
 	shouldDeleteStaleEntities := true
+	
+	// Use a batch collector to group entities while still using the queue
+	totalBatchSize := c.calculateTotalBatchSize()
+	batchTimeout := c.getBulkBatchTimeout()
+	batchCollector := NewBatchCollector(totalBatchSize, batchTimeout)
+	
+	klog.V(1).Infof("Initializing batch collector with size %d entities and timeout %v", totalBatchSize, batchTimeout)
+	
 	shouldContinue := true
 	requeueCounter := 0
 	var requeueCounterDiff int
 	var syncResult *SyncResult
+	
 	for shouldContinue && (requeueCounter > 0 || c.initialSyncWorkqueue.Len() > 0 || !c.eventHandler.HasSynced()) {
-		syncResult, requeueCounterDiff, shouldContinue = c.processNextWorkItem(c.initialSyncWorkqueue)
+		syncResult, requeueCounterDiff, shouldContinue = c.processNextWorkItemWithBatching(c.initialSyncWorkqueue, batchCollector)
 		requeueCounter += requeueCounterDiff
 		if syncResult != nil {
 			entitiesSet = goutils.MergeMaps(entitiesSet, syncResult.EntitiesSet)
@@ -154,12 +170,294 @@ func (c *Controller) RunInitialSync() *SyncResult {
 			shouldDeleteStaleEntities = shouldDeleteStaleEntities && syncResult.ShouldDeleteStaleEntities
 		}
 	}
-
+	
+	// Process any remaining batched entities
+	finalSyncResult := batchCollector.ProcessRemaining(c)
+	if finalSyncResult != nil {
+		entitiesSet = goutils.MergeMaps(entitiesSet, finalSyncResult.EntitiesSet)
+		shouldDeleteStaleEntities = shouldDeleteStaleEntities && finalSyncResult.ShouldDeleteStaleEntities
+	}
+	
 	return &SyncResult{
 		EntitiesSet:               entitiesSet,
 		RawDataExamples:           rawDataExamples,
 		ShouldDeleteStaleEntities: shouldDeleteStaleEntities,
 	}
+}
+
+// BatchCollector collects entities for bulk processing
+type BatchCollector struct {
+	entitiesByBlueprint map[string][]port.EntityRequest
+	maxBatchSize        int
+	timeout             time.Duration
+	lastFlush           time.Time
+}
+
+func NewBatchCollector(maxBatchSize int, timeout time.Duration) *BatchCollector {
+	return &BatchCollector{
+		entitiesByBlueprint: make(map[string][]port.EntityRequest),
+		maxBatchSize:        maxBatchSize,
+		timeout:             timeout,
+		lastFlush:           time.Now(),
+	}
+}
+
+func (bc *BatchCollector) AddEntity(entity port.EntityRequest) {
+	if bc.entitiesByBlueprint[entity.Blueprint] == nil {
+		bc.entitiesByBlueprint[entity.Blueprint] = make([]port.EntityRequest, 0)
+	}
+	bc.entitiesByBlueprint[entity.Blueprint] = append(bc.entitiesByBlueprint[entity.Blueprint], entity)
+}
+
+func (bc *BatchCollector) ShouldFlush() bool {
+	totalEntities := 0
+	for _, entities := range bc.entitiesByBlueprint {
+		totalEntities += len(entities)
+	}
+	
+	return totalEntities >= bc.maxBatchSize || time.Since(bc.lastFlush) > bc.timeout
+}
+
+func (c *Controller) getBulkMaxPayloadBytes() int {
+	if c.integrationConfig.BulkSyncMaxPayloadBytes != nil {
+		return *c.integrationConfig.BulkSyncMaxPayloadBytes
+	}
+	return DefaultMaxBulkPayloadBytes
+}
+
+func (c *Controller) getBulkMaxEntitiesPerBlueprintBatch() int {
+	if c.integrationConfig.BulkSyncMaxEntitiesPerBatch != nil {
+		return *c.integrationConfig.BulkSyncMaxEntitiesPerBatch
+	}
+	return DefaultMaxBulkEntitiesPerBatch
+}
+
+func (c *Controller) getBulkBatchTimeout() time.Duration {
+	if c.integrationConfig.BulkSyncBatchTimeoutSeconds != nil {
+		return time.Duration(*c.integrationConfig.BulkSyncBatchTimeoutSeconds) * time.Second
+	}
+	return DefaultBulkBatchTimeoutSeconds * time.Second
+}
+
+func (c *Controller) calculateTotalBatchSize() int {
+	maxEntitiesPerBlueprintBatch := c.getBulkMaxEntitiesPerBlueprintBatch()
+	return maxEntitiesPerBlueprintBatch * BlueprintBatchMultiplier
+}
+
+func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
+	if len(bc.entitiesByBlueprint) == 0 {
+		return nil
+	}
+	
+	entitiesSet := make(map[string]interface{})
+	shouldDeleteStaleEntities := true
+	maxPayloadBytes := controller.getBulkMaxPayloadBytes()
+	maxEntitiesPerBlueprintBatch := controller.getBulkMaxEntitiesPerBlueprintBatch()
+	
+	_, err := controller.portClient.Authenticate(context.Background(), controller.portClient.ClientID, controller.portClient.ClientSecret)
+	if err != nil {
+		klog.Errorf("error authenticating with Port: %v", err)
+		return &SyncResult{
+			EntitiesSet:               make(map[string]interface{}),
+			RawDataExamples:           make([]interface{}, 0),
+			ShouldDeleteStaleEntities: false,
+		}
+	}
+	
+	totalEntities := 0
+	for _, entities := range bc.entitiesByBlueprint {
+		totalEntities += len(entities)
+	}
+	
+	klog.V(0).Infof("Batch processing %d entities across %d blueprints (limits: %d bytes, %d entities/batch)", totalEntities, len(bc.entitiesByBlueprint), maxPayloadBytes, maxEntitiesPerBlueprintBatch)
+	
+	for blueprint, entities := range bc.entitiesByBlueprint {
+		if len(entities) == 0 {
+			continue
+		}
+		
+		klog.V(0).Infof("Processing %d entities for blueprint '%s'", len(entities), blueprint)
+		
+		optimalBatchSize := calculateBulkSize(entities, maxEntitiesPerBlueprintBatch, maxPayloadBytes)
+		klog.V(1).Infof("Calculated optimal batch size for blueprint '%s': %d entities (based on payload size estimation)", blueprint, optimalBatchSize)
+		
+		for i := 0; i < len(entities); i += optimalBatchSize {
+			end := i + optimalBatchSize
+			if end > len(entities) {
+				end = len(entities)
+			}
+			batchEntities := entities[i:end]
+	
+			bulkResponse, err := controller.portClient.BulkUpsertEntities(context.Background(), blueprint, batchEntities, "", controller.portClient.CreateMissingRelatedEntities)
+			if err != nil {
+				klog.Warningf("Bulk upsert failed for blueprint '%s' with %d entities, falling back to individual upserts: %v", blueprint, len(batchEntities), err)
+				bc.fallbackToIndividualUpserts(controller, batchEntities, &entitiesSet, &shouldDeleteStaleEntities)
+				continue
+			}
+			
+			successCount := 0
+			for _, result := range bulkResponse.Entities {
+				if result.Created {
+					successCount++
+					klog.V(1).Infof("Successfully upserted entity '%s' of blueprint '%s'", result.Identifier, blueprint)
+				}
+				
+				mockEntity := &port.Entity{
+					Identifier: result.Identifier,
+					Blueprint:  blueprint,
+				}
+				entitiesSet[controller.portClient.GetEntityIdentifierKey(mockEntity)] = nil
+			}
+			
+			// Handle partial failures - retry failed entities individually
+			if len(bulkResponse.Errors) > 0 {
+				klog.Warningf("Bulk upsert had %d failures out of %d entities for blueprint '%s', retrying failed entities individually", len(bulkResponse.Errors), len(batchEntities), blueprint)
+				
+				failedIdentifiers := make(map[string]bool)
+				for _, bulkError := range bulkResponse.Errors {
+					failedIdentifiers[bulkError.Identifier] = true
+					klog.V(1).Infof("Bulk upsert failed for entity '%s': %s", bulkError.Identifier, bulkError.Message)
+				}
+				
+				failedEntities := make([]port.EntityRequest, 0)
+				for _, entity := range batchEntities {
+					if failedIdentifiers[fmt.Sprintf("%v", entity.Identifier)] {
+						failedEntities = append(failedEntities, entity)
+					}
+				}
+				
+				if len(failedEntities) > 0 {
+					bc.fallbackToIndividualUpserts(controller, failedEntities, &entitiesSet, &shouldDeleteStaleEntities)
+				}
+			}
+			
+			klog.V(0).Infof("Bulk upsert completed for blueprint '%s': %d successful, %d failed (retried individually)", blueprint, successCount, len(bulkResponse.Errors))
+		}
+	}
+	
+	// Clear the batch
+	bc.entitiesByBlueprint = make(map[string][]port.EntityRequest)
+	bc.lastFlush = time.Now()
+	
+	return &SyncResult{
+		EntitiesSet:               entitiesSet,
+		RawDataExamples:           make([]interface{}, 0),
+		ShouldDeleteStaleEntities: shouldDeleteStaleEntities,
+	}
+}
+
+func (bc *BatchCollector) fallbackToIndividualUpserts(controller *Controller, entities []port.EntityRequest, entitiesSet *map[string]interface{}, shouldDeleteStaleEntities *bool) {
+	klog.V(0).Infof("Falling back to individual upserts for %d entities", len(entities))
+	
+	for _, entity := range entities {
+		handledEntity, err := controller.entityHandler(entity, CreateAction)
+		if err != nil {
+			klog.Errorf("Individual upsert fallback failed for entity '%v' of blueprint '%s': %v", entity.Identifier, entity.Blueprint, err)
+			*shouldDeleteStaleEntities = false
+		} else if handledEntity != nil {
+			(*entitiesSet)[controller.portClient.GetEntityIdentifierKey(handledEntity)] = nil
+			klog.V(1).Infof("Individual upsert fallback succeeded for entity '%v' of blueprint '%s'", entity.Identifier, entity.Blueprint)
+		}
+	}
+}
+
+func (bc *BatchCollector) ProcessRemaining(controller *Controller) *SyncResult {
+	if len(bc.entitiesByBlueprint) == 0 {
+		return nil
+	}
+	return bc.ProcessBatch(controller)
+}
+
+func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLimitingInterface, batchCollector *BatchCollector) (*SyncResult, int, bool) {
+	if batchCollector.ShouldFlush() {
+		syncResult := batchCollector.ProcessBatch(c)
+		if syncResult != nil {
+			return syncResult, 0, true
+		}
+	}
+	
+	obj, shutdown := workqueue.Get()
+	if shutdown {
+		return nil, 0, false
+	}
+	
+	syncResult, requeueCounterDiff, err := func(obj interface{}) (*SyncResult, int, error) {
+		defer workqueue.Done(obj)
+		
+		numRequeues := workqueue.NumRequeues(obj)
+		requeueCounterDiff := 0
+		if numRequeues > 0 {
+			requeueCounterDiff = -1
+		}
+		
+		item, ok := obj.(EventItem)
+		if !ok {
+			workqueue.Forget(obj)
+			return nil, requeueCounterDiff, fmt.Errorf("expected event item in workqueue but got %#v", obj)
+		}
+		
+		k8sObj, exists, err := c.informer.GetIndexer().GetByKey(item.Key)
+		if err != nil {
+			if numRequeues >= MaxNumRequeues {
+				workqueue.Forget(obj)
+				return nil, requeueCounterDiff, fmt.Errorf("error fetching object '%s': %v, giving up", item.Key, err)
+			}
+			
+			if numRequeues == 0 {
+				requeueCounterDiff = 1
+			} else {
+				requeueCounterDiff = 0
+			}
+			workqueue.AddRateLimited(obj)
+			return nil, requeueCounterDiff, fmt.Errorf("error fetching object '%s': %v, requeuing", item.Key, err)
+		}
+		
+		if !exists {
+			workqueue.Forget(obj)
+			return nil, requeueCounterDiff, nil
+		}
+		
+		rawDataExamples := make([]interface{}, 0)
+		for _, kindConfig := range c.Resource.KindConfigs {
+			portEntities, rawDataExamplesForObj, err := c.getObjectEntities(k8sObj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
+			if err != nil {
+				if numRequeues >= MaxNumRequeues {
+					workqueue.Forget(obj)
+					return nil, requeueCounterDiff, fmt.Errorf("error getting entities for object '%s': %v, giving up", item.Key, err)
+				}
+				
+				if numRequeues == 0 {
+					requeueCounterDiff = 1
+				} else {
+					requeueCounterDiff = 0
+				}
+				workqueue.AddRateLimited(obj)
+				return nil, requeueCounterDiff, fmt.Errorf("error getting entities for object '%s': %v, requeuing", item.Key, err)
+			}
+			
+			if len(rawDataExamples) < MaxRawDataExamplesToSend {
+				amountToAdd := min(len(rawDataExamplesForObj), MaxRawDataExamplesToSend-len(rawDataExamples))
+				rawDataExamples = append(rawDataExamples, rawDataExamplesForObj[:amountToAdd]...)
+			}
+			
+			for _, portEntity := range portEntities {
+				batchCollector.AddEntity(portEntity)
+			}
+		}
+		
+		workqueue.Forget(obj)
+		return &SyncResult{
+			EntitiesSet:               make(map[string]interface{}), // Will be populated when batch is processed
+			RawDataExamples:           rawDataExamples,
+			ShouldDeleteStaleEntities: true,
+		}, requeueCounterDiff, nil
+	}(obj)
+	
+	if err != nil {
+		utilruntime.HandleError(err)
+	}
+	
+	return syncResult, requeueCounterDiff, true
 }
 
 func (c *Controller) RunEventsSync(workers int, stopCh <-chan struct{}) {
@@ -248,6 +546,7 @@ func (c *Controller) objectHandler(obj interface{}, item EventItem) (*SyncResult
 	errors := make([]error, 0)
 	entitiesSet := make(map[string]interface{})
 	rawDataExamplesToReturn := make([]interface{}, 0)
+	
 	for _, kindConfig := range c.Resource.KindConfigs {
 		portEntities, rawDataExamples, err := c.getObjectEntities(obj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
 		if err != nil {
@@ -274,16 +573,16 @@ func (c *Controller) objectHandler(obj interface{}, item EventItem) (*SyncResult
 		}
 	}
 
-	var err error
+	var finalErr error
 	if len(errors) > 0 {
-		err = fmt.Errorf("error handling entity for object key '%s': %v", item.Key, errors)
+		finalErr = fmt.Errorf("error handling entity for object key '%s': %v", item.Key, errors)
 	}
 
 	return &SyncResult{
 		EntitiesSet:               entitiesSet,
 		RawDataExamples:           rawDataExamplesToReturn,
 		ShouldDeleteStaleEntities: entitiesSet != nil,
-	}, err
+	}, finalErr
 }
 
 func isPassSelector(obj interface{}, selector port.Selector) (bool, error) {
@@ -432,3 +731,34 @@ func (c *Controller) shouldSendUpdateEvent(old interface{}, new interface{}, upd
 
 	return false
 }
+
+// calculateBulkSize determines the optimal batch size based on entity size estimation
+func calculateBulkSize(entities []port.EntityRequest, maxLength int, maxSizeInBytes int) int {
+	if len(entities) == 0 {
+		return 1
+	}
+
+	// Calculate average object size from a sample
+	sampleSize := int(math.Min(10, float64(len(entities))))
+	sampleEntities := entities[:sampleSize]
+	
+	totalSampleSize := 0
+	for _, entity := range sampleEntities {
+		entityBytes, err := json.Marshal(entity)
+		if err != nil {
+			klog.V(2).Infof("Failed to marshal entity for size calculation, using conservative estimate: %v", err)
+			totalSampleSize += 1024 // 1KB conservative estimate per entity
+			continue
+		}
+		totalSampleSize += len(entityBytes)
+	}
+	
+	averageObjectSize := float64(totalSampleSize) / float64(sampleSize)
+	
+	// Use a conservative estimate (1.5x the average) to ensure we stay under the limit
+	estimatedObjectSize := int(math.Ceil(averageObjectSize * 1.5))
+	maxObjectsPerBatch := int(math.Min(float64(maxLength), math.Floor(float64(maxSizeInBytes)/float64(estimatedObjectSize))))
+	
+	return int(math.Max(1, float64(maxObjectsPerBatch)))
+}
+
