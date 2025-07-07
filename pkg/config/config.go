@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	"github.com/joho/godotenv"
+	"github.com/port-labs/port-k8s-exporter/pkg/logger"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"gopkg.in/yaml.v3"
-	"k8s.io/klog/v2"
 )
 
 var KafkaConfig = &KafkaConfiguration{}
@@ -46,6 +46,11 @@ func Init() {
 	NewBool(&ApplicationConfig.DeleteDependents, "delete-dependents", false, "Delete dependents. Optional.")
 	NewBool(&ApplicationConfig.CreateMissingRelatedEntities, "create-missing-related-entities", false, "Create missing related entities. Optional.")
 
+	// HTTP Logging Configuration
+	NewBool(&ApplicationConfig.HTTPLoggingEnabled, "http-logging-enabled", false, "Enable HTTP logging. Optional.")
+	NewString(&ApplicationConfig.LoggingLevel, "logging-level", "info", "Logging level. Optional.")
+	NewInt(&ApplicationConfig.HTTPLoggingTimeout, "http-logging-timeout", 5, "HTTP logging timeout in seconds. Optional.")
+
 	flag.Parse()
 }
 
@@ -64,10 +69,10 @@ func NewConfiguration() (*port.Config, error) {
 	v, err := os.ReadFile(ApplicationConfig.ConfigFilePath)
 	if err != nil {
 		v = []byte("{}")
-		klog.Infof("Config file not found, using defaults")
+		logger.Infof("Config file not found, using defaults")
 		return config, nil
 	}
-	klog.Infof("Config file found")
+	logger.Infof("Config file found")
 	err = yaml.Unmarshal(v, &config)
 	if err != nil {
 		return nil, fmt.Errorf("failed loading configuration: %w", err)

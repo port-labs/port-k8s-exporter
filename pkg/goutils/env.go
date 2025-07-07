@@ -27,6 +27,19 @@ func GetUintEnvOrDefault(key string, defaultValue uint64) uint64 {
 	return result
 }
 
+func GetIntEnvOrDefault(key string, defaultValue int64) int64 {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	result, err := strconv.ParseInt(value, 10, 32)
+	if err != nil {
+		fmt.Printf("Using default value "+strconv.FormatInt(defaultValue, 10)+" for "+key+". error parsing env variable %s: %s", key, err.Error())
+		return defaultValue
+	}
+	return result
+}
+
 func GetBoolEnvOrDefault(key string, defaultValue bool) bool {
 	value := os.Getenv(key)
 	if value == "" {

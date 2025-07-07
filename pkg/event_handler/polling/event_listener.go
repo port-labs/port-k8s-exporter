@@ -2,8 +2,8 @@ package polling
 
 import (
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
+	"github.com/port-labs/port-k8s-exporter/pkg/logger"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
-	"k8s.io/klog/v2"
 )
 
 type EventListener struct {
@@ -21,8 +21,8 @@ func NewEventListener(stateKey string, portClient *cli.PortClient) *EventListene
 }
 
 func (l *EventListener) Run(resync func()) error {
-	klog.Infof("Starting polling event listener")
-	klog.Infof("Polling rate set to %d seconds", config.PollingListenerRate)
+	logger.Infof("Starting polling event listener")
+	logger.Infof("Polling rate set to %d seconds", config.PollingListenerRate)
 	l.handler.Run(resync)
 
 	return nil

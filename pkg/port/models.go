@@ -36,6 +36,13 @@ type (
 		EventListener       *EventListenerSettings `json:"changelogDestination,omitempty"`
 		Config              *IntegrationAppConfig  `json:"config,omitempty"`
 		UpdatedAt           *time.Time             `json:"updatedAt,omitempty"`
+		LogAttributes       *LogAttributes         `json:"logAttributes,omitempty"`
+		Identifier          string                 `json:"identifier,omitempty"`
+	}
+
+	LogAttributes struct {
+		IngestUrl string `json:"ingestUrl,omitempty"`
+		IngestId  string `json:"ingestId,omitempty"`
 	}
 
 	Example struct {

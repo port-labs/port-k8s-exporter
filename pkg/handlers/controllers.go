@@ -9,13 +9,13 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/crd"
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
 	"github.com/port-labs/port-k8s-exporter/pkg/k8s"
+	"github.com/port-labs/port-k8s-exporter/pkg/logger"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/integration"
 	"github.com/port-labs/port-k8s-exporter/pkg/signal"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic/dynamicinformer"
-	"k8s.io/klog/v2"
 )
 
 type ControllersHandler struct {
@@ -50,7 +50,7 @@ func NewControllersHandler(exporterConfig *port.Config, portConfig *port.Integra
 		var gvr schema.GroupVersionResource
 		gvr, err := k8s.GetGVRFromResource(k8sClient.DiscoveryMapper, kind)
 		if err != nil {
-			klog.Errorf("Error getting GVR, skip handling for resource '%s': %s.", kind, err.Error())
+			logger.Errorf("Error getting GVR, skip handling for resource '%s': %s.", kind, err.Error())
 			continue
 		}
 
@@ -72,7 +72,7 @@ func NewControllersHandler(exporterConfig *port.Config, portConfig *port.Integra
 }
 
 func (c *ControllersHandler) Handle() {
-	klog.Info("Starting informers")
+	logger.Info("Starting informers")
 	c.informersFactory.Start(c.stopCh)
 
 	currentEntitiesSets, shouldDeleteStaleEntities := syncAllControllers(c)
@@ -85,11 +85,11 @@ func (c *ControllersHandler) Handle() {
 	}()
 
 	if shouldDeleteStaleEntities {
-		klog.Info("Deleting stale entities")
+		logger.Info("Deleting stale entities")
 		c.runDeleteStaleEntities(ctx, currentEntitiesSets)
-		klog.Info("Done deleting stale entities")
+		logger.Info("Done deleting stale entities")
 	} else {
-		klog.Warning("Skipping delete of stale entities due to a failure in getting all current entities from k8s")
+		logger.Warning("Skipping delete of stale entities due to a failure in getting all current entities from k8s")
 	}
 }
 
@@ -103,14 +103,16 @@ func syncAllControllers(c *ControllersHandler) ([]map[string]interface{}, bool) 
 
 		go func() {
 			<-c.stopCh
-			klog.Info("Shutting down controllers")
+			logger.Info("Shutting down controllers")
 			controller.Shutdown()
-			klog.Info("Exporter exiting")
+			// Flush any remaining logs before exit
+			logger.Info("Exporter exiting")
+			logger.Shutdown()
 		}()
 
-		klog.Infof("Waiting for informer cache to sync for resource '%s'", controller.Resource.Kind)
+		logger.Infof("Waiting for informer cache to sync for resource '%s'", controller.Resource.Kind)
 		if err := controller.WaitForCacheSync(c.stopCh); err != nil {
-			klog.Fatalf("Error while waiting for informer cache sync: %s", err.Error())
+			logger.Fatalf("Error while waiting for informer cache sync: %s", err.Error())
 		}
 
 		if c.portConfig.CreateMissingRelatedEntities {
@@ -132,14 +134,14 @@ func syncAllControllers(c *ControllersHandler) ([]map[string]interface{}, bool) 
 }
 
 func syncController(controller *k8s.Controller, c *ControllersHandler) (map[string]interface{}, bool) {
-	klog.Infof("Starting full initial resync for resource '%s'", controller.Resource.Kind)
+	logger.Infof("Starting full initial resync for resource '%s'", controller.Resource.Kind)
 	initialSyncResult := controller.RunInitialSync()
-	klog.Infof("Done full initial resync, starting live events sync for resource '%s'", controller.Resource.Kind)
+	logger.Infof("Done full initial resync, starting live events sync for resource '%s'", controller.Resource.Kind)
 	controller.RunEventsSync(1, c.stopCh)
 	if len(initialSyncResult.RawDataExamples) > 0 {
 		err := integration.PostIntegrationKindExample(c.portClient, c.stateKey, controller.Resource.Kind, initialSyncResult.RawDataExamples)
 		if err != nil {
-			klog.Warningf("failed to post integration kind example: %s", err.Error())
+			logger.Warningf("failed to post integration kind example: %s", err.Error())
 		}
 	}
 	if initialSyncResult.EntitiesSet != nil {
@@ -152,12 +154,12 @@ func syncController(controller *k8s.Controller, c *ControllersHandler) (map[stri
 func (c *ControllersHandler) runDeleteStaleEntities(ctx context.Context, currentEntitiesSet []map[string]interface{}) {
 	_, err := c.portClient.Authenticate(ctx, c.portClient.ClientID, c.portClient.ClientSecret)
 	if err != nil {
-		klog.Errorf("error authenticating with Port: %v", err)
+		logger.Errorf("error authenticating with Port: %v", err)
 	}
 
 	err = c.portClient.DeleteStaleEntities(ctx, c.stateKey, goutils.MergeMaps(currentEntitiesSet...))
 	if err != nil {
-		klog.Errorf("error deleting stale entities: %s", err.Error())
+		logger.Errorf("error deleting stale entities: %s", err.Error())
 	}
 }
 
@@ -166,7 +168,7 @@ func (c *ControllersHandler) Stop() {
 		return
 	}
 
-	klog.Info("Stopping controllers")
+	logger.Info("Stopping controllers")
 	close(c.stopCh)
 	c.isStopped = true
 }

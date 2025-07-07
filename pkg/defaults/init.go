@@ -1,11 +1,13 @@
 package defaults
 
 import (
+	"context"
+
+	"github.com/port-labs/port-k8s-exporter/pkg/logger"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/integration"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/org_details"
-	"k8s.io/klog/v2"
 )
 
 func getEventListenerConfig(eventListenerType string) *port.EventListenerSettings {
@@ -18,7 +20,7 @@ func getEventListenerConfig(eventListenerType string) *port.EventListenerSetting
 }
 
 func isPortProvisioningSupported(portClient *cli.PortClient) (bool, error) {
-	klog.Info("Resources origin is set to be Port, verifying integration is supported")
+	logger.Info("Resources origin is set to be Port, verifying integration is supported")
 	featureFlags, err := org_details.GetOrganizationFeatureFlags(portClient)
 	if err != nil {
 		return false, err
@@ -30,12 +32,12 @@ func isPortProvisioningSupported(portClient *cli.PortClient) (bool, error) {
 		}
 	}
 
-	klog.Info("Port origin for Integration is not supported, changing resources origin to use K8S")
+	logger.Info("Port origin for Integration is not supported, changing resources origin to use K8S")
 	return false, nil
 }
 
 func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config, isTest bool) error {
-	klog.Infof("Initializing Port integration")
+	logger.Infof("Initializing Port integration")
 	defaults, err := getDefaults()
 	if err != nil {
 		return err
@@ -68,14 +70,14 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config,
 			}
 		}
 
-		klog.Warningf("Could not get integration with state key %s, error: %s", applicationConfig.StateKey, err.Error())
+		logger.Warningf("Could not get integration with state key %s, error: %s", applicationConfig.StateKey, err.Error())
 		shouldCreateResourcesUsingPort := applicationConfig.CreatePortResourcesOrigin == port.CreatePortResourcesOriginPort
-		_, err := integration.CreateIntegration(portClient, applicationConfig.StateKey, applicationConfig.EventListenerType, defaultIntegrationConfig, shouldCreateResourcesUsingPort)
+		existingIntegration, err = integration.CreateIntegration(portClient, applicationConfig.StateKey, applicationConfig.EventListenerType, defaultIntegrationConfig, shouldCreateResourcesUsingPort)
 		if err != nil {
 			return err
 		}
 	} else {
-		klog.Infof("Integration with state key %s already exists, patching it", applicationConfig.StateKey)
+		logger.Infof("Integration with state key %s already exists, patching it", applicationConfig.StateKey)
 		integrationPatch := &port.Integration{
 			EventListener: getEventListenerConfig(applicationConfig.EventListenerType),
 		}
@@ -88,12 +90,21 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config,
 			return err
 		}
 	}
-
+	logger.SetHttpWriterParametersAndStart(existingIntegration.LogAttributes.IngestUrl, func() (string, error) {
+		token, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
+		if err != nil {
+			return "", err
+		}
+		return token, nil
+	}, logger.LoggerIntegrationData{
+		IntegrationVersion:    existingIntegration.Version,
+		IntegrationIdentifier: existingIntegration.Identifier,
+	})
 	if applicationConfig.CreateDefaultResources && applicationConfig.CreatePortResourcesOrigin != port.CreatePortResourcesOriginPort {
-		klog.Infof("Creating default resources (blueprints, pages, etc..)")
+		logger.Infof("Creating default resources (blueprints, pages, etc..)")
 		if err := initializeDefaults(portClient, defaults, !isTest); err != nil {
-			klog.Warningf("Error initializing defaults: %s", err.Error())
-			klog.Warningf("Some default resources may not have been created. The integration will continue running.")
+			logger.Warningf("Error initializing defaults: %s", err.Error())
+			logger.Warningf("Some default resources may not have been created. The integration will continue running.")
 		}
 	}
 	return nil

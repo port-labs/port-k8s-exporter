@@ -7,8 +7,8 @@ import (
 	"net/url"
 	"strconv"
 
+	"github.com/port-labs/port-k8s-exporter/pkg/logger"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
-	"k8s.io/klog/v2"
 )
 
 func (c *PortClient) SearchEntities(ctx context.Context, body port.SearchBody) ([]port.Entity, error) {
@@ -115,10 +115,10 @@ func (c *PortClient) DeleteStaleEntities(ctx context.Context, stateKey string, e
 		if !ok {
 			err := c.DeleteEntity(ctx, portEntity.Identifier, portEntity.Blueprint, c.DeleteDependents)
 			if err != nil {
-				klog.Errorf("error deleting Port entity '%s' of blueprint '%s': %v", portEntity.Identifier, portEntity.Blueprint, err)
+				logger.Errorf("error deleting Port entity '%s' of blueprint '%s': %v", portEntity.Identifier, portEntity.Blueprint, err)
 				continue
 			}
-			klog.V(0).Infof("Successfully deleted entity '%s' of blueprint '%s'", portEntity.Identifier, portEntity.Blueprint)
+			logger.Infof("Successfully deleted entity '%s' of blueprint '%s'", portEntity.Identifier, portEntity.Blueprint)
 		}
 	}
 
