@@ -17,11 +17,11 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/port/entity"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/klog/v2"
 )
 
 type EventActionType string
@@ -150,7 +150,7 @@ func (c *Controller) RunInitialSync() *SyncResult {
 	batchTimeout := c.getBulkBatchTimeout()
 	batchCollector := NewBatchCollector(totalBatchSize, batchTimeout)
 
-	klog.V(1).Infof("Initializing batch collector with size %d entities and timeout %v", totalBatchSize, batchTimeout)
+	logger.Infow("Initializing batch collector", "totalBatchSize", totalBatchSize, "batchTimeout", batchTimeout)
 
 	shouldContinue := true
 	requeueCounter := 0
@@ -270,7 +270,7 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 
 	_, err := controller.portClient.Authenticate(context.Background(), controller.portClient.ClientID, controller.portClient.ClientSecret)
 	if err != nil {
-		klog.Errorf("error authenticating with Port: %v", err)
+		logger.Errorw("error authenticating with Port", "error", err.Error())
 		return &SyncResult{
 			EntitiesSet:               make(map[string]interface{}),
 			RawDataExamples:           make([]interface{}, 0),
@@ -282,18 +282,17 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 	for _, entities := range bc.entitiesByBlueprint {
 		totalEntities += len(entities)
 	}
-
-	klog.V(0).Infof("Batch processing %d entities across %d blueprints (limits: %d bytes, %d entities/batch)", totalEntities, len(bc.entitiesByBlueprint), maxPayloadBytes, maxEntitiesPerBlueprintBatch)
+	logger.Infow("Batch processing", "totalEntities", totalEntities, "blueprintCount", len(bc.entitiesByBlueprint), "maxPayloadBytes", maxPayloadBytes, "maxEntitiesPerBlueprintBatch", maxEntitiesPerBlueprintBatch)
 
 	for blueprint, entities := range bc.entitiesByBlueprint {
 		if len(entities) == 0 {
 			continue
 		}
 
-		klog.V(0).Infof("Processing %d entities for blueprint '%s'", len(entities), blueprint)
+		logger.Infow("Processing entities for blueprint", "blueprint", blueprint, "entityCount", len(entities))
 
 		optimalBatchSize := calculateBulkSize(entities, maxEntitiesPerBlueprintBatch, maxPayloadBytes)
-		klog.V(1).Infof("Calculated optimal batch size for blueprint '%s': %d entities (based on payload size estimation)", blueprint, optimalBatchSize)
+		logger.Infow("Calculated optimal batch size for blueprint", "blueprint", blueprint, "optimalBatchSize", optimalBatchSize)
 
 		for i := 0; i < len(entities); i += optimalBatchSize {
 			end := i + optimalBatchSize
@@ -304,7 +303,7 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 
 			bulkResponse, err := controller.portClient.BulkUpsertEntities(context.Background(), blueprint, batchEntities, "", controller.portClient.CreateMissingRelatedEntities)
 			if err != nil {
-				klog.Warningf("Bulk upsert failed for blueprint '%s' with %d entities, falling back to individual upserts: %v", blueprint, len(batchEntities), err)
+				logger.Warnw("Bulk upsert failed", "blueprint", blueprint, "entityCount", len(batchEntities), "error", err)
 				bc.fallbackToIndividualUpserts(controller, batchEntities, &entitiesSet, &shouldDeleteStaleEntities)
 				continue
 			}
@@ -313,7 +312,7 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 			for _, result := range bulkResponse.Entities {
 				if result.Created {
 					successCount++
-					klog.V(1).Infof("Successfully upserted entity '%s' of blueprint '%s'", result.Identifier, blueprint)
+					logger.Infow("Successfully upserted entity", "blueprint", blueprint, "identifier", result.Identifier)
 				}
 
 				mockEntity := &port.Entity{
@@ -325,12 +324,12 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 
 			// Handle partial failures - retry failed entities individually
 			if len(bulkResponse.Errors) > 0 {
-				klog.Warningf("Bulk upsert had %d failures out of %d entities for blueprint '%s', retrying failed entities individually", len(bulkResponse.Errors), len(batchEntities), blueprint)
+				logger.Warnw("Bulk upsert had failures", "blueprint", blueprint, "failedCount", len(bulkResponse.Errors), "totalCount", len(batchEntities))
 
 				failedIdentifiers := make(map[string]bool)
 				for _, bulkError := range bulkResponse.Errors {
 					failedIdentifiers[bulkError.Identifier] = true
-					klog.V(1).Infof("Bulk upsert failed for entity '%s': %s", bulkError.Identifier, bulkError.Message)
+					logger.Infow("Bulk upsert failed for entity", "blueprint", blueprint, "identifier", bulkError.Identifier, "message", bulkError.Message)
 				}
 
 				failedEntities := make([]port.EntityRequest, 0)
@@ -345,7 +344,7 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 				}
 			}
 
-			klog.V(0).Infof("Bulk upsert completed for blueprint '%s': %d successful, %d failed (retried individually)", blueprint, successCount, len(bulkResponse.Errors))
+			logger.Infow("Bulk upsert completed for blueprint", "blueprint", blueprint, "successCount", successCount, "failedCount", len(bulkResponse.Errors))
 		}
 	}
 
@@ -361,16 +360,16 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 }
 
 func (bc *BatchCollector) fallbackToIndividualUpserts(controller *Controller, entities []port.EntityRequest, entitiesSet *map[string]interface{}, shouldDeleteStaleEntities *bool) {
-	klog.V(0).Infof("Falling back to individual upserts for %d entities", len(entities))
+	logger.Infow("Falling back to individual upserts", "entityCount", len(entities))
 
 	for _, entity := range entities {
 		handledEntity, err := controller.entityHandler(entity, CreateAction)
 		if err != nil {
-			klog.Errorf("Individual upsert fallback failed for entity '%v' of blueprint '%s': %v", entity.Identifier, entity.Blueprint, err)
+			logger.Errorw("Individual upsert fallback failed", "identifier", entity.Identifier, "blueprint", entity.Blueprint, "error", err)
 			*shouldDeleteStaleEntities = false
 		} else if handledEntity != nil {
 			(*entitiesSet)[controller.portClient.GetEntityIdentifierKey(handledEntity)] = nil
-			klog.V(1).Infof("Individual upsert fallback succeeded for entity '%v' of blueprint '%s'", entity.Identifier, entity.Blueprint)
+			logger.Infow("Individual upsert fallback succeeded", "identifier", entity.Identifier, "blueprint", entity.Blueprint)
 		}
 	}
 }
@@ -477,7 +476,7 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 }
 
 func (c *Controller) RunEventsSync(workers int, stopCh <-chan struct{}) {
-	defer utilruntime.HandleCrash()
+	defer utilruntime.HandleCrash(logger.LogPanic)
 
 	for i := 0; i < workers; i++ {
 		go wait.Until(func() {
@@ -765,7 +764,7 @@ func calculateBulkSize(entities []port.EntityRequest, maxLength int, maxSizeInBy
 	for _, entity := range sampleEntities {
 		entityBytes, err := json.Marshal(entity)
 		if err != nil {
-			klog.V(2).Infof("Failed to marshal entity for size calculation, using conservative estimate: %v", err)
+			logger.Infow("Failed to marshal entity for size calculation, using conservative estimate", "error", err)
 			totalSampleSize += 1024 // 1KB conservative estimate per entity
 			continue
 		}

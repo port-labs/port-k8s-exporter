@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -441,4 +443,22 @@ func Shutdown() error {
 	}
 	Logger.Sync()
 	return nil
+}
+
+func LogPanic(r interface{}) {
+	if r == http.ErrAbortHandler {
+		// honor the http.ErrAbortHandler sentinel panic value:
+		//   ErrAbortHandler is a sentinel panic value to abort a handler.
+		//   While any panic from ServeHTTP aborts the response to the client,
+		//   panicking with ErrAbortHandler also suppresses logging of a stack trace to the server's error log.
+		return
+	}
+
+	// Same as stdlib http server code. Manually allocate stack trace buffer size
+	// to prevent excessively large logs
+	const size = 64 << 10
+	stacktrace := make([]byte, size)
+	stacktrace = stacktrace[:runtime.Stack(stacktrace, false)]
+	GetLogger().Errorw("Observed a panic", "panic", r, "stacktrace", string(stacktrace))
+	Logger.Sync()
 }
