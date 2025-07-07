@@ -8,6 +8,7 @@ import (
 
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
 	"github.com/port-labs/port-k8s-exporter/pkg/jq"
+	"github.com/port-labs/port-k8s-exporter/pkg/logger"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/blueprint"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
@@ -15,7 +16,6 @@ import (
 	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiextensions "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/typed/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/klog/v2"
 )
 
 const (
@@ -301,14 +301,14 @@ func findMatchingCRDs(crds []v1.CustomResourceDefinition, pattern string) []v1.C
 		mapCrd, err := goutils.StructToMap(crd)
 
 		if err != nil {
-			klog.Errorf("Error converting CRD to map: %s", err.Error())
+			logger.Errorf("Error converting CRD to map: %s", err.Error())
 			continue
 		}
 
 		match, err := jq.ParseBool(pattern, mapCrd)
 
 		if err != nil {
-			klog.Errorf("Error running jq on crd CRD: %s", err.Error())
+			logger.Errorf("Error running jq on crd CRD: %s", err.Error())
 			continue
 		}
 		if match {
@@ -326,22 +326,22 @@ func handleCRD(crds []v1.CustomResourceDefinition, portConfig *port.IntegrationA
 		portConfig.Resources = append(portConfig.Resources, createKindConfigFromCRD(crd))
 		actions, bp, err := convertToPortSchemas(crd)
 		if err != nil {
-			klog.Errorf("Error converting CRD to Port schemas: %s", err.Error())
+			logger.Errorf("Error converting CRD to Port schemas: %s", err.Error())
 			continue
 		}
 
 		_, err = blueprint.NewBlueprint(portClient, *bp)
 
 		if err != nil && strings.Contains(err.Error(), "taken") {
-			klog.Infof("Blueprint already exists, patching blueprint properties")
+			logger.Infof("Blueprint already exists, patching blueprint properties")
 			_, err = blueprint.PatchBlueprint(portClient, port.Blueprint{Schema: bp.Schema, Identifier: bp.Identifier})
 			if err != nil {
-				klog.Errorf("Error patching blueprint: %s", err.Error())
+				logger.Errorf("Error patching blueprint: %s", err.Error())
 			}
 		}
 
 		if err != nil {
-			klog.Errorf("Error creating blueprint: %s", err.Error())
+			logger.Errorf("Error creating blueprint: %s", err.Error())
 		}
 
 		for _, act := range actions {
@@ -351,13 +351,13 @@ func handleCRD(crds []v1.CustomResourceDefinition, portConfig *port.IntegrationA
 					if portConfig.OverwriteCRDsActions {
 						_, err = cli.UpdateAction(portClient, act)
 						if err != nil {
-							klog.Errorf("Error updating blueprint action: %s", err.Error())
+							logger.Errorf("Error updating blueprint action: %s", err.Error())
 						}
 					} else {
-						klog.Infof("Action already exists, if you wish to overwrite it, delete it first or provide the configuration overwriteCrdsActions: true, in the exporter configuration and resync")
+						logger.Infof("Action already exists, if you wish to overwrite it, delete it first or provide the configuration overwriteCrdsActions: true, in the exporter configuration and resync")
 					}
 				} else {
-					klog.Errorf("Error creating blueprint action: %s", err.Error())
+					logger.Errorf("Error creating blueprint action: %s", err.Error())
 				}
 			}
 		}
@@ -366,15 +366,15 @@ func handleCRD(crds []v1.CustomResourceDefinition, portConfig *port.IntegrationA
 
 func AutodiscoverCRDsToActions(portConfig *port.IntegrationAppConfig, apiExtensionsClient apiextensions.ApiextensionsV1Interface, portClient *cli.PortClient) {
 	if portConfig.CRDSToDiscover == "" {
-		klog.Info("Discovering CRDs is disabled")
+		logger.Info("Discovering CRDs is disabled")
 		return
 	}
 
-	klog.Infof("Discovering CRDs/XRDs with pattern: %s", portConfig.CRDSToDiscover)
+	logger.Infof("Discovering CRDs/XRDs with pattern: %s", portConfig.CRDSToDiscover)
 	crds, err := apiExtensionsClient.CustomResourceDefinitions().List(context.Background(), metav1.ListOptions{})
 
 	if err != nil {
-		klog.Errorf("Error listing CRDs: %s", err.Error())
+		logger.Errorf("Error listing CRDs: %s", err.Error())
 		return
 	}
 

@@ -3,8 +3,9 @@ package config
 import (
 	"flag"
 	"fmt"
-	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"strings"
+
+	"github.com/port-labs/port-k8s-exporter/pkg/port"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
 	"k8s.io/utils/strings/slices"
@@ -31,6 +32,11 @@ func NewString(v *string, key string, defaultValue string, description string) {
 func NewUInt(v *uint, key string, defaultValue uint, description string) {
 	value := uint(goutils.GetUintEnvOrDefault(prepareEnvKey(key), uint64(defaultValue)))
 	flag.UintVar(v, key, value, description)
+}
+
+func NewInt(v *int, key string, defaultValue int, description string) {
+	value := int(goutils.GetIntEnvOrDefault(prepareEnvKey(key), int64(defaultValue)))
+	flag.IntVar(v, key, value, description)
 }
 
 func NewBool(v *bool, key string, defaultValue bool, description string) {

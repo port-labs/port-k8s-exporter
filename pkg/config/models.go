@@ -28,4 +28,8 @@ type ApplicationConfiguration struct {
 	DeleteDependents             bool `json:"deleteDependents,omitempty"`
 	CreateMissingRelatedEntities bool `json:"createMissingRelatedEntities,omitempty"`
 	UpdateEntityOnlyOnDiff       bool `json:"updateEntityOnlyOnDiff,omitempty"`
+	// HTTP Logging configuration
+	HTTPLoggingEnabled bool   `json:"httpLoggingEnabled,omitempty"`
+	LoggingLevel       string `json:"loggingLevel,omitempty"`
+	HTTPLoggingTimeout int    `json:"httpLoggingTimeout,omitempty"` // in seconds
 }
