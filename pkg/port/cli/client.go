@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/oauth2"
 	"strings"
+	"sync"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
-	"github.com/port-labs/port-k8s-exporter/pkg/port"
 )
 
 type (
@@ -20,6 +21,11 @@ type (
 		DeleteDependents             bool
 		CreateMissingRelatedEntities bool
 	}
+)
+
+var (
+	cachedTokenSource oauth2.TokenSource
+	tokenSourceMu     sync.RWMutex
 )
 
 func New(applicationConfig *config.ApplicationConfiguration, opts ...Option) *PortClient {
@@ -54,28 +60,13 @@ func New(applicationConfig *config.ApplicationConfiguration, opts ...Option) *Po
 }
 
 func (c *PortClient) Authenticate(ctx context.Context, clientID, clientSecret string) (string, error) {
-	url := "v1/auth/access_token"
-	resp, err := c.Client.R().
-		SetBody(map[string]interface{}{
-			"clientId":     clientID,
-			"clientSecret": clientSecret,
-		}).
-		SetContext(ctx).
-		Post(url)
-	if err != nil {
-		return "", err
-	}
-	if resp.StatusCode() != 200 {
-		return "", fmt.Errorf("failed to authenticate, got: %s", resp.Body())
-	}
+	token, err := getToken(clientID, clientSecret, c.Client.BaseURL)
 
-	var tokenResp port.AccessTokenResponse
-	err = json.Unmarshal(resp.Body(), &tokenResp)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("error getting token: %s", err.Error())
 	}
-	c.Client.SetAuthToken(tokenResp.AccessToken)
-	return tokenResp.AccessToken, nil
+	c.Client.SetAuthToken(token.AccessToken)
+	return token.AccessToken, nil
 }
 
 func WithHeader(key, val string) Option {
@@ -106,4 +97,21 @@ func WithCreateMissingRelatedEntities(createMissingRelatedEntities bool) Option 
 	return func(pc *PortClient) {
 		pc.CreateMissingRelatedEntities = createMissingRelatedEntities
 	}
+}
+
+func getToken(clientID, clientSecret, baseURL string) (*oauth2.Token, error) {
+	tokenSourceMu.RLock()
+	if cachedTokenSource != nil {
+		tokenSourceMu.RUnlock()
+		return cachedTokenSource.Token()
+	}
+	tokenSourceMu.RUnlock()
+
+	tokenSourceMu.Lock()
+	defer tokenSourceMu.Unlock()
+	if cachedTokenSource == nil {
+		raw := newTokenSource(clientID, clientSecret, baseURL)
+		cachedTokenSource = oauth2.ReuseTokenSource(nil, raw)
+	}
+	return cachedTokenSource.Token()
 }
