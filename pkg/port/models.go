@@ -339,9 +339,6 @@ type IntegrationAppConfig struct {
 	OverwriteCRDsActions         bool       `json:"overwriteCrdsActions,omitempty"`
 	UpdateEntityOnlyOnDiff       *bool      `json:"updateEntityOnlyOnDiff,omitempty"`
 	SendRawDataExamples          *bool      `json:"sendRawDataExamples,omitempty"`
-	BulkSyncMaxPayloadBytes      *int       `json:"bulkSyncMaxPayloadBytes,omitempty" yaml:"bulkSyncMaxPayloadBytes,omitempty"`
-	BulkSyncMaxEntitiesPerBatch  *int       `json:"bulkSyncMaxEntitiesPerBatch,omitempty" yaml:"bulkSyncMaxEntitiesPerBatch,omitempty"`
-	BulkSyncBatchTimeoutSeconds  *int       `json:"bulkSyncBatchTimeoutSeconds,omitempty" yaml:"bulkSyncBatchTimeoutSeconds,omitempty"`
 }
 
 const (

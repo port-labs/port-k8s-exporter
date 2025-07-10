@@ -53,6 +53,7 @@ type Controller struct {
 	Resource             port.AggregatedResource
 	portClient           *cli.PortClient
 	integrationConfig    *port.IntegrationAppConfig
+	applicationConfig    *config.ApplicationConfiguration
 	informer             cache.SharedIndexInformer
 	lister               cache.GenericLister
 	eventHandler         cache.ResourceEventHandlerRegistration
@@ -71,6 +72,7 @@ func NewController(resource port.AggregatedResource, informer informers.GenericI
 		Resource:             resource,
 		portClient:           portClient,
 		integrationConfig:    integrationConfig,
+		applicationConfig:    applicationConfig,
 		informer:             informer.Informer(),
 		lister:               informer.Lister(),
 		initialSyncWorkqueue: workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
@@ -229,22 +231,22 @@ func (bc *BatchCollector) ShouldFlush() bool {
 }
 
 func (c *Controller) getBulkMaxPayloadBytes() int {
-	if c.integrationConfig.BulkSyncMaxPayloadBytes != nil {
-		return *c.integrationConfig.BulkSyncMaxPayloadBytes
+	if c.applicationConfig.BulkSyncMaxPayloadBytes != nil {
+		return *c.applicationConfig.BulkSyncMaxPayloadBytes
 	}
 	return DefaultMaxBulkPayloadBytes
 }
 
 func (c *Controller) getBulkMaxEntitiesPerBlueprintBatch() int {
-	if c.integrationConfig.BulkSyncMaxEntitiesPerBatch != nil {
-		return *c.integrationConfig.BulkSyncMaxEntitiesPerBatch
+	if c.applicationConfig.BulkSyncMaxEntitiesPerBatch != nil {
+		return *c.applicationConfig.BulkSyncMaxEntitiesPerBatch
 	}
 	return DefaultMaxBulkEntitiesPerBatch
 }
 
 func (c *Controller) getBulkBatchTimeout() time.Duration {
-	if c.integrationConfig.BulkSyncBatchTimeoutSeconds != nil {
-		return time.Duration(*c.integrationConfig.BulkSyncBatchTimeoutSeconds) * time.Second
+	if c.applicationConfig.BulkSyncBatchTimeoutSeconds != nil {
+		return time.Duration(*c.applicationConfig.BulkSyncBatchTimeoutSeconds) * time.Second
 	}
 	return DefaultBulkBatchTimeoutSeconds * time.Second
 }
