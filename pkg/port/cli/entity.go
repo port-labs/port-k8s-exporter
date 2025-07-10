@@ -128,3 +128,37 @@ func (c *PortClient) DeleteStaleEntities(ctx context.Context, stateKey string, e
 func (c *PortClient) GetEntityIdentifierKey(portEntity *port.Entity) string {
 	return fmt.Sprintf("%s;%s", portEntity.Blueprint, portEntity.Identifier)
 }
+
+func (c *PortClient) BulkUpsertEntities(ctx context.Context, blueprint string, entities []port.EntityRequest, runID string, createMissingRelatedEntities bool) (*port.BulkUpsertResponse, error) {
+	if len(entities) == 0 {
+		return &port.BulkUpsertResponse{OK: true, Entities: []port.BulkEntityResult{}, Errors: []port.BulkEntityError{}}, nil
+	}
+	
+	if len(entities) > 20 {
+		return nil, fmt.Errorf("bulk upsert supports maximum 20 entities per request, got %d", len(entities))
+	}
+
+	requestBody := port.BulkUpsertRequest{
+		Entities: entities,
+	}
+
+	pb := &port.BulkUpsertResponse{}
+	resp, err := c.Client.R().
+		SetBody(requestBody).
+		SetPathParam("blueprint_identifier", blueprint).
+		SetQueryParam("upsert", "true").
+		SetQueryParam("merge", "true").
+		SetQueryParam("run_id", runID).
+		SetQueryParam("create_missing_related_entities", strconv.FormatBool(createMissingRelatedEntities)).
+		SetResult(&pb).
+		Post("v1/blueprints/{blueprint_identifier}/entities/bulk")
+	if err != nil {
+		return nil, err
+	}
+	
+	if resp.StatusCode() != 200 && resp.StatusCode() != 207 {
+		return nil, fmt.Errorf("failed to bulk upsert entities, got status %d: %s", resp.StatusCode(), resp.Body())
+	}
+	
+	return pb, nil
+}
