@@ -47,9 +47,14 @@ func Init() {
 	NewBool(&ApplicationConfig.CreateMissingRelatedEntities, "create-missing-related-entities", false, "Create missing related entities. Optional.")
 
 	// HTTP Logging Configuration
-	NewBool(&ApplicationConfig.HTTPLoggingEnabled, "http-logging-enabled", false, "Enable HTTP logging. Optional.")
+	NewBool(&ApplicationConfig.HTTPLoggingEnabled, "http-logging-enabled", true, "Enable HTTP logging. Optional.")
 	NewString(&ApplicationConfig.LoggingLevel, "logging-level", "info", "Logging level. Optional.")
 	NewInt(&ApplicationConfig.HTTPLoggingTimeout, "http-logging-timeout", 5, "HTTP logging timeout in seconds. Optional.")
+
+	// Bulk sync configuration
+	NewInt(&ApplicationConfig.BulkSyncMaxPayloadBytes, "bulk-sync-max-payload-bytes", 1024*1024, "Bulk sync max payload bytes. Optional.")
+	NewInt(&ApplicationConfig.BulkSyncMaxEntitiesPerBatch, "bulk-sync-max-entities-per-batch", 20, "Bulk sync max entities per batch. Optional.")
+	NewInt(&ApplicationConfig.BulkSyncBatchTimeoutSeconds, "bulk-sync-batch-timeout-seconds", 5, "Bulk sync batch timeout in seconds. Optional.")
 
 	flag.Parse()
 }
