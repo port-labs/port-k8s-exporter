@@ -27,15 +27,12 @@ import (
 type EventActionType string
 
 const (
-	CreateAction                   EventActionType = "create"
-	UpdateAction                   EventActionType = "update"
-	DeleteAction                   EventActionType = "delete"
-	MaxNumRequeues                 int             = 4
-	MaxRawDataExamplesToSend                       = 5
-	DefaultMaxBulkPayloadBytes                     = 1024 * 1024 // 1MiB
-	DefaultMaxBulkEntitiesPerBatch                 = 20
-	DefaultBulkBatchTimeoutSeconds                 = 5
-	BlueprintBatchMultiplier                       = 5
+	CreateAction             EventActionType = "create"
+	UpdateAction             EventActionType = "update"
+	DeleteAction             EventActionType = "delete"
+	MaxNumRequeues           int             = 4
+	MaxRawDataExamplesToSend int             = 5
+	BlueprintBatchMultiplier int             = 5
 )
 
 type EventItem struct {
@@ -53,7 +50,6 @@ type Controller struct {
 	Resource             port.AggregatedResource
 	portClient           *cli.PortClient
 	integrationConfig    *port.IntegrationAppConfig
-	applicationConfig    *config.ApplicationConfiguration
 	informer             cache.SharedIndexInformer
 	lister               cache.GenericLister
 	eventHandler         cache.ResourceEventHandlerRegistration
@@ -72,7 +68,6 @@ func NewController(resource port.AggregatedResource, informer informers.GenericI
 		Resource:             resource,
 		portClient:           portClient,
 		integrationConfig:    integrationConfig,
-		applicationConfig:    applicationConfig,
 		informer:             informer.Informer(),
 		lister:               informer.Lister(),
 		initialSyncWorkqueue: workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
@@ -149,7 +144,7 @@ func (c *Controller) RunInitialSync() *SyncResult {
 	shouldDeleteStaleEntities := true
 
 	totalBatchSize := c.calculateTotalBatchSize()
-	batchTimeout := c.getBulkBatchTimeout()
+	batchTimeout := time.Duration(config.ApplicationConfig.BulkSyncBatchTimeoutSeconds) * time.Second
 	batchCollector := NewBatchCollector(totalBatchSize, batchTimeout)
 
 	logger.Infow("Initializing batch collector", "totalBatchSize", totalBatchSize, "batchTimeout", batchTimeout)
@@ -230,29 +225,8 @@ func (bc *BatchCollector) ShouldFlush() bool {
 	return totalEntities >= bc.maxBatchSize || time.Since(bc.lastFlush) > bc.timeout
 }
 
-func (c *Controller) getBulkMaxPayloadBytes() int {
-	if c.applicationConfig.BulkSyncMaxPayloadBytes != nil {
-		return *c.applicationConfig.BulkSyncMaxPayloadBytes
-	}
-	return DefaultMaxBulkPayloadBytes
-}
-
-func (c *Controller) getBulkMaxEntitiesPerBlueprintBatch() int {
-	if c.applicationConfig.BulkSyncMaxEntitiesPerBatch != nil {
-		return *c.applicationConfig.BulkSyncMaxEntitiesPerBatch
-	}
-	return DefaultMaxBulkEntitiesPerBatch
-}
-
-func (c *Controller) getBulkBatchTimeout() time.Duration {
-	if c.applicationConfig.BulkSyncBatchTimeoutSeconds != nil {
-		return time.Duration(*c.applicationConfig.BulkSyncBatchTimeoutSeconds) * time.Second
-	}
-	return DefaultBulkBatchTimeoutSeconds * time.Second
-}
-
 func (c *Controller) calculateTotalBatchSize() int {
-	maxEntitiesPerBlueprintBatch := c.getBulkMaxEntitiesPerBlueprintBatch()
+	maxEntitiesPerBlueprintBatch := config.ApplicationConfig.BulkSyncMaxEntitiesPerBatch
 	return maxEntitiesPerBlueprintBatch * BlueprintBatchMultiplier
 }
 
@@ -267,8 +241,8 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 
 	entitiesSet := make(map[string]interface{})
 	shouldDeleteStaleEntities := !bc.hasErrors
-	maxPayloadBytes := controller.getBulkMaxPayloadBytes()
-	maxEntitiesPerBlueprintBatch := controller.getBulkMaxEntitiesPerBlueprintBatch()
+	maxPayloadBytes := config.ApplicationConfig.BulkSyncMaxPayloadBytes
+	maxEntitiesPerBlueprintBatch := config.ApplicationConfig.BulkSyncMaxEntitiesPerBatch
 
 	_, err := controller.portClient.Authenticate(context.Background(), controller.portClient.ClientID, controller.portClient.ClientSecret)
 	if err != nil {
@@ -471,6 +445,7 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 	}(obj)
 
 	if err != nil {
+		logger.Errorw("error processing next work item with batching", "error", err.Error())
 		utilruntime.HandleError(err)
 	}
 

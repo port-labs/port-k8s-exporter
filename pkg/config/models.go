@@ -33,7 +33,7 @@ type ApplicationConfiguration struct {
 	LoggingLevel       string `json:"loggingLevel,omitempty"`
 	HTTPLoggingTimeout int    `json:"httpLoggingTimeout,omitempty"` // in seconds
 	// Bulk sync configuration
-	BulkSyncMaxPayloadBytes      *int `json:"bulkSyncMaxPayloadBytes,omitempty" yaml:"bulkSyncMaxPayloadBytes,omitempty"`
-	BulkSyncMaxEntitiesPerBatch  *int `json:"bulkSyncMaxEntitiesPerBatch,omitempty" yaml:"bulkSyncMaxEntitiesPerBatch,omitempty"`
-	BulkSyncBatchTimeoutSeconds  *int `json:"bulkSyncBatchTimeoutSeconds,omitempty" yaml:"bulkSyncBatchTimeoutSeconds,omitempty"`
+	BulkSyncMaxPayloadBytes     int `json:"bulkSyncMaxPayloadBytes,omitempty"`
+	BulkSyncMaxEntitiesPerBatch int `json:"bulkSyncMaxEntitiesPerBatch,omitempty"`
+	BulkSyncBatchTimeoutSeconds int `json:"bulkSyncBatchTimeoutSeconds,omitempty"`
 }
