@@ -53,8 +53,15 @@ func New(applicationConfig *config.ApplicationConfiguration, opts ...Option) *Po
 	return c
 }
 
+func (c *PortClient) ClearAuthToken() {
+	c.Client.SetAuthToken("")
+}
+
 func (c *PortClient) Authenticate(ctx context.Context, clientID, clientSecret string) (string, error) {
 	url := "v1/auth/access_token"
+
+	c.ClearAuthToken()
+
 	resp, err := c.Client.R().
 		SetBody(map[string]interface{}{
 			"clientId":     clientID,
