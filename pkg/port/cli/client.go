@@ -25,6 +25,7 @@ type (
 func New(applicationConfig *config.ApplicationConfiguration, opts ...Option) *PortClient {
 	c := &PortClient{
 		Client: resty.New().
+			SetDebug(true).
 			SetBaseURL(applicationConfig.PortBaseURL).
 			SetRetryCount(5).
 			SetRetryWaitTime(300).
@@ -60,6 +61,8 @@ func (c *PortClient) ClearAuthToken() {
 func (c *PortClient) Authenticate(ctx context.Context, clientID, clientSecret string) (string, error) {
 	url := "v1/auth/access_token"
 
+	// If the request to v1/auth/access_token is sent with an invalid token, traefik will return a 401 error.
+	// Since this is a public endpoint, we clear the existing token (if it does) to ensure the request is sent without it.
 	c.ClearAuthToken()
 
 	resp, err := c.Client.R().
