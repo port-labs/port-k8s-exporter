@@ -54,6 +54,7 @@ func New(applicationConfig *config.ApplicationConfiguration, opts ...Option) *Po
 }
 
 func (c *PortClient) ClearAuthToken() {
+	// Setting an empty token will remove the Authorization header from the request (see pkg/mod/github.com/go-resty/resty/v2@v2.7.0/middleware.go:255)
 	c.Client.SetAuthToken("")
 }
 
