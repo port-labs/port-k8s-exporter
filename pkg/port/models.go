@@ -229,6 +229,11 @@ type SearchBody struct {
 	Combinator string `json:"combinator"`
 }
 
+type DatasourceSearchBody struct {
+	DatasourcePrefix string `json:"datasource_prefix"`
+	DatasourceSuffix string `json:"datasource_suffix"`
+}
+
 type ResponseBody struct {
 	OK               bool                `json:"ok"`
 	Entity           Entity              `json:"entity"`
