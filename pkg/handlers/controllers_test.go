@@ -468,21 +468,7 @@ func (f *fixture) assertObjectsHandled(objects []struct{ kind, name string }) {
 	}, time.Second*15, time.Millisecond*500)
 
 	assert.Eventually(f.t, func() bool {
-		entities, err := f.portClient.SearchEntities(context.Background(), port.SearchBody{
-			Rules: []port.Rule{
-				{
-					Property: "$datasource",
-					Operator: "contains",
-					Value:    f.controllersHandler.stateKey,
-				},
-				{
-					Property: "$datasource",
-					Operator: "contains",
-					Value:    fmt.Sprintf("statekey/%s", f.controllersHandler.stateKey),
-				},
-			},
-			Combinator: "and",
-		})
+		entities, err := f.portClient.SearchEntitiesByDatasource(context.Background(), f.controllersHandler.stateKey, fmt.Sprintf("statekey/%s", f.controllersHandler.stateKey))
 
 		for _, obj := range objects {
 			found := false

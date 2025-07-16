@@ -31,6 +31,30 @@ func (c *PortClient) SearchEntities(ctx context.Context, body port.SearchBody) (
 	return pb.Entities, nil
 }
 
+func (c *PortClient) SearchEntitiesByDatasource(ctx context.Context, datasourcePrefix, datasourceSuffix string) ([]port.Entity, error) {
+	pb := &port.ResponseBody{}
+	body := port.DatasourceSearchBody{
+		DatasourcePrefix: datasourcePrefix,
+		DatasourceSuffix: datasourceSuffix,
+	}
+	resp, err := c.Client.R().
+		SetBody(body).
+		SetHeader("Accept", "application/json").
+		SetQueryParam("exclude_calculated_properties", "true").
+		SetQueryParamsFromValues(url.Values{
+			"include": []string{"blueprint", "identifier"},
+		}).
+		SetResult(&pb).
+		Post("/v1/blueprints/entities/datasource-entities")
+	if err != nil {
+		return nil, err
+	}
+	if !pb.OK {
+		return nil, fmt.Errorf("failed to search entities by datasource, got: %s", resp.Body())
+	}
+	return pb.Entities, nil
+}
+
 func (c *PortClient) ReadEntity(ctx context.Context, id string, blueprint string) (*port.Entity, error) {
 	resp, err := c.Client.R().
 		SetHeader("Accept", "application/json").
@@ -91,21 +115,7 @@ func (c *PortClient) DeleteEntity(ctx context.Context, id string, blueprint stri
 }
 
 func (c *PortClient) DeleteStaleEntities(ctx context.Context, stateKey string, existingEntitiesSet map[string]interface{}) error {
-	portEntities, err := c.SearchEntities(ctx, port.SearchBody{
-		Rules: []port.Rule{
-			{
-				Property: "$datasource",
-				Operator: "contains",
-				Value:    "port-k8s-exporter",
-			},
-			{
-				Property: "$datasource",
-				Operator: "contains",
-				Value:    fmt.Sprintf("(statekey/%s)", stateKey),
-			},
-		},
-		Combinator: "and",
-	})
+	portEntities, err := c.SearchEntitiesByDatasource(ctx, "port-k8s-exporter", fmt.Sprintf("statekey/%s", stateKey))
 	if err != nil {
 		return fmt.Errorf("error searching Port entities: %v", err)
 	}
@@ -133,7 +143,6 @@ func (c *PortClient) BulkUpsertEntities(ctx context.Context, blueprint string, e
 	if len(entities) == 0 {
 		return &port.BulkUpsertResponse{OK: true, Entities: []port.BulkEntityResult{}, Errors: []port.BulkEntityError{}}, nil
 	}
-	
 	if len(entities) > 20 {
 		return nil, fmt.Errorf("bulk upsert supports maximum 20 entities per request, got %d", len(entities))
 	}
@@ -155,10 +164,8 @@ func (c *PortClient) BulkUpsertEntities(ctx context.Context, blueprint string, e
 	if err != nil {
 		return nil, err
 	}
-	
 	if resp.StatusCode() != 200 && resp.StatusCode() != 207 {
 		return nil, fmt.Errorf("failed to bulk upsert entities, got status %d: %s", resp.StatusCode(), resp.Body())
 	}
-	
 	return pb, nil
 }
