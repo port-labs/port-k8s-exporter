@@ -25,7 +25,6 @@ type (
 func New(applicationConfig *config.ApplicationConfiguration, opts ...Option) *PortClient {
 	c := &PortClient{
 		Client: resty.New().
-			SetDebug(true).
 			SetBaseURL(applicationConfig.PortBaseURL).
 			SetRetryCount(5).
 			SetRetryWaitTime(300).
