@@ -201,7 +201,7 @@ func (w *HTTPWriter) flushTimer() {
 }
 
 // flushTimer runs a background timer to flush logs periodically
-func (w *HTTPWriter) refreshTokenTimer(authFunc func() (string, error), expiresIn time.Duration) {
+func (w *HTTPWriter) refreshTokenTimer(authFunc func() (string, int, error), expiresIn time.Duration) {
 	defer w.wg.Done()
 
 	ticker := time.NewTicker(expiresIn / 2)
@@ -213,7 +213,7 @@ func (w *HTTPWriter) refreshTokenTimer(authFunc func() (string, error), expiresI
 			func() {
 				w.mu.Lock()
 				defer w.mu.Unlock()
-				token, err := authFunc()
+				token, _, err := authFunc()
 				if err != nil {
 					return
 				}
@@ -278,11 +278,11 @@ func getExtra(data map[string]interface{}) map[string]interface{} {
 	return extra
 }
 
-func SetHttpWriterParametersAndStart(url string, authFunc func() (string, error), integrationData LoggerIntegrationData) {
+func SetHttpWriterParametersAndStart(url string, authFunc func() (string, int, error), integrationData LoggerIntegrationData) {
 	if httpWriter == nil {
 		return
 	}
-	token, err := authFunc()
+	token, expiresIn, err := authFunc()
 	if err != nil {
 		return
 	}
@@ -290,7 +290,7 @@ func SetHttpWriterParametersAndStart(url string, authFunc func() (string, error)
 	httpWriter.URL = url
 	httpWriter.wg.Add(2)
 	go httpWriter.flushTimer()
-	go httpWriter.refreshTokenTimer(authFunc, time.Minute*1)
+	go httpWriter.refreshTokenTimer(authFunc, time.Duration(expiresIn)*time.Second)
 }
 
 // InitWithLevel initializes the global zap logger with a specific log level (console only)

@@ -90,12 +90,12 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config,
 			return err
 		}
 	}
-	logger.SetHttpWriterParametersAndStart(existingIntegration.LogAttributes.IngestUrl, func() (string, error) {
-		token, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
+	logger.SetHttpWriterParametersAndStart(existingIntegration.LogAttributes.IngestUrl, func() (string, int, error) {
+		resp, err := portClient.GetAccessTokenResponse(context.Background(), portClient.ClientID, portClient.ClientSecret)
 		if err != nil {
-			return "", err
+			return "", 0, err
 		}
-		return token, nil
+		return resp.AccessToken, int(resp.ExpiresIn), nil
 	}, logger.LoggerIntegrationData{
 		IntegrationVersion:    existingIntegration.Version,
 		IntegrationIdentifier: existingIntegration.Identifier,
