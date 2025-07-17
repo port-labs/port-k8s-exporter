@@ -210,13 +210,15 @@ func (w *HTTPWriter) refreshTokenTimer(authFunc func() (string, error), expiresI
 	for {
 		select {
 		case <-ticker.C:
-			w.mu.Lock()
-			defer w.mu.Unlock()
-			token, err := authFunc()
-			if err != nil {
-				return
-			}
-			w.Client = w.Client.SetAuthScheme("Bearer").SetAuthToken(token)
+			func() {
+				w.mu.Lock()
+				defer w.mu.Unlock()
+				token, err := authFunc()
+				if err != nil {
+					return
+				}
+				w.Client = w.Client.SetAuthScheme("Bearer").SetAuthToken(token)
+			}()
 		case <-w.done:
 			return
 		case <-w.ctx.Done():
