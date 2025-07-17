@@ -59,11 +59,21 @@ func (c *PortClient) ClearAuthToken() {
 }
 
 func (c *PortClient) Authenticate(ctx context.Context, clientID, clientSecret string) (string, error) {
-	url := "v1/auth/access_token"
 
 	// If the request to v1/auth/access_token is sent with an invalid token, traefik will return a 401 error.
 	// Since this is a public endpoint, we clear the existing token (if it does) to ensure the request is sent without it.
 	c.ClearAuthToken()
+
+	tokenResp, err := c.GetAccessTokenResponse(ctx, clientID, clientSecret)
+	if err != nil {
+		return "", err
+	}
+	c.Client.SetAuthToken(tokenResp.AccessToken)
+	return tokenResp.AccessToken, nil
+}
+
+func (c *PortClient) GetAccessTokenResponse(ctx context.Context, clientID string, clientSecret string) (*port.AccessTokenResponse, error) {
+	url := "v1/auth/access_token"
 
 	resp, err := c.Client.R().
 		SetBody(map[string]interface{}{
@@ -73,19 +83,18 @@ func (c *PortClient) Authenticate(ctx context.Context, clientID, clientSecret st
 		SetContext(ctx).
 		Post(url)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if resp.StatusCode() != 200 {
-		return "", fmt.Errorf("failed to authenticate, got: %s", resp.Body())
+		return nil, fmt.Errorf("failed to authenticate, got: %s", resp.Body())
 	}
 
 	var tokenResp port.AccessTokenResponse
 	err = json.Unmarshal(resp.Body(), &tokenResp)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	c.Client.SetAuthToken(tokenResp.AccessToken)
-	return tokenResp.AccessToken, nil
+	return &tokenResp, nil
 }
 
 func WithHeader(key, val string) Option {
