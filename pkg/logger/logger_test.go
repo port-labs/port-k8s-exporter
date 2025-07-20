@@ -47,8 +47,8 @@ func TestHTTPWriter(t *testing.T) {
 	// Start the background goroutines
 	writer.wg.Add(2)
 	go writer.flushTimer()
-	go writer.refreshTokenTimer(func() (string, error) {
-		return "test-token", nil
+	go writer.refreshTokenTimer(func() (string, int, error) {
+		return "test-token", 10, nil
 	}, time.Minute*1)
 
 	testLog := `{"level":"info","timestamp":"2024-01-01T00:00:00.000Z","message":"test message"}`
@@ -109,8 +109,8 @@ func TestInitWithHTTP(t *testing.T) {
 		httpWriter.Capacity = 1
 		httpWriter.FlushInterval = 100 * time.Millisecond
 
-		SetHttpWriterParametersAndStart(server.URL, func() (string, error) {
-			return "test-token", nil
+		SetHttpWriterParametersAndStart(server.URL, func() (string, int, error) {
+			return "test-token", 10, nil
 		}, LoggerIntegrationData{
 			IntegrationVersion:    "1.0.0",
 			IntegrationIdentifier: "test",
@@ -180,8 +180,8 @@ func TestInitWithLevelAndHTTP(t *testing.T) {
 		httpWriter.Capacity = 1
 		httpWriter.FlushInterval = 100 * time.Millisecond
 
-		SetHttpWriterParametersAndStart(server.URL, func() (string, error) {
-			return "test-token", nil
+		SetHttpWriterParametersAndStart(server.URL, func() (string, int, error) {
+			return "test-token", 10, nil
 		}, LoggerIntegrationData{
 			IntegrationVersion:    "1.0.0",
 			IntegrationIdentifier: "test",
@@ -226,8 +226,8 @@ func TestHTTPWriterFailureHandling(t *testing.T) {
 	// Start the background goroutines
 	writer.wg.Add(2)
 	go writer.flushTimer()
-	go writer.refreshTokenTimer(func() (string, error) {
-		return "test-token", nil
+	go writer.refreshTokenTimer(func() (string, int, error) {
+		return "test-token", 10, nil
 	}, time.Minute*1)
 
 	testLog := `{"level":"info","message":"test"}`
