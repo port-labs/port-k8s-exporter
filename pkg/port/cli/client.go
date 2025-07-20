@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"strings"
 
 	"github.com/go-resty/resty/v2"
@@ -19,6 +20,7 @@ type (
 		ClientSecret                 string
 		DeleteDependents             bool
 		CreateMissingRelatedEntities bool
+		authMutex                    sync.Mutex
 	}
 )
 
@@ -59,6 +61,9 @@ func (c *PortClient) ClearAuthToken() {
 }
 
 func (c *PortClient) Authenticate(ctx context.Context, clientID, clientSecret string) (string, error) {
+	c.authMutex.Lock()
+	defer c.authMutex.Unlock()
+
 	url := "v1/auth/access_token"
 
 	// If the request to v1/auth/access_token is sent with an invalid token, traefik will return a 401 error.
