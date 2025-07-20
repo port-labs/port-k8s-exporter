@@ -115,7 +115,8 @@ func (c *PortClient) DeleteEntity(ctx context.Context, id string, blueprint stri
 }
 
 func (c *PortClient) DeleteStaleEntities(ctx context.Context, stateKey string, existingEntitiesSet map[string]interface{}) error {
-	portEntities, err := c.SearchEntitiesByDatasource(ctx, "port-k8s-exporter", fmt.Sprintf("statekey/%s", stateKey))
+	processedStateKey := fmt.Sprintf("(statekey/%s)", stateKey)
+	portEntities, err := c.SearchEntitiesByDatasource(ctx, "port-k8s-exporter", processedStateKey)
 	if err != nil {
 		return fmt.Errorf("error searching Port entities: %v", err)
 	}

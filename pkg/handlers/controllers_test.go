@@ -468,7 +468,8 @@ func (f *fixture) assertObjectsHandled(objects []struct{ kind, name string }) {
 	}, time.Second*15, time.Millisecond*500)
 
 	assert.Eventually(f.t, func() bool {
-		entities, err := f.portClient.SearchEntitiesByDatasource(context.Background(), f.controllersHandler.stateKey, fmt.Sprintf("statekey/%s", f.controllersHandler.stateKey))
+		processedStateKey := fmt.Sprintf("(statekey/%s)", f.controllersHandler.stateKey)
+		entities, err := f.portClient.SearchEntitiesByDatasource(context.Background(), "port-k8s-exporter", processedStateKey)
 
 		for _, obj := range objects {
 			found := false
