@@ -152,12 +152,7 @@ func syncController(controller *k8s.Controller, c *ControllersHandler) (map[stri
 }
 
 func (c *ControllersHandler) runDeleteStaleEntities(ctx context.Context, currentEntitiesSet []map[string]interface{}) {
-	_, err := c.portClient.Authenticate(ctx, c.portClient.ClientID, c.portClient.ClientSecret)
-	if err != nil {
-		logger.Errorf("error authenticating with Port: %v", err)
-	}
-
-	err = c.portClient.DeleteStaleEntities(ctx, c.stateKey, goutils.MergeMaps(currentEntitiesSet...))
+	err := c.portClient.DeleteStaleEntities(ctx, c.stateKey, goutils.MergeMaps(currentEntitiesSet...))
 	if err != nil {
 		logger.Errorf("error deleting stale entities: %s", err.Error())
 	}

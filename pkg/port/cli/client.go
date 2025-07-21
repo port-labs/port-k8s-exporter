@@ -118,9 +118,11 @@ func New(applicationConfig *config.ApplicationConfiguration, opts ...Option) *Po
 		if request.Method == "POST" && strings.Contains(request.URL, "/auth/access_token") {
 			return nil
 		}
-		c.Authenticator.AuthMutex.Lock()
-		defer c.Authenticator.AuthMutex.Unlock()
-		return nil
+		if c.Authenticator == nil {
+			c.Authenticator = NewAuthenticator(c.ClientID, c.ClientSecret)
+		}
+		_, _, err := c.Authenticator.AuthenticateClient(context.Background(), c)
+		return err
 	})
 
 	WithClientID(applicationConfig.PortClientId)(c)
@@ -137,21 +139,6 @@ func New(applicationConfig *config.ApplicationConfiguration, opts ...Option) *Po
 func (c *PortClient) ClearAuthToken() {
 	// Setting an empty token will remove the Authorization header from the request (see pkg/mod/github.com/go-resty/resty/v2@v2.7.0/middleware.go:255)
 	c.Client.SetAuthToken("")
-}
-
-func (c *PortClient) Authenticate(ctx context.Context, clientID, clientSecret string) (string, error) {
-
-	// If the request to v1/auth/access_token is sent with an invalid token, traefik will return a 401 error.
-	// Since this is a public endpoint, we clear the existing token (if it does) to ensure the request is sent without it.
-	if c.Authenticator == nil {
-		c.Authenticator = NewAuthenticator(c.ClientID, c.ClientSecret)
-	}
-	token, _, err := c.Authenticator.AuthenticateClient(ctx, c)
-	if err != nil {
-		return "", err
-	}
-
-	return token, nil
 }
 
 func WithHeader(key, val string) Option {
