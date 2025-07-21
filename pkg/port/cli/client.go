@@ -22,6 +22,10 @@ type Authenticator struct {
 	LastRefresh  time.Time
 }
 
+const (
+	AuthTokenEndpoint string = "v1/auth/access_token"
+)
+
 func NewAuthenticator(clientID, clientSecret string) *Authenticator {
 	return &Authenticator{
 		ClientID:     clientID,
@@ -57,15 +61,13 @@ func (a *Authenticator) refreshAccessToken(ctx context.Context, client *PortClie
 }
 
 func (a *Authenticator) getAccessTokenResponse(ctx context.Context, client *PortClient) (*port.AccessTokenResponse, error) {
-	url := "v1/auth/access_token"
-
 	resp, err := client.Client.R().
 		SetBody(map[string]interface{}{
 			"clientId":     a.ClientID,
 			"clientSecret": a.ClientSecret,
 		}).
 		SetContext(ctx).
-		Post(url)
+		Post(AuthTokenEndpoint)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +117,7 @@ func New(applicationConfig *config.ApplicationConfiguration, opts ...Option) *Po
 
 	// Add pre-request hook to wait for Ready state
 	c.Client.OnBeforeRequest(func(client *resty.Client, request *resty.Request) error {
-		if request.Method == "POST" && strings.Contains(request.URL, "/auth/access_token") {
+		if request.Method == "POST" && strings.Contains(request.URL, AuthTokenEndpoint) {
 			return nil
 		}
 		if c.Authenticator == nil {
