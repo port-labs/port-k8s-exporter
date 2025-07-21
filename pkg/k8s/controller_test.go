@@ -124,7 +124,6 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 
 	kubeClient := k8sfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), newGvrToListKind(), fixtureConfig.existingObjects...)
 	controller := newController(t, fixtureConfig.resource, kubeClient, interationConfig, newConfig)
-	controller.portClient.Authenticate(context.Background(), newConfig.PortClientId, newConfig.PortClientSecret)
 
 	blueprintRaw := port.Blueprint{
 		Identifier: blueprintIdentifier,
@@ -889,13 +888,11 @@ func TestCreateDeploymentWithTeamSearch(t *testing.T) {
 	defer tearDownFixture(t, f)
 	// Create test team
 	teamEntityBody := &port.Entity{
-		Blueprint: "_team",
+		Blueprint:  "_team",
 		Identifier: searchTeamName,
 		Title:      searchTeamName,
-		Properties: map[string]any{
-		},
-		Relations: map[string]any{
-		},
+		Properties: map[string]any{},
+		Relations:  map[string]any{},
 	}
 	pb := &port.ResponseBody{}
 	resp, err := f.controller.portClient.Client.R().
@@ -962,13 +959,11 @@ func TestCreateDeploymentWithMultiTeamSearch(t *testing.T) {
 	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
 	// Create test team
 	teamEntityBody := &port.Entity{
-		Blueprint: "_team",
+		Blueprint:  "_team",
 		Identifier: searchTeamName,
 		Title:      searchTeamName,
-		Properties: map[string]any{
-		},
-		Relations: map[string]any{
-		},
+		Properties: map[string]any{},
+		Relations:  map[string]any{},
 	}
 	pb := &port.ResponseBody{}
 	resp, err := f.controller.portClient.Client.R().

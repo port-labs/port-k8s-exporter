@@ -244,16 +244,6 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 	maxPayloadBytes := config.ApplicationConfig.BulkSyncMaxPayloadBytes
 	maxEntitiesPerBlueprintBatch := config.ApplicationConfig.BulkSyncMaxEntitiesPerBatch
 
-	_, err := controller.portClient.Authenticate(context.Background(), controller.portClient.ClientID, controller.portClient.ClientSecret)
-	if err != nil {
-		logger.Errorw("error authenticating with Port", "error", err.Error())
-		return &SyncResult{
-			EntitiesSet:               make(map[string]interface{}),
-			RawDataExamples:           make([]interface{}, 0),
-			ShouldDeleteStaleEntities: false,
-		}
-	}
-
 	totalEntities := 0
 	for _, entities := range bc.entitiesByBlueprint {
 		totalEntities += len(entities)
@@ -655,11 +645,6 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 }
 
 func (c *Controller) entityHandler(portEntity port.EntityRequest, action EventActionType) (*port.Entity, error) {
-	_, err := c.portClient.Authenticate(context.Background(), c.portClient.ClientID, c.portClient.ClientSecret)
-	if err != nil {
-		return nil, fmt.Errorf("error authenticating with Port: %v", err)
-	}
-
 	switch action {
 	case CreateAction, UpdateAction:
 		upsertedEntity, err := c.portClient.CreateEntity(context.Background(), &portEntity, "", c.portClient.CreateMissingRelatedEntities)

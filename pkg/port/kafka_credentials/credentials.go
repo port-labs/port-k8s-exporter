@@ -1,7 +1,6 @@
 package kafka_credentials
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/logger"
@@ -11,11 +10,6 @@ import (
 
 func GetKafkaCredentials(portClient *cli.PortClient) (*port.OrgKafkaCredentials, error) {
 	logger.Infof("Getting Port kafka credentials")
-	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
-	if err != nil {
-		return nil, fmt.Errorf("error authenticating with Port: %v", err)
-	}
-
 	r, err := portClient.GetKafkaCredentials()
 	if err != nil {
 		return nil, fmt.Errorf("error getting Port org credentials: %v", err)
