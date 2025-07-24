@@ -45,11 +45,8 @@ func TestHTTPWriter(t *testing.T) {
 	writer.URL = server.URL
 
 	// Start the background goroutines
-	writer.wg.Add(2)
+	writer.wg.Add(1)
 	go writer.flushTimer()
-	go writer.refreshTokenTimer(func() (string, int, error) {
-		return "test-token", 10, nil
-	}, time.Minute*1)
 
 	testLog := `{"level":"info","timestamp":"2024-01-01T00:00:00.000Z","message":"test message"}`
 
@@ -224,11 +221,8 @@ func TestHTTPWriterFailureHandling(t *testing.T) {
 	writer.URL = "http://invalid-url-that-should-not-exist:9999/logs"
 
 	// Start the background goroutines
-	writer.wg.Add(2)
+	writer.wg.Add(1)
 	go writer.flushTimer()
-	go writer.refreshTokenTimer(func() (string, int, error) {
-		return "test-token", 10, nil
-	}, time.Minute*1)
 
 	testLog := `{"level":"info","message":"test"}`
 
