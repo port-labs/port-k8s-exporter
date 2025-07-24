@@ -282,15 +282,21 @@ func SetHttpWriterParametersAndStart(url string, authFunc func() (string, int, e
 	if httpWriter == nil {
 		return
 	}
-	token, expiresIn, err := authFunc()
+	token, _, err := authFunc()
 	if err != nil {
 		return
 	}
-	httpWriter.Client = httpWriter.Client.SetAuthScheme("Bearer").SetAuthToken(token).SetHeader("User-Agent", "port/K8S-EXPORTER/"+integrationData.IntegrationVersion+"/"+integrationData.IntegrationIdentifier)
+	httpWriter.Client = httpWriter.Client.SetAuthScheme("Bearer").SetAuthToken(token).SetHeader("User-Agent", "port/K8S-EXPORTER/"+integrationData.IntegrationVersion+"/"+integrationData.IntegrationIdentifier).OnBeforeRequest(func(c *resty.Client, r *resty.Request) error {
+		token, _, err := authFunc()
+		if err != nil {
+			return err
+		}
+		httpWriter.Client.SetAuthToken(token)
+		return nil
+	})
 	httpWriter.URL = url
-	httpWriter.wg.Add(2)
+	httpWriter.wg.Add(1)
 	go httpWriter.flushTimer()
-	go httpWriter.refreshTokenTimer(authFunc, time.Duration(expiresIn)*time.Second)
 }
 
 // InitWithLevel initializes the global zap logger with a specific log level (console only)
