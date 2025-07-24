@@ -200,33 +200,6 @@ func (w *HTTPWriter) flushTimer() {
 	}
 }
 
-// flushTimer runs a background timer to flush logs periodically
-func (w *HTTPWriter) refreshTokenTimer(authFunc func() (string, int, error), expiresIn time.Duration) {
-	defer w.wg.Done()
-
-	ticker := time.NewTicker(expiresIn / 2)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			func() {
-				w.mu.Lock()
-				defer w.mu.Unlock()
-				token, _, err := authFunc()
-				if err != nil {
-					return
-				}
-				w.Client = w.Client.SetAuthScheme("Bearer").SetAuthToken(token)
-			}()
-		case <-w.done:
-			return
-		case <-w.ctx.Done():
-			return
-		}
-	}
-}
-
 // Close gracefully shuts down the HTTP writer
 func (w *HTTPWriter) Close() error {
 	w.cancel()
