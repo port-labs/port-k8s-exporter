@@ -26,7 +26,7 @@ func (e *DefaultsProvisionFailedError) Error() string {
 	return fmt.Sprintf("integration config was not provisioned after %d attempts", e.RetryLimit)
 }
 
-func CreateIntegration(portClient *cli.PortClient, stateKey string, eventListenerType string, appConfig *port.IntegrationAppConfig, createPortResourcesOriginInPort bool) (*port.Integration, error) {
+func CreateIntegration(portClient *cli.PortClient, stateKey string, eventListenerType string, appConfig *port.IntegrationAppConfig, createPortResourcesOriginInPort bool, version string) (*port.Integration, error) {
 	integration := &port.Integration{
 		Title:               stateKey,
 		InstallationAppType: "K8S EXPORTER",
@@ -34,7 +34,8 @@ func CreateIntegration(portClient *cli.PortClient, stateKey string, eventListene
 		EventListener: &port.EventListenerSettings{
 			Type: eventListenerType,
 		},
-		Config: appConfig,
+		Config:  appConfig,
+		Version: version,
 	}
 	queryParams := map[string]string{}
 	if createPortResourcesOriginInPort {

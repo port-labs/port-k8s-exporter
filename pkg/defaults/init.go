@@ -36,7 +36,7 @@ func isPortProvisioningSupported(portClient *cli.PortClient) (bool, error) {
 	return false, nil
 }
 
-func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config, isTest bool) error {
+func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config, version string, isTest bool) error {
 	logger.Infof("Initializing Port integration")
 	defaults, err := getDefaults()
 	if err != nil {
@@ -72,7 +72,7 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config,
 
 		logger.Warningf("Could not get integration with state key %s, error: %s", applicationConfig.StateKey, err.Error())
 		shouldCreateResourcesUsingPort := applicationConfig.CreatePortResourcesOrigin == port.CreatePortResourcesOriginPort
-		existingIntegration, err = integration.CreateIntegration(portClient, applicationConfig.StateKey, applicationConfig.EventListenerType, defaultIntegrationConfig, shouldCreateResourcesUsingPort)
+		existingIntegration, err = integration.CreateIntegration(portClient, applicationConfig.StateKey, applicationConfig.EventListenerType, defaultIntegrationConfig, shouldCreateResourcesUsingPort, version)
 		if err != nil {
 			return err
 		}
