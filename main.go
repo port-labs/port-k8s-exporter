@@ -34,7 +34,7 @@ func initiateHandler(exporterConfig *port.Config, k8sClient *k8s.Client, portCli
 func main() {
 	// Ensure logs are flushed before application exits
 	defer logger.Shutdown()
-
+	logger.Infow("Starting Port K8s Exporter", "version", Version)
 	k8sConfig := k8s.NewKubeConfig()
 	applicationConfig, err := config.NewConfiguration()
 	if err != nil {
@@ -52,7 +52,7 @@ func main() {
 	}
 	portClient := cli.New(config.ApplicationConfig)
 
-	if err := defaults.InitIntegration(portClient, applicationConfig, false); err != nil {
+	if err := defaults.InitIntegration(portClient, applicationConfig, Version, false); err != nil {
 		logger.Fatalf("Error initializing Port integration: %s", err.Error())
 	}
 
