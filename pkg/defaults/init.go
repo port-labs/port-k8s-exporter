@@ -80,6 +80,7 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config,
 		logger.Infof("Integration with state key %s already exists, patching it", applicationConfig.StateKey)
 		integrationPatch := &port.Integration{
 			EventListener: getEventListenerConfig(applicationConfig.EventListenerType),
+			Version:       version,
 		}
 
 		if (existingIntegration.Config == nil && !(applicationConfig.CreatePortResourcesOrigin == port.CreatePortResourcesOriginPort)) || applicationConfig.OverwriteConfigurationOnRestart {
