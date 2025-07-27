@@ -43,7 +43,7 @@ func NewFixture(t *testing.T) *Fixture {
 func (f *Fixture) CreateIntegration() {
 	_, err := integration.CreateIntegration(f.portClient, f.stateKey, "", &port.IntegrationAppConfig{
 		Resources: []port.Resource{},
-	}, false)
+	}, false, "unknown")
 
 	if err != nil {
 		f.t.Errorf("Error creating Port integration: %s", err.Error())
@@ -74,7 +74,7 @@ func Test_InitIntegration_InitDefaults(t *testing.T) {
 		EventListenerType:         "POLLING",
 		CreateDefaultResources:    true,
 		CreatePortResourcesOrigin: port.CreatePortResourcesOriginK8S,
-	}, true)
+	}, "unknown", true)
 	assert.Nil(t, e)
 
 	_, err := integration.GetIntegration(f.portClient, f.stateKey)
@@ -104,7 +104,7 @@ func Test_InitIntegration_InitDefaults_CreateDefaultResources_False(t *testing.T
 		EventListenerType:         "POLLING",
 		CreateDefaultResources:    false,
 		CreatePortResourcesOrigin: port.CreatePortResourcesOriginK8S,
-	}, true)
+	}, "unknown", true)
 	assert.Nil(t, e)
 
 	_, err := integration.GetIntegration(f.portClient, f.stateKey)
@@ -130,7 +130,7 @@ func Test_InitIntegration_BlueprintExists(t *testing.T) {
 		EventListenerType:         "POLLING",
 		CreateDefaultResources:    true,
 		CreatePortResourcesOrigin: port.CreatePortResourcesOriginK8S,
-	}, true)
+	}, "unknown", true)
 	assert.Nil(t, e)
 
 	i, err := integration.GetIntegration(f.portClient, f.stateKey)
@@ -157,7 +157,7 @@ func Test_InitIntegration_PageExists(t *testing.T) {
 		EventListenerType:         "POLLING",
 		CreateDefaultResources:    true,
 		CreatePortResourcesOrigin: port.CreatePortResourcesOriginK8S,
-	}, true)
+	}, "unknown", true)
 	assert.Nil(t, e)
 
 	i, err := integration.GetIntegration(f.portClient, f.stateKey)
@@ -173,7 +173,7 @@ func Test_InitIntegration_PageExists(t *testing.T) {
 func Test_InitIntegration_ExistingIntegration(t *testing.T) {
 	f := NewFixture(t)
 	defer tearDownFixture(t, f)
-	_, err := integration.CreateIntegration(f.portClient, f.stateKey, "", nil, false)
+	_, err := integration.CreateIntegration(f.portClient, f.stateKey, "", nil, false, "unknown")
 	if err != nil {
 		t.Errorf("Error creating Port integration: %s", err.Error())
 	}
@@ -182,7 +182,7 @@ func Test_InitIntegration_ExistingIntegration(t *testing.T) {
 		EventListenerType:         "POLLING",
 		CreateDefaultResources:    true,
 		CreatePortResourcesOrigin: port.CreatePortResourcesOriginK8S,
-	}, true)
+	}, "unknown", true)
 	assert.Nil(t, e)
 
 	_, err = integration.GetIntegration(f.portClient, f.stateKey)
@@ -194,7 +194,7 @@ func Test_InitIntegration_ExistingIntegration(t *testing.T) {
 func Test_InitIntegration_LocalResourcesConfiguration(t *testing.T) {
 	f := NewFixture(t)
 	defer tearDownFixture(t, f)
-	_, err := integration.CreateIntegration(f.portClient, f.stateKey, "", nil, false)
+	_, err := integration.CreateIntegration(f.portClient, f.stateKey, "", nil, false, "unknown")
 	if err != nil {
 		t.Errorf("Error creating Port integration: %s", err.Error())
 	}
@@ -224,7 +224,7 @@ func Test_InitIntegration_LocalResourcesConfiguration(t *testing.T) {
 		Resources:                 expectedResources,
 		CreateDefaultResources:    true,
 		CreatePortResourcesOrigin: port.CreatePortResourcesOriginK8S,
-	}, true)
+	}, "unknown", true)
 	assert.Nil(t, e)
 
 	i, err := integration.GetIntegration(f.portClient, f.stateKey)
@@ -237,7 +237,7 @@ func Test_InitIntegration_LocalResourcesConfiguration(t *testing.T) {
 func Test_InitIntegration_LocalResourcesConfiguration_ExistingIntegration_EmptyConfiguration(t *testing.T) {
 	f := NewFixture(t)
 	defer tearDownFixture(t, f)
-	_, err := integration.CreateIntegration(f.portClient, f.stateKey, "POLLING", nil, false)
+	_, err := integration.CreateIntegration(f.portClient, f.stateKey, "POLLING", nil, false, "unknown")
 	if err != nil {
 		t.Errorf("Error creating Port integration: %s", err.Error())
 	}
@@ -247,7 +247,7 @@ func Test_InitIntegration_LocalResourcesConfiguration_ExistingIntegration_EmptyC
 		Resources:                 nil,
 		CreateDefaultResources:    true,
 		CreatePortResourcesOrigin: port.CreatePortResourcesOriginK8S,
-	}, true)
+	}, "unknown", true)
 	assert.Nil(t, e)
 
 	i, err := integration.GetIntegration(f.portClient, f.stateKey)
@@ -283,7 +283,7 @@ func Test_InitIntegration_LocalResourcesConfiguration_ExistingIntegration_WithCo
 			},
 		},
 	}
-	_, err := integration.CreateIntegration(f.portClient, f.stateKey, "POLLING", expectedConfig, false)
+	_, err := integration.CreateIntegration(f.portClient, f.stateKey, "POLLING", expectedConfig, false, "unknown")
 	if err != nil {
 		t.Errorf("Error creating Port integration: %s", err.Error())
 	}
@@ -296,7 +296,7 @@ func Test_InitIntegration_LocalResourcesConfiguration_ExistingIntegration_WithCo
 		CreateDefaultResources:          true,
 		CreatePortResourcesOrigin:       port.CreatePortResourcesOriginK8S,
 		OverwriteConfigurationOnRestart: true,
-	}, true)
+	}, "unknown", true)
 	assert.Nil(t, e)
 
 	i, err := integration.GetIntegration(f.portClient, f.stateKey)
