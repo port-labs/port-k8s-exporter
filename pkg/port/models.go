@@ -229,6 +229,11 @@ type SearchBody struct {
 	Combinator string `json:"combinator"`
 }
 
+type DatasourceSearchBody struct {
+	DatasourcePrefix string `json:"datasource_prefix"`
+	DatasourceSuffix string `json:"datasource_suffix"`
+}
+
 type ResponseBody struct {
 	OK               bool                `json:"ok"`
 	Entity           Entity              `json:"entity"`
@@ -242,6 +247,31 @@ type ResponseBody struct {
 	Pages            Page                `json:"pages"`
 	MigrationId      string              `json:"migrationId"`
 	Migration        Migration           `json:"migration"`
+}
+
+type BulkUpsertRequest struct {
+	Entities []EntityRequest `json:"entities"`
+}
+
+type BulkEntityResult struct {
+	Created        bool                   `json:"created"`
+	Identifier     string                 `json:"identifier"`
+	Index          int                    `json:"index"`
+	AdditionalData map[string]interface{} `json:"additionalData,omitempty"`
+}
+
+type BulkEntityError struct {
+	Identifier string `json:"identifier"`
+	Index      int    `json:"index"`
+	StatusCode int    `json:"statusCode"`
+	Error      string `json:"error"`
+	Message    string `json:"message"`
+}
+
+type BulkUpsertResponse struct {
+	OK       bool               `json:"ok"`
+	Entities []BulkEntityResult `json:"entities"`
+	Errors   []BulkEntityError  `json:"errors"`
 }
 
 type Migration struct {

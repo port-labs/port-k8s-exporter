@@ -124,7 +124,6 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 
 	kubeClient := k8sfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), newGvrToListKind(), fixtureConfig.existingObjects...)
 	controller := newController(t, fixtureConfig.resource, kubeClient, interationConfig, newConfig)
-	controller.portClient.Authenticate(context.Background(), newConfig.PortClientId, newConfig.PortClientSecret)
 
 	blueprintRaw := port.Blueprint{
 		Identifier: blueprintIdentifier,
@@ -888,15 +887,21 @@ func TestCreateDeploymentWithTeamSearch(t *testing.T) {
 	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
 	defer tearDownFixture(t, f)
 	// Create test team
-	teamBody := &port.Team{
-		Name: searchTeamName,
+	teamEntityBody := &port.Entity{
+		Blueprint:  "_team",
+		Identifier: searchTeamName,
+		Title:      searchTeamName,
+		Properties: map[string]any{},
+		Relations:  map[string]any{},
 	}
 	pb := &port.ResponseBody{}
 	resp, err := f.controller.portClient.Client.R().
-		SetBody(teamBody).
+		SetBody(teamEntityBody).
 		SetHeader("Accept", "application/json").
 		SetResult(&pb).
-		Post("v1/teams")
+		SetPathParam("blueprint_id", "_team").
+		SetQueryParam("upsert", "true").
+		Post("v1/blueprints/{blueprint_id}/entities")
 	if err != nil {
 		t.Errorf("error creating team: %v", err)
 	}
@@ -953,15 +958,21 @@ func TestCreateDeploymentWithMultiTeamSearch(t *testing.T) {
 	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
 	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
 	// Create test team
-	teamBody := &port.Team{
-		Name: searchTeamName,
+	teamEntityBody := &port.Entity{
+		Blueprint:  "_team",
+		Identifier: searchTeamName,
+		Title:      searchTeamName,
+		Properties: map[string]any{},
+		Relations:  map[string]any{},
 	}
 	pb := &port.ResponseBody{}
 	resp, err := f.controller.portClient.Client.R().
-		SetBody(teamBody).
+		SetBody(teamEntityBody).
 		SetHeader("Accept", "application/json").
 		SetResult(&pb).
-		Post("v1/teams")
+		SetPathParam("blueprint_id", "_team").
+		SetQueryParam("upsert", "true").
+		Post("v1/blueprints/{blueprint_id}/entities")
 	if err != nil {
 		t.Errorf("error creating team: %v", err)
 	}

@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -198,31 +200,6 @@ func (w *HTTPWriter) flushTimer() {
 	}
 }
 
-// flushTimer runs a background timer to flush logs periodically
-func (w *HTTPWriter) refreshTokenTimer(authFunc func() (string, error), expiresIn time.Duration) {
-	defer w.wg.Done()
-
-	ticker := time.NewTicker(expiresIn / 2)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			w.mu.Lock()
-			defer w.mu.Unlock()
-			token, err := authFunc()
-			if err != nil {
-				return
-			}
-			w.Client = w.Client.SetAuthScheme("Bearer").SetAuthToken(token)
-		case <-w.done:
-			return
-		case <-w.ctx.Done():
-			return
-		}
-	}
-}
-
 // Close gracefully shuts down the HTTP writer
 func (w *HTTPWriter) Close() error {
 	w.cancel()
@@ -274,19 +251,25 @@ func getExtra(data map[string]interface{}) map[string]interface{} {
 	return extra
 }
 
-func SetHttpWriterParametersAndStart(url string, authFunc func() (string, error), integrationData LoggerIntegrationData) {
+func SetHttpWriterParametersAndStart(url string, authFunc func() (string, int, error), integrationData LoggerIntegrationData) {
 	if httpWriter == nil {
 		return
 	}
-	token, err := authFunc()
+	token, _, err := authFunc()
 	if err != nil {
 		return
 	}
-	httpWriter.Client = httpWriter.Client.SetAuthScheme("Bearer").SetAuthToken(token).SetHeader("User-Agent", "port/K8S-EXPORTER/"+integrationData.IntegrationVersion+"/"+integrationData.IntegrationIdentifier)
+	httpWriter.Client = httpWriter.Client.SetAuthScheme("Bearer").SetAuthToken(token).SetHeader("User-Agent", "port/K8S-EXPORTER/"+integrationData.IntegrationVersion+"/"+integrationData.IntegrationIdentifier).OnBeforeRequest(func(c *resty.Client, r *resty.Request) error {
+		token, _, err := authFunc()
+		if err != nil {
+			return err
+		}
+		httpWriter.Client.SetAuthToken(token)
+		return nil
+	})
 	httpWriter.URL = url
-	httpWriter.wg.Add(2)
+	httpWriter.wg.Add(1)
 	go httpWriter.flushTimer()
-	go httpWriter.refreshTokenTimer(authFunc, time.Minute*1)
 }
 
 // InitWithLevel initializes the global zap logger with a specific log level (console only)
@@ -441,4 +424,22 @@ func Shutdown() error {
 	}
 	Logger.Sync()
 	return nil
+}
+
+func LogPanic(r interface{}) {
+	if r == http.ErrAbortHandler {
+		// honor the http.ErrAbortHandler sentinel panic value:
+		//   ErrAbortHandler is a sentinel panic value to abort a handler.
+		//   While any panic from ServeHTTP aborts the response to the client,
+		//   panicking with ErrAbortHandler also suppresses logging of a stack trace to the server's error log.
+		return
+	}
+
+	// Same as stdlib http server code. Manually allocate stack trace buffer size
+	// to prevent excessively large logs
+	const size = 64 << 10
+	stacktrace := make([]byte, size)
+	stacktrace = stacktrace[:runtime.Stack(stacktrace, false)]
+	GetLogger().Errorw("Observed a panic", "panic", r, "stacktrace", string(stacktrace))
+	Logger.Sync()
 }

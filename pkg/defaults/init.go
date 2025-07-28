@@ -36,7 +36,7 @@ func isPortProvisioningSupported(portClient *cli.PortClient) (bool, error) {
 	return false, nil
 }
 
-func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config, isTest bool) error {
+func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config, version string, isTest bool) error {
 	logger.Infof("Initializing Port integration")
 	defaults, err := getDefaults()
 	if err != nil {
@@ -72,7 +72,7 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config,
 
 		logger.Warningf("Could not get integration with state key %s, error: %s", applicationConfig.StateKey, err.Error())
 		shouldCreateResourcesUsingPort := applicationConfig.CreatePortResourcesOrigin == port.CreatePortResourcesOriginPort
-		existingIntegration, err = integration.CreateIntegration(portClient, applicationConfig.StateKey, applicationConfig.EventListenerType, defaultIntegrationConfig, shouldCreateResourcesUsingPort)
+		existingIntegration, err = integration.CreateIntegration(portClient, applicationConfig.StateKey, applicationConfig.EventListenerType, defaultIntegrationConfig, shouldCreateResourcesUsingPort, version)
 		if err != nil {
 			return err
 		}
@@ -80,6 +80,7 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config,
 		logger.Infof("Integration with state key %s already exists, patching it", applicationConfig.StateKey)
 		integrationPatch := &port.Integration{
 			EventListener: getEventListenerConfig(applicationConfig.EventListenerType),
+			Version:       version,
 		}
 
 		if (existingIntegration.Config == nil && !(applicationConfig.CreatePortResourcesOrigin == port.CreatePortResourcesOriginPort)) || applicationConfig.OverwriteConfigurationOnRestart {
@@ -90,12 +91,12 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config,
 			return err
 		}
 	}
-	logger.SetHttpWriterParametersAndStart(existingIntegration.LogAttributes.IngestUrl, func() (string, error) {
-		token, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
+	logger.SetHttpWriterParametersAndStart(existingIntegration.LogAttributes.IngestUrl, func() (string, int, error) {
+		token, expiresIn, err := portClient.Authenticator.AuthenticateClient(context.Background(), portClient)
 		if err != nil {
-			return "", err
+			return "", 0, err
 		}
-		return token, nil
+		return token, expiresIn, nil
 	}, logger.LoggerIntegrationData{
 		IntegrationVersion:    existingIntegration.Version,
 		IntegrationIdentifier: existingIntegration.Identifier,

@@ -1,12 +1,12 @@
 package integration
 
 import (
-	"context"
 	"fmt"
-	"github.com/port-labs/port-k8s-exporter/pkg/port"
-	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"strings"
 	"time"
+
+	"github.com/port-labs/port-k8s-exporter/pkg/port"
+	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 )
 
 const (
@@ -26,7 +26,7 @@ func (e *DefaultsProvisionFailedError) Error() string {
 	return fmt.Sprintf("integration config was not provisioned after %d attempts", e.RetryLimit)
 }
 
-func CreateIntegration(portClient *cli.PortClient, stateKey string, eventListenerType string, appConfig *port.IntegrationAppConfig, createPortResourcesOriginInPort bool) (*port.Integration, error) {
+func CreateIntegration(portClient *cli.PortClient, stateKey string, eventListenerType string, appConfig *port.IntegrationAppConfig, createPortResourcesOriginInPort bool, version string) (*port.Integration, error) {
 	integration := &port.Integration{
 		Title:               stateKey,
 		InstallationAppType: "K8S EXPORTER",
@@ -34,11 +34,8 @@ func CreateIntegration(portClient *cli.PortClient, stateKey string, eventListene
 		EventListener: &port.EventListenerSettings{
 			Type: eventListenerType,
 		},
-		Config: appConfig,
-	}
-	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
-	if err != nil {
-		return nil, fmt.Errorf("error authenticating with Port: %v", err)
+		Config:  appConfig,
+		Version: version,
 	}
 	queryParams := map[string]string{}
 	if createPortResourcesOriginInPort {
@@ -60,11 +57,6 @@ func CreateIntegration(portClient *cli.PortClient, stateKey string, eventListene
 }
 
 func GetIntegration(portClient *cli.PortClient, stateKey string) (*port.Integration, error) {
-	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
-	if err != nil {
-		return nil, fmt.Errorf("error authenticating with Port: %v", err)
-	}
-
 	apiIntegration, err := portClient.GetIntegration(stateKey)
 	if err != nil {
 		return nil, fmt.Errorf("error getting Port integration: %v", err)
@@ -81,12 +73,7 @@ func GetIntegration(portClient *cli.PortClient, stateKey string) (*port.Integrat
 }
 
 func DeleteIntegration(portClient *cli.PortClient, stateKey string) error {
-	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
-	if err != nil {
-		return fmt.Errorf("error authenticating with Port: %v", err)
-	}
-
-	err = portClient.DeleteIntegration(stateKey)
+	err := portClient.DeleteIntegration(stateKey)
 	if err != nil {
 		return fmt.Errorf("error deleting Port integration: %v", err)
 	}
@@ -94,12 +81,7 @@ func DeleteIntegration(portClient *cli.PortClient, stateKey string) error {
 }
 
 func PatchIntegration(portClient *cli.PortClient, stateKey string, integration *port.Integration) error {
-	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
-	if err != nil {
-		return fmt.Errorf("error authenticating with Port: %v", err)
-	}
-
-	err = portClient.PatchIntegration(stateKey, integration)
+	err := portClient.PatchIntegration(stateKey, integration)
 	if err != nil {
 		return fmt.Errorf("error updating Port integration: %v", err)
 	}
@@ -107,12 +89,7 @@ func PatchIntegration(portClient *cli.PortClient, stateKey string, integration *
 }
 
 func PostIntegrationKindExample(portClient *cli.PortClient, stateKey string, kind string, examples []interface{}) error {
-	_, err := portClient.Authenticate(context.Background(), portClient.ClientID, portClient.ClientSecret)
-	if err != nil {
-		return fmt.Errorf("error authenticating with Port: %v", err)
-	}
-
-	err = portClient.PostIntegrationKindExample(stateKey, kind, examples)
+	err := portClient.PostIntegrationKindExample(stateKey, kind, examples)
 	if err != nil {
 		return err
 	}
