@@ -69,6 +69,7 @@ func CheckIfOwnEntity(entity port.EntityRequest, portClient *cli.PortClient, eve
 					Value:    entity.Blueprint,
 				},
 			},
+			Combinator: "and",
 		})
 		if err != nil {
 			return nil, err
