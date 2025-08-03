@@ -36,8 +36,9 @@ const (
 )
 
 type EventItem struct {
-	Key        string
-	ActionType EventActionType
+	Key         string
+	ActionType  EventActionType
+	EventSource port.EventSource
 }
 
 type SyncResult struct {
@@ -76,45 +77,63 @@ func NewController(resource port.AggregatedResource, informer informers.GenericI
 
 	controller.eventHandler, _ = controller.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
+			logger.Debugw("got insert live event", "obj", obj)
+
 			var err error
 			var item EventItem
 			item.ActionType = CreateAction
 			item.Key, err = cache.MetaNamespaceKeyFunc(obj)
 			if err != nil {
+				logger.Errorw("Failed to get item key", "obj", obj)
 				return
 			}
 
 			if controller.isInitialSyncDone || controller.eventHandler.HasSynced() {
 				if !controller.isInitialSyncDone {
+					logger.Debug("Setting initial sync to be done")
 					controller.isInitialSyncDone = true
 				}
+				item.EventSource = port.LiveEventsSource
+				logger.Debugw("sending the item to events queue for processing", "item", item.Key)
 				controller.eventsWorkqueue.Add(item)
 			} else {
+				item.EventSource = port.ResyncSource
+				logger.Debugw("sending the item to resync queue for processing", "item", item.Key)
 				controller.initialSyncWorkqueue.Add(item)
 			}
 		},
 		UpdateFunc: func(old interface{}, new interface{}) {
+			logger.Debugw("got update live event", "newObj", new, "oldObj", old)
 			var err error
 			var item EventItem
 			item.ActionType = UpdateAction
+			item.EventSource = port.LiveEventsSource
 			item.Key, err = cache.MetaNamespaceKeyFunc(new)
 			if err != nil {
+				logger.Errorw("Failed to get item key", "newObj", new)
 				return
 			}
 
 			if controller.shouldSendUpdateEvent(old, new, integrationConfig.UpdateEntityOnlyOnDiff == nil || *(integrationConfig.UpdateEntityOnlyOnDiff)) {
+				logger.Debugw("sending the update event to queue for processing", "item", item.Key)
 				controller.eventsWorkqueue.Add(item)
 			}
+			logger.Debugw("decided not to update. Ignoring.", "item", item.Key)
+
 		},
 		DeleteFunc: func(obj interface{}) {
+			logger.Debugw("got delete live event", "obj", obj)
 			var err error
 			var item EventItem
 			item.ActionType = DeleteAction
+			item.EventSource = port.LiveEventsSource
 			item.Key, err = cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
 			if err != nil {
+				logger.Errorw("Failed to get item key", "obj", obj)
 				return
 			}
 
+			logger.Debugw("Sending the item to object handler", "item", item.Key, "obj", obj)
 			_, err = controller.objectHandler(obj, item)
 			if err != nil {
 				logger.Errorf("Error deleting item '%s' of resource '%s': %s", item.Key, resource.Kind, err.Error())
@@ -155,7 +174,9 @@ func (c *Controller) RunInitialSync() *SyncResult {
 	var syncResult *SyncResult
 
 	for shouldContinue && (requeueCounter > 0 || c.initialSyncWorkqueue.Len() > 0 || !c.eventHandler.HasSynced()) {
+		logger.Debugw("Processing next work item with batching", "requeueCounter", requeueCounter, "initialSyncWorkqueueLen", c.initialSyncWorkqueue.Len(), "eventHandlerHasSynced", c.eventHandler.HasSynced())
 		syncResult, requeueCounterDiff, shouldContinue = c.processNextWorkItemWithBatching(c.initialSyncWorkqueue, batchCollector)
+		logger.Debugw("Processed next work item with batching", "syncResult", syncResult, "requeueCounterDiff", requeueCounterDiff, "shouldContinue", shouldContinue)
 		requeueCounter += requeueCounterDiff
 		if syncResult != nil {
 			entitiesSet = goutils.MergeMaps(entitiesSet, syncResult.EntitiesSet)
@@ -166,6 +187,7 @@ func (c *Controller) RunInitialSync() *SyncResult {
 	}
 
 	// Process any remaining batched entities
+	logger.Debugw("Going to process all the remaining entities in the collector.", "controller", c.Resource.Kind)
 	finalSyncResult := batchCollector.ProcessRemaining(c)
 	if finalSyncResult != nil {
 		entitiesSet = goutils.MergeMaps(entitiesSet, finalSyncResult.EntitiesSet)
@@ -173,6 +195,7 @@ func (c *Controller) RunInitialSync() *SyncResult {
 	}
 
 	if batchCollector.HasErrors() {
+		logger.Debug("Batch Collector has errors setting the delete flag to false")
 		shouldDeleteStaleEntities = false
 	}
 
@@ -232,6 +255,7 @@ func (c *Controller) calculateTotalBatchSize() int {
 
 func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 	if len(bc.entitiesByBlueprint) == 0 {
+		logger.Debugw("Batch collector has no entities to process", "hasErrors", bc.hasErrors, "controller", controller.Resource.Kind)
 		return &SyncResult{
 			EntitiesSet:               make(map[string]interface{}),
 			RawDataExamples:           make([]interface{}, 0),
@@ -252,6 +276,7 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 
 	for blueprint, entities := range bc.entitiesByBlueprint {
 		if len(entities) == 0 {
+			logger.Debugw("Skipping blueprint with no entities", "blueprint", blueprint)
 			continue
 		}
 
@@ -329,7 +354,7 @@ func (bc *BatchCollector) fallbackToIndividualUpserts(controller *Controller, en
 	logger.Infow("Falling back to individual upserts", "entityCount", len(entities))
 
 	for _, entity := range entities {
-		handledEntity, err := controller.entityHandler(entity, CreateAction)
+		handledEntity, err := controller.entityHandler(entity, CreateAction, port.ResyncSource)
 		if err != nil {
 			logger.Errorw("Individual upsert fallback failed", "identifier", entity.Identifier, "blueprint", entity.Blueprint, "error", err)
 			*shouldDeleteStaleEntities = false
@@ -349,7 +374,9 @@ func (bc *BatchCollector) ProcessRemaining(controller *Controller) *SyncResult {
 
 func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLimitingInterface, batchCollector *BatchCollector) (*SyncResult, int, bool) {
 	if batchCollector.ShouldFlush() {
+		logger.Debugw("Batch collector should flush", "controller", c.Resource.Kind)
 		syncResult := batchCollector.ProcessBatch(c)
+		logger.Debugw("Batch collector processed batch", "numEntities", len(syncResult.EntitiesSet), "numRawDataExamples", len(syncResult.RawDataExamples), "shouldDeleteStaleEntities", syncResult.ShouldDeleteStaleEntities)
 		if syncResult != nil {
 			return syncResult, 0, true
 		}
@@ -357,6 +384,7 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 
 	obj, shutdown := workqueue.Get()
 	if shutdown {
+		logger.Debugw("Workqueue is shutting down", "controller", c.Resource.Kind)
 		return nil, 0, false
 	}
 
@@ -364,6 +392,7 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 		defer workqueue.Done(obj)
 
 		numRequeues := workqueue.NumRequeues(obj)
+		logger.Debugw("Processing next work item in workqueue", "numRequeues", numRequeues, "controller", c.Resource.Kind)
 		requeueCounterDiff := 0
 		if numRequeues > 0 {
 			requeueCounterDiff = -1
@@ -371,6 +400,7 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 
 		item, ok := obj.(EventItem)
 		if !ok {
+			logger.Debugw("Expected event item but got something else. removing from workqueue", "obj", obj)
 			workqueue.Forget(obj)
 			return nil, requeueCounterDiff, fmt.Errorf("expected event item in workqueue but got %#v", obj)
 		}
@@ -378,6 +408,7 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 		k8sObj, exists, err := c.informer.GetIndexer().GetByKey(item.Key)
 		if err != nil {
 			if numRequeues >= MaxNumRequeues {
+				logger.Debugw("Removing object from workqueue because it's been requeued too many times", "error", err.Error(), "key", item.Key, "controller", c.Resource.Kind)
 				workqueue.Forget(obj)
 				return nil, requeueCounterDiff, fmt.Errorf("error fetching object '%s': %v, giving up", item.Key, err)
 			}
@@ -387,11 +418,13 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 			} else {
 				requeueCounterDiff = 0
 			}
+			logger.Debugw("Requeuing object with rate limiting", "error", err.Error(), "key", item.Key, "controller", c.Resource.Kind)
 			workqueue.AddRateLimited(obj)
 			return nil, requeueCounterDiff, fmt.Errorf("error fetching object '%s': %v, requeuing", item.Key, err)
 		}
 
 		if !exists {
+			logger.Debugw("Object no longer exists in informer cache. removing from workqueue", "key", item.Key, "controller", c.Resource.Kind)
 			workqueue.Forget(obj)
 			return nil, requeueCounterDiff, nil
 		}
@@ -400,9 +433,11 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 		for _, kindConfig := range c.Resource.KindConfigs {
 			portEntities, rawDataExamplesForObj, err := c.getObjectEntities(k8sObj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
 			if err != nil {
+				logger.Debugw("Error getting entities for object. marking batch collector as having errors", "error", err.Error(), "key", item.Key, "controller", c.Resource.Kind)
 				batchCollector.MarkError()
 
 				if numRequeues >= MaxNumRequeues {
+					logger.Debugw("Removing object from workqueue because it's been requeued too many times", "error", err.Error(), "key", item.Key, "controller", c.Resource.Kind)
 					workqueue.Forget(obj)
 					return nil, requeueCounterDiff, fmt.Errorf("error getting entities for object '%s': %v, giving up", item.Key, err)
 				}
@@ -412,20 +447,24 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 				} else {
 					requeueCounterDiff = 0
 				}
+				logger.Debugw("Requeuing object with rate limiting", "error", err.Error(), "key", item.Key, "controller", c.Resource.Kind)
 				workqueue.AddRateLimited(obj)
 				return nil, requeueCounterDiff, fmt.Errorf("error getting entities for object '%s': %v, requeuing", item.Key, err)
 			}
 
 			if len(rawDataExamples) < MaxRawDataExamplesToSend {
+				logger.Debugw("Adding raw data examples to batch collector", "numRawDataExamples", len(rawDataExamples), "maxRawDataExamplesToSend", MaxRawDataExamplesToSend)
 				amountToAdd := min(len(rawDataExamplesForObj), MaxRawDataExamplesToSend-len(rawDataExamples))
 				rawDataExamples = append(rawDataExamples, rawDataExamplesForObj[:amountToAdd]...)
 			}
 
 			for _, portEntity := range portEntities {
+				logger.Debugw("Adding entity to batch collector", "identifier", portEntity.Identifier, "blueprint", portEntity.Blueprint)
 				batchCollector.AddEntity(portEntity)
 			}
 		}
 
+		logger.Debugw("Forgetting object from workqueue", "key", item.Key, "controller", c.Resource.Kind)
 		workqueue.Forget(obj)
 		return &SyncResult{
 			EntitiesSet:               make(map[string]interface{}),
@@ -435,7 +474,7 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 	}(obj)
 
 	if err != nil {
-		logger.Errorw("error processing next work item with batching", "error", err.Error())
+		logger.Errorw("error processing next work item with batching", "error", err.Error(), "controller", c.Resource.Kind)
 		utilruntime.HandleError(err)
 	}
 
@@ -532,6 +571,7 @@ func (c *Controller) objectHandler(obj interface{}, item EventItem) (*SyncResult
 	rawDataExamplesToReturn := make([]interface{}, 0)
 
 	for _, kindConfig := range c.Resource.KindConfigs {
+		logger.Debugw("Getting entities for object", "key", item.Key, "resource", c.Resource.Kind)
 		portEntities, rawDataExamples, err := c.getObjectEntities(obj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
 		if err != nil {
 			logger.Errorw("error getting entities", "error", err.Error(), "key", item.Key, "resource", c.Resource.Kind)
@@ -546,7 +586,7 @@ func (c *Controller) objectHandler(obj interface{}, item EventItem) (*SyncResult
 		}
 
 		for _, portEntity := range portEntities {
-			handledEntity, err := c.entityHandler(portEntity, item.ActionType)
+			handledEntity, err := c.entityHandler(portEntity, item.ActionType, item.EventSource)
 			if err != nil {
 				errors = append(errors, err)
 				entitiesSet = nil
@@ -598,8 +638,10 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 	objectsToMap := make([]interface{}, 0)
 
 	if itemsToParse == "" {
+		logger.Debugw("No items to parse defined. adding object to objectsToMap", "object", structuredObj, "resource", c.Resource.Kind)
 		objectsToMap = append(objectsToMap, structuredObj)
 	} else {
+		logger.Debugw("Items to parse defined. getting items by jq", "object", structuredObj, "resource", c.Resource.Kind)
 		items, parseItemsError := jq.ParseArray(itemsToParse, structuredObj)
 		if parseItemsError != nil {
 			return nil, nil, parseItemsError
@@ -622,21 +664,24 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 
 	rawDataExamples := make([]interface{}, 0)
 	for _, objectToMap := range objectsToMap {
+		logger.Debugw("Checking if object passes selector", "object", objectToMap, "selector", selector.Query)
 		selectorResult, err := isPassSelector(objectToMap, selector)
-
+		logger.Debugw("Object passes selector", "object", objectToMap, "selector", selector.Query, "selectorResult", selectorResult)
 		if err != nil {
 			return nil, nil, err
 		}
 
 		if selectorResult {
+			logger.Debugw("Object passes selector. adding to raw data examples", "object", objectToMap, "selector", selector.Query)
 			if *c.integrationConfig.SendRawDataExamples && len(rawDataExamples) < MaxRawDataExamplesToSend {
 				rawDataExamples = append(rawDataExamples, objectToMap)
 			}
+			logger.Debugw("Mapping entities", "object", objectToMap)
 			currentEntities, err := entity.MapEntities(objectToMap, mappings)
 			if err != nil {
 				return nil, nil, err
 			}
-
+			logger.Debugw("Entities mapped", "object", objectToMap, "entitiesCount", len(currentEntities))
 			entities = append(entities, currentEntities...)
 		}
 	}
@@ -644,7 +689,7 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 	return entities, rawDataExamples, nil
 }
 
-func (c *Controller) entityHandler(portEntity port.EntityRequest, action EventActionType) (*port.Entity, error) {
+func (c *Controller) entityHandler(portEntity port.EntityRequest, action EventActionType, eventSource port.EventSource) (*port.Entity, error) {
 	switch action {
 	case CreateAction, UpdateAction:
 		upsertedEntity, err := c.portClient.CreateEntity(context.Background(), &portEntity, "", c.portClient.CreateMissingRelatedEntities)
@@ -658,7 +703,7 @@ func (c *Controller) entityHandler(portEntity port.EntityRequest, action EventAc
 			return nil, nil
 		}
 
-		result, err := entity.CheckIfOwnEntity(portEntity, c.portClient)
+		result, err := entity.CheckIfOwnEntity(portEntity, c.portClient, eventSource)
 		if err != nil {
 			return nil, fmt.Errorf("error checking if entity '%s' of blueprint '%s' is owned by this exporter: %v", portEntity.Identifier, portEntity.Blueprint, err)
 		}

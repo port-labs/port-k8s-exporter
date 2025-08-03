@@ -303,6 +303,13 @@ type EntityRequest struct {
 	Relations  map[string]interface{} `json:"relations,omitempty" yaml:"relations,omitempty"`
 }
 
+type EventSource string
+
+const (
+	LiveEventsSource EventSource = "live-events"
+	ResyncSource     EventSource = "resync"
+)
+
 type EntityMappings struct {
 	Mappings []EntityMapping `json:"mappings" yaml:"mappings"`
 }
