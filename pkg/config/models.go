@@ -36,4 +36,6 @@ type ApplicationConfiguration struct {
 	BulkSyncMaxPayloadBytes     int `json:"bulkSyncMaxPayloadBytes,omitempty"`
 	BulkSyncMaxEntitiesPerBatch int `json:"bulkSyncMaxEntitiesPerBatch,omitempty"`
 	BulkSyncBatchTimeoutSeconds int `json:"bulkSyncBatchTimeoutSeconds,omitempty"`
+	// Debug Mode
+	DebugMode bool `json:"debugMode,omitempty"`
 }

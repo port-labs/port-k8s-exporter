@@ -10,11 +10,12 @@ import (
 
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/jq"
+	"github.com/port-labs/port-k8s-exporter/pkg/logger"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 )
 
-func CheckIfOwnEntity(entity port.EntityRequest, portClient *cli.PortClient) (*bool, error) {
+func CheckIfOwnEntity(entity port.EntityRequest, portClient *cli.PortClient, eventSource port.EventSource) (*bool, error) {
 	portEntities, err := portClient.SearchEntities(context.Background(), port.SearchBody{
 		Rules: []port.Rule{
 			{
@@ -44,6 +45,38 @@ func CheckIfOwnEntity(entity port.EntityRequest, portClient *cli.PortClient) (*b
 		return nil, err
 	}
 
+	if eventSource == port.LiveEventsSource {
+		portAutoEntities, err := portClient.SearchEntities(context.Background(), port.SearchBody{
+			Rules: []port.Rule{
+				{
+					Property: "$datasource",
+					Operator: "contains",
+					Value:    "port-auto-k8s-exporter",
+				},
+				{
+					Property: "$identifier",
+					Operator: "=",
+					Value:    entity.Identifier,
+				},
+				{
+					Property: "$datasource",
+					Operator: "contains",
+					Value:    fmt.Sprintf("(statekey/%s)", config.ApplicationConfig.StateKey),
+				},
+				{
+					Property: "$blueprint",
+					Operator: "=",
+					Value:    entity.Blueprint,
+				},
+			},
+			Combinator: "and",
+		})
+		if err != nil {
+			return nil, err
+		}
+		portEntities = append(portEntities, portAutoEntities...)
+	}
+
 	if len(portEntities) > 0 {
 		result := true
 		return &result, nil
@@ -70,10 +103,12 @@ func HashAllEntities(entities []port.EntityRequest) (string, error) {
 func MapEntities(obj interface{}, mappings []port.EntityMapping) ([]port.EntityRequest, error) {
 	entities := make([]port.EntityRequest, 0, len(mappings))
 	for _, entityMapping := range mappings {
+		logger.Debugw("Mapping entity", "object", obj, "blueprint", entityMapping.Blueprint)
 		portEntity, err := newEntityRequest(obj, entityMapping)
 		if err != nil {
 			return nil, fmt.Errorf("invalid entity mapping '%#v': %v", entityMapping, err)
 		}
+		logger.Debugw("Mapped entity", "entity", portEntity.Identifier, "blueprint", portEntity.Blueprint)
 		entities = append(entities, *portEntity)
 	}
 

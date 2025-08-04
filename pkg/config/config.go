@@ -56,6 +56,9 @@ func Init() {
 	NewInt(&ApplicationConfig.BulkSyncMaxEntitiesPerBatch, "bulk-sync-max-entities-per-batch", 20, "Bulk sync max entities per batch. Optional.")
 	NewInt(&ApplicationConfig.BulkSyncBatchTimeoutSeconds, "bulk-sync-batch-timeout-seconds", 5, "Bulk sync batch timeout in seconds. Optional.")
 
+	//Debug Mode
+	NewBool(&ApplicationConfig.DebugMode, "debug-mode", false, "Debug mode. Optional.")
+
 	flag.Parse()
 }
 

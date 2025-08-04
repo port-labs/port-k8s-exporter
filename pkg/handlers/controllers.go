@@ -99,8 +99,6 @@ func syncAllControllers(c *ControllersHandler) ([]map[string]interface{}, bool) 
 	var syncWg sync.WaitGroup
 
 	for _, controller := range c.controllers {
-		controller := controller
-
 		go func() {
 			<-c.stopCh
 			logger.Info("Shutting down controllers")

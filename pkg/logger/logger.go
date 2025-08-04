@@ -273,11 +273,14 @@ func SetHttpWriterParametersAndStart(url string, authFunc func() (string, int, e
 }
 
 // InitWithLevel initializes the global zap logger with a specific log level (console only)
-func Init(level string) error {
+func Init(level string, debugMode bool) error {
 	config := zap.NewProductionConfig()
 	parsedLevel, err := zap.ParseAtomicLevel(level)
 	if err != nil {
 		parsedLevel = zap.NewAtomicLevelAt(zap.InfoLevel)
+	}
+	if debugMode {
+		parsedLevel = zap.NewAtomicLevelAt(zap.DebugLevel)
 	}
 	config.Level = parsedLevel
 	config.OutputPaths = []string{"stdout"}
@@ -297,7 +300,7 @@ func Init(level string) error {
 }
 
 // InitWithLevelAndHTTP initializes the global zap logger with specific log level and HTTP output
-func InitWithHTTP(level string) error {
+func InitWithHTTP(level string, debugMode bool) error {
 	// Console encoder configuration
 	consoleEncoderConfig := zap.NewProductionEncoderConfig()
 	consoleEncoderConfig.TimeKey = "timestamp"
@@ -320,10 +323,14 @@ func InitWithHTTP(level string) error {
 	if err != nil {
 		parsedLevel = zap.NewAtomicLevelAt(zap.InfoLevel)
 	}
+	httpLevel := zap.InfoLevel
+	if debugMode {
+		httpLevel = zap.DebugLevel
+	}
 	// Create the tee core with both console and HTTP output
 	core := zapcore.NewTee(
 		zapcore.NewCore(consoleEncoder, zapcore.AddSync(os.Stdout), parsedLevel),
-		zapcore.NewCore(httpEncoder, zapcore.AddSync(httpWriter), zap.InfoLevel),
+		zapcore.NewCore(httpEncoder, zapcore.AddSync(httpWriter), httpLevel),
 	)
 
 	zapLogger := zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
@@ -335,7 +342,7 @@ func InitWithHTTP(level string) error {
 func GetLogger() *zap.SugaredLogger {
 	if Logger == nil {
 		// Fallback initialization if not already initialized
-		if err := Init("info"); err != nil {
+		if err := Init("info", false); err != nil {
 			panic("Failed to initialize logger: " + err.Error())
 		}
 	}

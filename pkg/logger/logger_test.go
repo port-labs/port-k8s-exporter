@@ -98,7 +98,7 @@ func TestInitWithHTTP(t *testing.T) {
 	defer server.Close()
 
 	// Initialize logger with HTTP
-	err := InitWithHTTP("info")
+	err := InitWithHTTP("info", false)
 	require.NoError(t, err, "InitWithHTTP should not fail")
 
 	// Configure the HTTP writer with smaller capacity for testing
@@ -169,7 +169,7 @@ func TestInitWithLevelAndHTTP(t *testing.T) {
 	defer server.Close()
 
 	// Initialize logger with debug level and HTTP
-	err := InitWithHTTP("debug")
+	err := InitWithHTTP("debug", false)
 	require.NoError(t, err, "InitWithHTTP should not fail")
 
 	// Configure the HTTP writer with smaller capacity for testing
