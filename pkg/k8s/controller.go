@@ -12,6 +12,7 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
 	"github.com/port-labs/port-k8s-exporter/pkg/jq"
 	"github.com/port-labs/port-k8s-exporter/pkg/logger"
+	"github.com/port-labs/port-k8s-exporter/pkg/metrics"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/entity"
@@ -430,8 +431,8 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 		}
 
 		rawDataExamples := make([]interface{}, 0)
-		for _, kindConfig := range c.Resource.KindConfigs {
-			portEntities, rawDataExamplesForObj, err := c.getObjectEntities(k8sObj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
+		for i, kindConfig := range c.Resource.KindConfigs {
+			portEntities, rawDataExamplesForObj, err := c.getObjectEntities(k8sObj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, i)
 			if err != nil {
 				logger.Debugw("Error getting entities for object. marking batch collector as having errors", "error", err.Error(), "key", item.Key, "controller", c.Resource.Kind)
 				batchCollector.MarkError()
@@ -570,9 +571,9 @@ func (c *Controller) objectHandler(obj interface{}, item EventItem) (*SyncResult
 	entitiesSet := make(map[string]interface{})
 	rawDataExamplesToReturn := make([]interface{}, 0)
 
-	for _, kindConfig := range c.Resource.KindConfigs {
+	for i, kindConfig := range c.Resource.KindConfigs {
 		logger.Debugw("Getting entities for object", "key", item.Key, "resource", c.Resource.Kind)
-		portEntities, rawDataExamples, err := c.getObjectEntities(obj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
+		portEntities, rawDataExamples, err := c.getObjectEntities(obj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, i)
 		if err != nil {
 			logger.Errorw("error getting entities", "error", err.Error(), "key", item.Key, "resource", c.Resource.Kind)
 			entitiesSet = nil
@@ -623,35 +624,40 @@ func isPassSelector(obj interface{}, selector port.Selector) (bool, error) {
 	return selectorResult, err
 }
 
-func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, mappings []port.EntityMapping, itemsToParse string) ([]port.EntityRequest, []interface{}, error) {
+func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, mappings []port.EntityMapping, itemsToParse string, kindIndex int) ([]port.EntityRequest, []interface{}, error) {
+	startExtract := time.Now()
+	kindLabel := fmt.Sprintf("%s-%d", c.Resource.Kind, kindIndex)
 	unstructuredObj, ok := obj.(*unstructured.Unstructured)
 	if !ok {
+		metrics.ObjectCount.WithLabelValues(kindLabel, "failed", "extract").Inc()
+		metrics.DurationSeconds.WithLabelValues(kindLabel, "extract").Set(time.Since(startExtract).Seconds())
 		return nil, nil, fmt.Errorf("error casting to unstructured")
 	}
 	var structuredObj interface{}
 	err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.DeepCopy().Object, &structuredObj)
 	if err != nil {
+		metrics.ObjectCount.WithLabelValues(kindLabel, "failed", "extract").Inc()
+		metrics.DurationSeconds.WithLabelValues(kindLabel, "extract").Set(time.Since(startExtract).Seconds())
 		return nil, nil, fmt.Errorf("error converting from unstructured: %v", err)
 	}
-
-	entities := make([]port.EntityRequest, 0, len(mappings))
 	objectsToMap := make([]interface{}, 0)
-
 	if itemsToParse == "" {
-		logger.Debugw("No items to parse defined. adding object to objectsToMap", "object", structuredObj, "resource", c.Resource.Kind)
+		logger.Debugw("No items to parse defined. adding object to objectsToMap", "object", structuredObj, "resource", kindLabel)
 		objectsToMap = append(objectsToMap, structuredObj)
 	} else {
-		logger.Debugw("Items to parse defined. getting items by jq", "object", structuredObj, "resource", c.Resource.Kind)
+		logger.Debugw("Items to parse defined. getting items by jq", "object", structuredObj, "resource", kindLabel)
 		items, parseItemsError := jq.ParseArray(itemsToParse, structuredObj)
 		if parseItemsError != nil {
+			metrics.ObjectCount.WithLabelValues(kindLabel, "failed", "extract").Inc()
+			metrics.DurationSeconds.WithLabelValues(kindLabel, "extract").Set(time.Since(startExtract).Seconds())
 			return nil, nil, parseItemsError
 		}
-
 		mappedObject, ok := structuredObj.(map[string]interface{})
 		if !ok {
+			metrics.ObjectCount.WithLabelValues(kindLabel, "failed", "extract").Inc()
+			metrics.DurationSeconds.WithLabelValues(kindLabel, "extract").Set(time.Since(startExtract).Seconds())
 			return nil, nil, fmt.Errorf("error parsing object '%#v'", structuredObj)
 		}
-
 		for _, item := range items {
 			copiedObject := make(map[string]interface{})
 			for key, value := range mappedObject {
@@ -661,31 +667,40 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 			objectsToMap = append(objectsToMap, copiedObject)
 		}
 	}
-
 	rawDataExamples := make([]interface{}, 0)
+	metrics.ObjectCount.WithLabelValues(kindLabel, "raw_extracted", "extract").Set(float64(len(objectsToMap)))
+	metrics.DurationSeconds.WithLabelValues(kindLabel, "extract").Set(time.Since(startExtract).Seconds())
+	// TRANSFORM phase instrumentation
+	startTransform := time.Now()
+	transformedCount := 0
+	filteredOutCount := 0
+	failedTransformCount := 0
+	entities := make([]port.EntityRequest, 0, len(mappings))
 	for _, objectToMap := range objectsToMap {
-		logger.Debugw("Checking if object passes selector", "object", objectToMap, "selector", selector.Query)
 		selectorResult, err := isPassSelector(objectToMap, selector)
-		logger.Debugw("Object passes selector", "object", objectToMap, "selector", selector.Query, "selectorResult", selectorResult)
 		if err != nil {
-			return nil, nil, err
+			failedTransformCount++
+			continue
 		}
-
 		if selectorResult {
-			logger.Debugw("Object passes selector. adding to raw data examples", "object", objectToMap, "selector", selector.Query)
 			if *c.integrationConfig.SendRawDataExamples && len(rawDataExamples) < MaxRawDataExamplesToSend {
 				rawDataExamples = append(rawDataExamples, objectToMap)
 			}
-			logger.Debugw("Mapping entities", "object", objectToMap)
 			currentEntities, err := entity.MapEntities(objectToMap, mappings)
 			if err != nil {
-				return nil, nil, err
+				failedTransformCount++
+				continue
 			}
-			logger.Debugw("Entities mapped", "object", objectToMap, "entitiesCount", len(currentEntities))
 			entities = append(entities, currentEntities...)
+			transformedCount++
+		} else {
+			filteredOutCount++
 		}
 	}
-
+	metrics.ObjectCount.WithLabelValues(kindLabel, "transformed", "transform").Set(float64(transformedCount))
+	metrics.ObjectCount.WithLabelValues(kindLabel, "filtered_out", "transform").Set(float64(filteredOutCount))
+	metrics.ObjectCount.WithLabelValues(kindLabel, "failed", "transform").Set(float64(failedTransformCount))
+	metrics.DurationSeconds.WithLabelValues(kindLabel, "transform").Set(time.Since(startTransform).Seconds())
 	return entities, rawDataExamples, nil
 }
 
@@ -727,13 +742,13 @@ func (c *Controller) shouldSendUpdateEvent(old interface{}, new interface{}, upd
 	if updateEntityOnlyOnDiff == false {
 		return true
 	}
-	for _, kindConfig := range c.Resource.KindConfigs {
-		oldEntities, _, err := c.getObjectEntities(old, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
+	for i, kindConfig := range c.Resource.KindConfigs {
+		oldEntities, _, err := c.getObjectEntities(old, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, i)
 		if err != nil {
 			logger.Errorf("Error getting old entities: %v", err)
 			return true
 		}
-		newEntities, _, err := c.getObjectEntities(new, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
+		newEntities, _, err := c.getObjectEntities(new, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, i)
 		if err != nil {
 			logger.Errorf("Error getting new entities: %v", err)
 			return true

@@ -10,6 +10,7 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/handlers"
 	"github.com/port-labs/port-k8s-exporter/pkg/k8s"
 	"github.com/port-labs/port-k8s-exporter/pkg/logger"
+	"github.com/port-labs/port-k8s-exporter/pkg/metrics"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/integration"
@@ -35,6 +36,9 @@ func main() {
 	// Ensure logs are flushed before application exits
 	defer logger.Shutdown()
 	logger.Infow("Starting Port K8s Exporter", "version", Version)
+
+	metrics.StartMetricsServer(logger.GetLogger())
+
 	k8sConfig := k8s.NewKubeConfig()
 	applicationConfig, err := config.NewConfiguration()
 	if err != nil {
