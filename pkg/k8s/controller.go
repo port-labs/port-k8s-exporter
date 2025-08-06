@@ -468,7 +468,7 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 			}
 		}
 
-		logger.Debugw("Forgetting object from workqueue", "key", item.Key, "controller", c.Resource.Kind, "eventSource", item.EventSource)
+		logger.Debugw("Removing object from workqueue", "key", item.Key, "controller", c.Resource.Kind, "eventSource", item.EventSource)
 		workqueue.Forget(obj)
 		return &SyncResult{
 			EntitiesSet:               make(map[string]interface{}),
