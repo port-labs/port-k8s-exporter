@@ -551,7 +551,7 @@ func (c *Controller) processNextWorkItem(workqueue workqueue.RateLimitingInterfa
 	}(obj)
 
 	if err != nil {
-		logger.Errorw(fmt.Sprintf("Got error while trying to sync an k8s object. Error: %s", err.Error()), "error", err.Error(), "resource", c.Resource.Kind)
+		logger.Errorw(fmt.Sprintf("Got error while trying to sync a k8s object. Error: %s", err.Error()), "error", err.Error(), "resource", c.Resource.Kind)
 		utilruntime.HandleError(err)
 	}
 
