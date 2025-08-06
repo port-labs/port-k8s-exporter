@@ -9,24 +9,59 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	// Metric names
+	MetricDurationName    = "port_k8s_exporter_duration_seconds"
+	MetricObjectCountName = "port_k8s_exporter_object_count"
+	MetricSuccessName     = "port_k8s_exporter_success"
+
+	// Metric kinds
+	MetricKindResync         = "__resync__"
+	MetricKindReconciliation = "__reconciliation__"
+
+	// Metric phases
+	MetricPhaseExtract   = "extract"
+	MetricPhaseTransform = "transform"
+	MetricPhaseLoad      = "load"
+	MetricPhaseResync    = "resync"
+	MetricPhaseDelete    = "delete"
+
+	// Metric transform results
+	MetricTransformResult   = "transformed"
+	MetricFilteredOutResult = "filtered_out"
+
+	// Metric load results
+	MetricLoadedResult = "loaded"
+	MetricSkippedResult = "skipped"
+
+	// Metric extract results
+	MetricRawExtractedResult = "raw_extracted"
+
+	// Metric deletion results
+	MetricDeletedResult = "deleted"
+
+	// Metric generic results
+	MetricFailedResult = "failed"
+)
+
 var (
 	DurationSeconds = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "port_k8s_exporter_duration_seconds",
+			Name: MetricDurationName,
 			Help: "duration description",
 		},
 		[]string{"kind", "phase"},
 	)
 	ObjectCount = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "port_k8s_exporter_object_count",
+			Name: MetricObjectCountName,
 			Help: "object_count description",
 		},
 		[]string{"kind", "object_count_type", "phase"},
 	)
 	Success = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "port_k8s_exporter_success",
+			Name: MetricSuccessName,
 			Help: "success description",
 		},
 		[]string{"kind", "phase"},
