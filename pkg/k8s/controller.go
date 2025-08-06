@@ -12,6 +12,7 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
 	"github.com/port-labs/port-k8s-exporter/pkg/jq"
 	"github.com/port-labs/port-k8s-exporter/pkg/logger"
+	"github.com/port-labs/port-k8s-exporter/pkg/metrics"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/entity"
@@ -158,6 +159,7 @@ func (c *Controller) WaitForCacheSync(stopCh <-chan struct{}) error {
 }
 
 func (c *Controller) RunInitialSync() *SyncResult {
+	startExtract := time.Now()
 	entitiesSet := make(map[string]interface{})
 	rawDataExamples := make([]interface{}, 0)
 	shouldDeleteStaleEntities := true
@@ -198,6 +200,11 @@ func (c *Controller) RunInitialSync() *SyncResult {
 		logger.Debug("Batch Collector has errors setting the delete flag to false")
 		shouldDeleteStaleEntities = false
 	}
+
+	// Extraction phase ends after all work items processed
+	durationExtract := time.Since(startExtract).Seconds()
+	metrics.DurationSeconds.WithLabelValues(c.Resource.Kind, metrics.MetricPhaseExtract).Set(durationExtract)
+	metrics.ObjectCount.WithLabelValues(c.Resource.Kind, "fetched", metrics.MetricPhaseExtract).Set(float64(len(entitiesSet)))
 
 	return &SyncResult{
 		EntitiesSet:               entitiesSet,
@@ -373,6 +380,7 @@ func (bc *BatchCollector) ProcessRemaining(controller *Controller) *SyncResult {
 }
 
 func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLimitingInterface, batchCollector *BatchCollector) (*SyncResult, int, bool) {
+	startLoad := time.Now()
 	if batchCollector.ShouldFlush() {
 		logger.Debugw("Batch collector should flush", "controller", c.Resource.Kind)
 		syncResult := batchCollector.ProcessBatch(c)
@@ -478,6 +486,9 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 		utilruntime.HandleError(err)
 	}
 
+	durationLoad := time.Since(startLoad).Seconds()
+	metrics.DurationSeconds.WithLabelValues(c.Resource.Kind, metrics.MetricPhaseLoad).Set(durationLoad)
+	// You may want to count upserted entities here if available
 	return syncResult, requeueCounterDiff, true
 }
 
@@ -624,6 +635,7 @@ func isPassSelector(obj interface{}, selector port.Selector) (bool, error) {
 }
 
 func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, mappings []port.EntityMapping, itemsToParse string) ([]port.EntityRequest, []interface{}, error) {
+	startTransform := time.Now()
 	unstructuredObj, ok := obj.(*unstructured.Unstructured)
 	if !ok {
 		return nil, nil, fmt.Errorf("error casting to unstructured")
@@ -681,11 +693,12 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 			if err != nil {
 				return nil, nil, err
 			}
-			logger.Debugw("Entities mapped", "object", objectToMap, "entitiesCount", len(currentEntities))
 			entities = append(entities, currentEntities...)
 		}
 	}
-
+	durationTransform := time.Since(startTransform).Seconds()
+	metrics.DurationSeconds.WithLabelValues(c.Resource.Kind, metrics.MetricPhaseTransform).Set(durationTransform)
+	metrics.ObjectCount.WithLabelValues(c.Resource.Kind, "transformed", metrics.MetricPhaseTransform).Set(float64(len(entities)))
 	return entities, rawDataExamples, nil
 }
 
