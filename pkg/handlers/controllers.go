@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"strings"
 	"sync"
 	"time"
 
@@ -154,25 +153,10 @@ func syncController(controller *k8s.Controller, c *ControllersHandler) (map[stri
 func (c *ControllersHandler) runDeleteStaleEntities(ctx context.Context, currentEntitiesSet []map[string]interface{}) {
 	startDelete := time.Now()
 	err := c.portClient.DeleteStaleEntities(ctx, c.stateKey, goutils.MergeMaps(currentEntitiesSet...))
-	durationDelete := time.Since(startDelete).Seconds()
-	// Assuming you can get kinds and counts from currentEntitiesSet
-	for _, entities := range currentEntitiesSet {
-		for kindKey, v := range entities {
-			kind := kindKey
-			if idx := strings.Index(kindKey, ";"); idx != -1 {
-				kind = kindKey[:idx]
-			}
-			var count float64 = 0
-			if arr, ok := v.([]interface{}); ok {
-				count = float64(len(arr))
-			}
-			metrics.DurationSeconds.WithLabelValues(kind, metrics.MetricPhaseDelete).Set(durationDelete)
-			metrics.ObjectCount.WithLabelValues(kind, "deleted", metrics.MetricPhaseDelete).Set(count)
-		}
-	}
 	if err != nil {
 		logger.Errorf("error deleting stale entities: %s", err.Error())
 	}
+	metrics.DurationSeconds.WithLabelValues(metrics.MetricKindReconciliation, metrics.MetricPhaseDelete).Set(time.Since(startDelete).Seconds())
 }
 
 func (c *ControllersHandler) Stop() {

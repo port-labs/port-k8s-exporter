@@ -163,6 +163,7 @@ func (c *Controller) RunInitialSync() *SyncResult {
 	entitiesSet := make(map[string]interface{})
 	rawDataExamples := make([]interface{}, 0)
 	shouldDeleteStaleEntities := true
+	hasError := false
 
 	totalBatchSize := c.calculateTotalBatchSize()
 	batchTimeout := time.Duration(config.ApplicationConfig.BulkSyncBatchTimeoutSeconds) * time.Second
@@ -178,6 +179,10 @@ func (c *Controller) RunInitialSync() *SyncResult {
 	for shouldContinue && (requeueCounter > 0 || c.initialSyncWorkqueue.Len() > 0 || !c.eventHandler.HasSynced()) {
 		logger.Debugw("Processing next work item with batching", "requeueCounter", requeueCounter, "initialSyncWorkqueueLen", c.initialSyncWorkqueue.Len(), "eventHandlerHasSynced", c.eventHandler.HasSynced())
 		syncResult, requeueCounterDiff, shouldContinue = c.processNextWorkItemWithBatching(c.initialSyncWorkqueue, batchCollector)
+		if syncResult == nil && requeueCounterDiff == 0 {
+			hasError = true
+			metrics.ObjectCount.WithLabelValues(c.Resource.Kind, metrics.MetricFailedResult, metrics.MetricPhaseExtract).Add(1)
+		}
 		logger.Debugw("Processed next work item with batching", "syncResult", syncResult, "requeueCounterDiff", requeueCounterDiff, "shouldContinue", shouldContinue)
 		requeueCounter += requeueCounterDiff
 		if syncResult != nil {
@@ -197,14 +202,19 @@ func (c *Controller) RunInitialSync() *SyncResult {
 	}
 
 	if batchCollector.HasErrors() {
-		logger.Debug("Batch Collector has errors setting the delete flag to false")
-		shouldDeleteStaleEntities = false
+		hasError = true
 	}
 
 	// Extraction phase ends after all work items processed
 	durationExtract := time.Since(startExtract).Seconds()
 	metrics.DurationSeconds.WithLabelValues(c.Resource.Kind, metrics.MetricPhaseExtract).Set(durationExtract)
-	metrics.ObjectCount.WithLabelValues(c.Resource.Kind, "fetched", metrics.MetricPhaseExtract).Set(float64(len(entitiesSet)))
+	metrics.ObjectCount.WithLabelValues(c.Resource.Kind, metrics.MetricRawExtractedResult, metrics.MetricPhaseExtract).Set(float64(len(entitiesSet)))
+
+	if hasError {
+		metrics.Success.WithLabelValues(c.Resource.Kind, metrics.MetricPhaseExtract).Set(0)
+	} else {
+		metrics.Success.WithLabelValues(c.Resource.Kind, metrics.MetricPhaseExtract).Set(1)
+	}
 
 	return &SyncResult{
 		EntitiesSet:               entitiesSet,
@@ -488,7 +498,6 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 
 	durationLoad := time.Since(startLoad).Seconds()
 	metrics.DurationSeconds.WithLabelValues(c.Resource.Kind, metrics.MetricPhaseLoad).Set(durationLoad)
-	// You may want to count upserted entities here if available
 	return syncResult, requeueCounterDiff, true
 }
 
@@ -638,11 +647,13 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 	startTransform := time.Now()
 	unstructuredObj, ok := obj.(*unstructured.Unstructured)
 	if !ok {
+		metrics.ObjectCount.WithLabelValues(c.Resource.Kind, metrics.MetricFailedResult, metrics.MetricPhaseTransform).Add(1)
 		return nil, nil, fmt.Errorf("error casting to unstructured")
 	}
 	var structuredObj interface{}
 	err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.DeepCopy().Object, &structuredObj)
 	if err != nil {
+		metrics.ObjectCount.WithLabelValues(c.Resource.Kind, metrics.MetricFailedResult, metrics.MetricPhaseTransform).Add(1)
 		return nil, nil, fmt.Errorf("error converting from unstructured: %v", err)
 	}
 
@@ -680,25 +691,28 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 		selectorResult, err := isPassSelector(objectToMap, selector)
 		logger.Debugw("Object passes selector", "object", objectToMap, "selector", selector.Query, "selectorResult", selectorResult)
 		if err != nil {
+			metrics.ObjectCount.WithLabelValues(c.Resource.Kind, metrics.MetricFailedResult, metrics.MetricPhaseTransform).Add(1)
 			return nil, nil, err
 		}
-
-		if selectorResult {
-			logger.Debugw("Object passes selector. adding to raw data examples", "object", objectToMap, "selector", selector.Query)
-			if *c.integrationConfig.SendRawDataExamples && len(rawDataExamples) < MaxRawDataExamplesToSend {
-				rawDataExamples = append(rawDataExamples, objectToMap)
-			}
-			logger.Debugw("Mapping entities", "object", objectToMap)
-			currentEntities, err := entity.MapEntities(objectToMap, mappings)
-			if err != nil {
-				return nil, nil, err
-			}
-			entities = append(entities, currentEntities...)
+		if !selectorResult {
+			metrics.ObjectCount.WithLabelValues(c.Resource.Kind, metrics.MetricFilteredOutResult, metrics.MetricPhaseTransform).Add(1)
+			continue
 		}
+		logger.Debugw("Object passes selector. adding to raw data examples", "object", objectToMap, "selector", selector.Query)
+		if *c.integrationConfig.SendRawDataExamples && len(rawDataExamples) < MaxRawDataExamplesToSend {
+			rawDataExamples = append(rawDataExamples, objectToMap)
+		}
+		logger.Debugw("Mapping entities", "object", objectToMap)
+		currentEntities, err := entity.MapEntities(objectToMap, mappings)
+		if err != nil {
+			metrics.ObjectCount.WithLabelValues(c.Resource.Kind, metrics.MetricFailedResult, metrics.MetricPhaseTransform).Add(1)
+			return nil, nil, err
+		}
+		entities = append(entities, currentEntities...)
 	}
 	durationTransform := time.Since(startTransform).Seconds()
-	metrics.DurationSeconds.WithLabelValues(c.Resource.Kind, metrics.MetricPhaseTransform).Set(durationTransform)
-	metrics.ObjectCount.WithLabelValues(c.Resource.Kind, "transformed", metrics.MetricPhaseTransform).Set(float64(len(entities)))
+	metrics.DurationSeconds.WithLabelValues(c.Resource.Kind, metrics.MetricPhaseTransform).Add(durationTransform)
+	metrics.ObjectCount.WithLabelValues(c.Resource.Kind, metrics.MetricTransformResult, metrics.MetricPhaseTransform).Add(float64(len(entities)))
 	return entities, rawDataExamples, nil
 }
 
