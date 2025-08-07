@@ -732,7 +732,7 @@ func (c *Controller) entityHandler(portEntity port.EntityRequest, action EventAc
 			}
 			logger.Infow(fmt.Sprintf("Successfully deleted entity %s of blueprint %s", portEntity.Identifier, portEntity.Blueprint), "identifier", portEntity.Identifier, "blueprint", portEntity.Blueprint, "eventSource", eventSource)
 		} else {
-			logger.Warnw(fmt.Sprintf("trying to delete entity but didn't find it in port with this exporter ownership, entity id: %s, blueprint: %s", portEntity.Identifier, portEntity.Blueprint), "identifier", portEntity.Identifier, "blueprint", portEntity.Blueprint, "eventSource", eventSource)
+			logger.Warnw(fmt.Sprintf("trying to delete entity but didn't find it in port with this exporter ownership (statekey: %s), entity id: %s, blueprint: %s", config.ApplicationConfig.StateKey, portEntity.Identifier, portEntity.Blueprint), "identifier", portEntity.Identifier, "blueprint", portEntity.Blueprint, "eventSource", eventSource)
 		}
 	}
 
