@@ -106,7 +106,8 @@ func MapEntities(obj interface{}, mappings []port.EntityMapping) ([]port.EntityR
 		logger.Debugw("Mapping entity", "object", obj, "blueprint", entityMapping.Blueprint)
 		portEntity, err := newEntityRequest(obj, entityMapping)
 		if err != nil {
-			return nil, fmt.Errorf("invalid entity mapping '%#v': %v", entityMapping, err)
+			logger.Errorw(fmt.Sprintf("failed to map entity. Error: %s", err.Error()), "object", obj, "blueprint", entityMapping.Blueprint, "error", err)
+			return nil, fmt.Errorf("failed to map entity")
 		}
 		logger.Debugw("Mapped entity", "entity", portEntity.Identifier, "blueprint", portEntity.Blueprint)
 		entities = append(entities, *portEntity)
@@ -128,16 +129,19 @@ func newEntityRequest(obj interface{}, mapping port.EntityMapping) (*port.Entity
 	}
 
 	if err != nil {
+		logger.Errorw(fmt.Sprintf("error parsing identifier. Error: %s", err.Error()), "object", obj, "mapping", mapping.Identifier, "error", err)
 		return nil, err
 	}
 	if mapping.Title != "" {
 		entity.Title, err = jq.ParseString(mapping.Title, obj)
 		if err != nil {
+			logger.Errorw(fmt.Sprintf("error parsing title for entity %s. Error: %s", entity.Identifier, err.Error()), "object", obj, "mapping", mapping.Title, "entity", entity.Identifier, "error", err)
 			return nil, err
 		}
 	}
 	entity.Blueprint, err = jq.ParseString(mapping.Blueprint, obj)
 	if err != nil {
+		logger.Errorw(fmt.Sprintf("error parsing blueprint for entity %s. Error: %s", entity.Identifier, err.Error()), "object", obj, "mapping", mapping.Blueprint, "entity", entity.Identifier, "error", err)
 		return nil, err
 	}
 	if mapping.Team != nil {
@@ -149,21 +153,25 @@ func newEntityRequest(obj interface{}, mapping port.EntityMapping) (*port.Entity
 			return nil, fmt.Errorf("invalid team type '%T'", mapping.Team)
 		}
 		if err != nil {
+			logger.Errorw(fmt.Sprintf("error parsing team for entity %s. Error: %s", entity.Identifier, err.Error()), "object", obj, "mapping", mapping.Team, "entity", entity.Identifier, "error", err)
 			return nil, err
 		}
 	}
 	if mapping.Icon != "" {
 		entity.Icon, err = jq.ParseString(mapping.Icon, obj)
 		if err != nil {
+			logger.Errorw(fmt.Sprintf("error parsing icon for entity %s. Error: %s", entity.Identifier, err.Error()), "object", obj, "mapping", mapping.Icon, "entity", entity.Identifier, "error", err)
 			return nil, err
 		}
 	}
 	entity.Properties, err = jq.ParseMapInterface(mapping.Properties, obj)
 	if err != nil {
+		logger.Errorw(fmt.Sprintf("error parsing properties for entity %s. Error: %s", entity.Identifier, err.Error()), "object", obj, "entity", entity.Identifier, "error", err)
 		return nil, err
 	}
 	entity.Relations, err = jq.ParseMapRecursively(mapping.Relations, obj)
 	if err != nil {
+		logger.Errorw(fmt.Sprintf("error parsing relations for entity %s. Error: %s", entity.Identifier, err.Error()), "object", obj, "entity", entity.Identifier, "error", err)
 		return nil, err
 	}
 
