@@ -443,7 +443,7 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 				if numRequeues >= MaxNumRequeues {
 					logger.Debugw("Removing object from workqueue because it's been requeued too many times", "error", err.Error(), "key", item.Key, "controller", c.Resource.Kind, "eventSource", item.EventSource)
 					workqueue.Forget(obj)
-					return nil, requeueCounterDiff, fmt.Errorf("error getting entities for object '%s'. giving up", item.Key)
+					return nil, requeueCounterDiff, fmt.Errorf("error getting entities for object '%s'. Out of retries - object will not be processed", item.Key)
 				}
 
 				if numRequeues == 0 {
@@ -453,7 +453,7 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 				}
 				logger.Debugw("Requeuing object with rate limiting", "error", err.Error(), "key", item.Key, "controller", c.Resource.Kind, "eventSource", item.EventSource)
 				workqueue.AddRateLimited(obj)
-				return nil, requeueCounterDiff, fmt.Errorf("error getting entities for object '%s'. requeuing", item.Key)
+				return nil, requeueCounterDiff, fmt.Errorf("error getting entities for object '%s'. Requeuing", item.Key)
 			}
 
 			if len(rawDataExamples) < MaxRawDataExamplesToSend {
@@ -534,7 +534,7 @@ func (c *Controller) processNextWorkItem(workqueue workqueue.RateLimitingInterfa
 
 			if numRequeues >= MaxNumRequeues {
 				workqueue.Forget(obj)
-				return syncResult, requeueCounterDiff, fmt.Errorf("error syncing '%s' of resource '%s'. give up after %d requeues", item.Key, c.Resource.Kind, MaxNumRequeues)
+				return syncResult, requeueCounterDiff, fmt.Errorf("error syncing '%s' of resource '%s'. Out of retries - object will not be processed", item.Key, c.Resource.Kind)
 			}
 
 			if numRequeues == 0 {
@@ -543,7 +543,7 @@ func (c *Controller) processNextWorkItem(workqueue workqueue.RateLimitingInterfa
 				requeueCounterDiff = 0
 			}
 			workqueue.AddRateLimited(obj)
-			return nil, requeueCounterDiff, fmt.Errorf("error syncing '%s' of resource '%s'. requeuing", item.Key, c.Resource.Kind)
+			return nil, requeueCounterDiff, fmt.Errorf("error syncing '%s' of resource '%s'. Requeuing", item.Key, c.Resource.Kind)
 		}
 
 		workqueue.Forget(obj)
