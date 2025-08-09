@@ -3,6 +3,7 @@ package metrics
 import (
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -85,4 +86,10 @@ func StartMetricsServer(logger *zap.SugaredLogger) {
 		http.Handle("/metrics", promhttp.Handler())
 		_ = http.ListenAndServe(":6556", nil)
 	}()
+}
+
+func MeasureDuration(fn func(), onDuration func(duration float64)) {
+	start := time.Now()
+	fn()
+	onDuration(time.Since(start).Seconds())
 }

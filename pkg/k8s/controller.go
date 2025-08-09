@@ -58,8 +58,8 @@ type Controller struct {
 	eventsWorkqueue      workqueue.RateLimitingInterface
 	initialSyncWorkqueue workqueue.RateLimitingInterface
 	isInitialSyncDone    bool
-	transformDurations map[string]float64
-	loadDurations      map[string]float64
+	transformDurations   map[string]float64
+	loadDurations        map[string]float64
 }
 
 func NewController(resource port.AggregatedResource, informer informers.GenericInformer, integrationConfig *port.IntegrationAppConfig, applicationConfig *config.ApplicationConfiguration) *Controller {
@@ -302,74 +302,61 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 			logger.Debugw("Skipping blueprint with no entities", "blueprint", blueprint)
 			continue
 		}
-
 		logger.Infow("Processing entities for blueprint", "blueprint", blueprint, "entityCount", len(entities))
-
 		kindLabel := controller.Resource.Kind
-		loadStart := time.Now()
-		optimalBatchSize := calculateBulkSize(entities, maxEntitiesPerBlueprintBatch, maxPayloadBytes)
-		logger.Infow("Calculated optimal batch size for blueprint", "blueprint", blueprint, "optimalBatchSize", optimalBatchSize)
-
-		for i := 0; i < len(entities); i += optimalBatchSize {
-			end := i + optimalBatchSize
-			if end > len(entities) {
-				end = len(entities)
-			}
-			batchEntities := entities[i:end]
-
-			bulkResponse, err := controller.portClient.BulkUpsertEntities(context.Background(), blueprint, batchEntities, "", controller.portClient.CreateMissingRelatedEntities)
-			if err != nil {
-				logger.Warnw("Bulk upsert failed", "blueprint", blueprint, "entityCount", len(batchEntities), "error", err)
-				bc.fallbackToIndividualUpserts(controller, batchEntities, &entitiesSet, &shouldDeleteStaleEntities)
-				continue
-			}
-
-			successCount := 0
-			for _, result := range bulkResponse.Entities {
-				if result.Created {
-					successCount++
-					logger.Infow("Successfully upserted entity", "blueprint", blueprint, "identifier", result.Identifier)
+		metrics.MeasureDuration(func() {
+			optimalBatchSize := calculateBulkSize(entities, maxEntitiesPerBlueprintBatch, maxPayloadBytes)
+			logger.Infow("Calculated optimal batch size for blueprint", "blueprint", blueprint, "optimalBatchSize", optimalBatchSize)
+			for i := 0; i < len(entities); i += optimalBatchSize {
+				end := i + optimalBatchSize
+				if end > len(entities) {
+					end = len(entities)
 				}
-
-				mockEntity := &port.Entity{
-					Identifier: result.Identifier,
-					Blueprint:  blueprint,
+				batchEntities := entities[i:end]
+				bulkResponse, err := controller.portClient.BulkUpsertEntities(context.Background(), blueprint, batchEntities, "", controller.portClient.CreateMissingRelatedEntities)
+				if err != nil {
+					logger.Warnw("Bulk upsert failed", "blueprint", blueprint, "entityCount", len(batchEntities), "error", err)
+					bc.fallbackToIndividualUpserts(controller, batchEntities, &entitiesSet, &shouldDeleteStaleEntities)
+					continue
 				}
-				entitiesSet[controller.portClient.GetEntityIdentifierKey(mockEntity)] = nil
-			}
-
-			// Handle partial failures - retry failed entities individually
-			if len(bulkResponse.Errors) > 0 {
-				logger.Warnw("Bulk upsert had failures", "blueprint", blueprint, "failedCount", len(bulkResponse.Errors), "totalCount", len(batchEntities))
-
-				failedIdentifiers := make(map[string]bool)
-				for _, bulkError := range bulkResponse.Errors {
-					failedIdentifiers[bulkError.Identifier] = true
-					logger.Infow("Bulk upsert failed for entity", "blueprint", blueprint, "identifier", bulkError.Identifier, "message", bulkError.Message)
+				successCount := 0
+				for _, result := range bulkResponse.Entities {
+					if result.Created {
+						successCount++
+						logger.Infow("Successfully upserted entity", "blueprint", blueprint, "identifier", result.Identifier)
+					}
+					mockEntity := &port.Entity{
+						Identifier: result.Identifier,
+						Blueprint:  blueprint,
+					}
+					entitiesSet[controller.portClient.GetEntityIdentifierKey(mockEntity)] = nil
 				}
-
-				failedEntities := make([]port.EntityRequest, 0)
-				for _, entity := range batchEntities {
-					if failedIdentifiers[fmt.Sprintf("%v", entity.Identifier)] {
-						failedEntities = append(failedEntities, entity)
+				if len(bulkResponse.Errors) > 0 {
+					logger.Warnw("Bulk upsert had failures", "blueprint", blueprint, "failedCount", len(bulkResponse.Errors), "totalCount", len(batchEntities))
+					failedIdentifiers := make(map[string]bool)
+					for _, bulkError := range bulkResponse.Errors {
+						failedIdentifiers[bulkError.Identifier] = true
+						logger.Infow("Bulk upsert failed for entity", "blueprint", blueprint, "identifier", bulkError.Identifier, "message", bulkError.Message)
+					}
+					failedEntities := make([]port.EntityRequest, 0)
+					for _, entity := range batchEntities {
+						if failedIdentifiers[fmt.Sprintf("%v", entity.Identifier)] {
+							failedEntities = append(failedEntities, entity)
+						}
+					}
+					if len(failedEntities) > 0 {
+						bc.fallbackToIndividualUpserts(controller, failedEntities, &entitiesSet, &shouldDeleteStaleEntities)
 					}
 				}
-
-				if len(failedEntities) > 0 {
-					bc.fallbackToIndividualUpserts(controller, failedEntities, &entitiesSet, &shouldDeleteStaleEntities)
-				}
+				logger.Infow("Bulk upsert completed for blueprint", "blueprint", blueprint, "successCount", successCount, "failedCount", len(bulkResponse.Errors))
 			}
-
-			logger.Infow("Bulk upsert completed for blueprint", "blueprint", blueprint, "successCount", successCount, "failedCount", len(bulkResponse.Errors))
-		}
-		loadDuration := time.Since(loadStart).Seconds()
-		controller.loadDurations[kindLabel] += loadDuration
+		}, func(duration float64) {
+			controller.loadDurations[kindLabel] += duration
+		})
 	}
-
 	// Clear the batch
 	bc.entitiesByBlueprint = make(map[string][]port.EntityRequest)
 	bc.lastFlush = time.Now()
-
 	return &SyncResult{
 		EntitiesSet:               entitiesSet,
 		RawDataExamples:           make([]interface{}, 0),
@@ -655,76 +642,84 @@ func isPassSelector(obj interface{}, selector port.Selector) (bool, error) {
 
 func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, mappings []port.EntityMapping, itemsToParse string, kindIndex int) ([]port.EntityRequest, []interface{}, error) {
 	kindLabel := fmt.Sprintf("%s-%d", c.Resource.Kind, kindIndex)
-	transformStart := time.Now()
-	unstructuredObj, ok := obj.(*unstructured.Unstructured)
-	if !ok {
-		metrics.ObjectCount.WithLabelValues(c.Resource.Kind, metrics.MetricFailedResult, metrics.MetricPhaseTransform).Add(1)
-		return nil, nil, fmt.Errorf("error casting to unstructured")
-	}
-	var structuredObj interface{}
-	err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.DeepCopy().Object, &structuredObj)
-	if err != nil {
-		metrics.ObjectCount.WithLabelValues(kindLabel, metrics.MetricFailedResult, metrics.MetricPhaseTransform).Add(1)
-		return nil, nil, fmt.Errorf("error converting from unstructured: %v", err)
-	}
+	var (
+		entities        []port.EntityRequest
+		rawDataExamples []interface{}
+		err             error
+	)
 
-	entities := make([]port.EntityRequest, 0, len(mappings))
-	objectsToMap := make([]interface{}, 0)
-
-	if itemsToParse == "" {
-		logger.Debugw("No items to parse defined. adding object to objectsToMap", "object", structuredObj, "resource", c.Resource.Kind)
-		objectsToMap = append(objectsToMap, structuredObj)
-	} else {
-		logger.Debugw("Items to parse defined. getting items by jq", "object", structuredObj, "resource", c.Resource.Kind)
-		items, parseItemsError := jq.ParseArray(itemsToParse, structuredObj)
-		if parseItemsError != nil {
-			return nil, nil, parseItemsError
-		}
-
-		mappedObject, ok := structuredObj.(map[string]interface{})
+	metrics.MeasureDuration(func() {
+		unstructuredObj, ok := obj.(*unstructured.Unstructured)
 		if !ok {
-			return nil, nil, fmt.Errorf("error parsing object '%#v'", structuredObj)
+			metrics.ObjectCount.WithLabelValues(c.Resource.Kind, metrics.MetricFailedResult, metrics.MetricPhaseTransform).Add(1)
+			err = fmt.Errorf("error casting to unstructured")
+			return
 		}
-
-		for _, item := range items {
-			copiedObject := make(map[string]interface{})
-			for key, value := range mappedObject {
-				copiedObject[key] = value
-			}
-			copiedObject["item"] = item
-			objectsToMap = append(objectsToMap, copiedObject)
-		}
-	}
-
-	rawDataExamples := make([]interface{}, 0)
-	for _, objectToMap := range objectsToMap {
-		logger.Debugw("Checking if object passes selector", "object", objectToMap, "selector", selector.Query)
-		selectorResult, err := isPassSelector(objectToMap, selector)
-		logger.Debugw("Object passes selector", "object", objectToMap, "selector", selector.Query, "selectorResult", selectorResult)
+		var structuredObj interface{}
+		err = runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.DeepCopy().Object, &structuredObj)
 		if err != nil {
 			metrics.ObjectCount.WithLabelValues(kindLabel, metrics.MetricFailedResult, metrics.MetricPhaseTransform).Add(1)
-			return nil, nil, err
+			err = fmt.Errorf("error converting from unstructured: %v", err)
+			return
 		}
-		if !selectorResult {
-			metrics.ObjectCount.WithLabelValues(kindLabel, metrics.MetricFilteredOutResult, metrics.MetricPhaseTransform).Add(1)
-			continue
+		entities = make([]port.EntityRequest, 0, len(mappings))
+		objectsToMap := make([]interface{}, 0)
+		if itemsToParse == "" {
+			logger.Debugw("No items to parse defined. adding object to objectsToMap", "object", structuredObj, "resource", c.Resource.Kind)
+			objectsToMap = append(objectsToMap, structuredObj)
+		} else {
+			logger.Debugw("Items to parse defined. getting items by jq", "object", structuredObj, "resource", c.Resource.Kind)
+			items, parseItemsError := jq.ParseArray(itemsToParse, structuredObj)
+			if parseItemsError != nil {
+				err = parseItemsError
+				return
+			}
+			mappedObject, ok := structuredObj.(map[string]interface{})
+			if !ok {
+				err = fmt.Errorf("error parsing object '%#v'", structuredObj)
+				return
+			}
+			for _, item := range items {
+				copiedObject := make(map[string]interface{})
+				for key, value := range mappedObject {
+					copiedObject[key] = value
+				}
+				copiedObject["item"] = item
+				objectsToMap = append(objectsToMap, copiedObject)
+			}
 		}
-		logger.Debugw("Object passes selector. adding to raw data examples", "object", objectToMap, "selector", selector.Query)
-		if *c.integrationConfig.SendRawDataExamples && len(rawDataExamples) < MaxRawDataExamplesToSend {
-			rawDataExamples = append(rawDataExamples, objectToMap)
+		rawDataExamples = make([]interface{}, 0)
+		for _, objectToMap := range objectsToMap {
+			logger.Debugw("Checking if object passes selector", "object", objectToMap, "selector", selector.Query)
+			selectorResult, selErr := isPassSelector(objectToMap, selector)
+			logger.Debugw("Object passes selector", "object", objectToMap, "selector", selector.Query, "selectorResult", selectorResult)
+			if selErr != nil {
+				metrics.ObjectCount.WithLabelValues(kindLabel, metrics.MetricFailedResult, metrics.MetricPhaseTransform).Add(1)
+				err = selErr
+				return
+			}
+			if !selectorResult {
+				metrics.ObjectCount.WithLabelValues(kindLabel, metrics.MetricFilteredOutResult, metrics.MetricPhaseTransform).Add(1)
+				continue
+			}
+			logger.Debugw("Object passes selector. adding to raw data examples", "object", objectToMap, "selector", selector.Query)
+			if *c.integrationConfig.SendRawDataExamples && len(rawDataExamples) < MaxRawDataExamplesToSend {
+				rawDataExamples = append(rawDataExamples, objectToMap)
+			}
+			logger.Debugw("Mapping entities", "object", objectToMap)
+			currentEntities, mapErr := entity.MapEntities(objectToMap, mappings)
+			if mapErr != nil {
+				metrics.ObjectCount.WithLabelValues(kindLabel, metrics.MetricFailedResult, metrics.MetricPhaseTransform).Add(float64(len(currentEntities)))
+				err = mapErr
+				return
+			}
+			entities = append(entities, currentEntities...)
 		}
-		logger.Debugw("Mapping entities", "object", objectToMap)
-		currentEntities, err := entity.MapEntities(objectToMap, mappings)
-		if err != nil {
-			metrics.ObjectCount.WithLabelValues(kindLabel, metrics.MetricFailedResult, metrics.MetricPhaseTransform).Add(float64(len(currentEntities)))
-			return nil, nil, err
-		}
-		entities = append(entities, currentEntities...)
-	}
-	metrics.ObjectCount.WithLabelValues(kindLabel, metrics.MetricTransformResult, metrics.MetricPhaseTransform).Add(float64(len(entities)))
-	transformDuration := time.Since(transformStart).Seconds()
-	c.transformDurations[kindLabel] += transformDuration
-	return entities, rawDataExamples, nil
+		metrics.ObjectCount.WithLabelValues(kindLabel, metrics.MetricTransformResult, metrics.MetricPhaseTransform).Add(float64(len(entities)))
+	}, func(duration float64) {
+		c.transformDurations[kindLabel] += duration
+	})
+	return entities, rawDataExamples, err
 }
 
 func (c *Controller) entityHandler(portEntity port.EntityRequest, action EventActionType, eventSource port.EventSource) (*port.Entity, error) {
