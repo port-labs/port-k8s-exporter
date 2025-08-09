@@ -26,16 +26,16 @@ const (
 	MetricPhaseResync    = "resync"
 	MetricPhaseDelete    = "delete"
 
+	// Metric extract results
+	MetricRawExtractedResult = "raw_extracted"
+
 	// Metric transform results
 	MetricTransformResult   = "transformed"
 	MetricFilteredOutResult = "filtered_out"
 
 	// Metric load results
-	MetricLoadedResult = "loaded"
+	MetricLoadedResult  = "loaded"
 	MetricSkippedResult = "skipped"
-
-	// Metric extract results
-	MetricRawExtractedResult = "raw_extracted"
 
 	// Metric deletion results
 	MetricDeletedResult = "deleted"

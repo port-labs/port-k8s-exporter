@@ -58,6 +58,8 @@ type Controller struct {
 	eventsWorkqueue      workqueue.RateLimitingInterface
 	initialSyncWorkqueue workqueue.RateLimitingInterface
 	isInitialSyncDone    bool
+	transformDurations map[string]float64
+	loadDurations      map[string]float64
 }
 
 func NewController(resource port.AggregatedResource, informer informers.GenericInformer, integrationConfig *port.IntegrationAppConfig, applicationConfig *config.ApplicationConfiguration) *Controller {
@@ -159,11 +161,14 @@ func (c *Controller) WaitForCacheSync(stopCh <-chan struct{}) error {
 }
 
 func (c *Controller) RunInitialSync() *SyncResult {
-	startExtract := time.Now()
 	entitiesSet := make(map[string]interface{})
 	rawDataExamples := make([]interface{}, 0)
 	shouldDeleteStaleEntities := true
 	hasError := false
+
+	// --- RESET duration accumulators ---
+	c.transformDurations = make(map[string]float64)
+	c.loadDurations = make(map[string]float64)
 
 	totalBatchSize := c.calculateTotalBatchSize()
 	batchTimeout := time.Duration(config.ApplicationConfig.BulkSyncBatchTimeoutSeconds) * time.Second
@@ -205,15 +210,18 @@ func (c *Controller) RunInitialSync() *SyncResult {
 		hasError = true
 	}
 
-	// Extraction phase ends after all work items processed
-	durationExtract := time.Since(startExtract).Seconds()
-	metrics.DurationSeconds.WithLabelValues(c.Resource.Kind, metrics.MetricPhaseExtract).Set(durationExtract)
-	metrics.ObjectCount.WithLabelValues(c.Resource.Kind, metrics.MetricRawExtractedResult, metrics.MetricPhaseExtract).Set(float64(len(entitiesSet)))
-
 	if hasError {
-		metrics.Success.WithLabelValues(c.Resource.Kind, metrics.MetricPhaseExtract).Set(0)
+		metrics.Success.WithLabelValues(c.Resource.Kind, metrics.MetricPhaseResync).Set(0)
 	} else {
-		metrics.Success.WithLabelValues(c.Resource.Kind, metrics.MetricPhaseExtract).Set(1)
+		metrics.Success.WithLabelValues(c.Resource.Kind, metrics.MetricPhaseResync).Set(1)
+	}
+
+	// --- REPORT transform and load duration metrics per kind index ---
+	for kindLabel, duration := range c.transformDurations {
+		metrics.DurationSeconds.WithLabelValues(kindLabel, metrics.MetricPhaseTransform).Set(duration)
+	}
+	for kindLabel, duration := range c.loadDurations {
+		metrics.DurationSeconds.WithLabelValues(kindLabel, metrics.MetricPhaseLoad).Set(duration)
 	}
 
 	return &SyncResult{
@@ -279,12 +287,10 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 			ShouldDeleteStaleEntities: !bc.hasErrors,
 		}
 	}
-
 	entitiesSet := make(map[string]interface{})
 	shouldDeleteStaleEntities := !bc.hasErrors
 	maxPayloadBytes := config.ApplicationConfig.BulkSyncMaxPayloadBytes
 	maxEntitiesPerBlueprintBatch := config.ApplicationConfig.BulkSyncMaxEntitiesPerBatch
-
 	totalEntities := 0
 	for _, entities := range bc.entitiesByBlueprint {
 		totalEntities += len(entities)
@@ -299,6 +305,8 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 
 		logger.Infow("Processing entities for blueprint", "blueprint", blueprint, "entityCount", len(entities))
 
+		kindLabel := controller.Resource.Kind
+		loadStart := time.Now()
 		optimalBatchSize := calculateBulkSize(entities, maxEntitiesPerBlueprintBatch, maxPayloadBytes)
 		logger.Infow("Calculated optimal batch size for blueprint", "blueprint", blueprint, "optimalBatchSize", optimalBatchSize)
 
@@ -354,6 +362,8 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 
 			logger.Infow("Bulk upsert completed for blueprint", "blueprint", blueprint, "successCount", successCount, "failedCount", len(bulkResponse.Errors))
 		}
+		loadDuration := time.Since(loadStart).Seconds()
+		controller.loadDurations[kindLabel] += loadDuration
 	}
 
 	// Clear the batch
@@ -448,8 +458,8 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 		}
 
 		rawDataExamples := make([]interface{}, 0)
-		for _, kindConfig := range c.Resource.KindConfigs {
-			portEntities, rawDataExamplesForObj, err := c.getObjectEntities(k8sObj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
+		for kindIndex, kindConfig := range c.Resource.KindConfigs {
+			portEntities, rawDataExamplesForObj, err := c.getObjectEntities(k8sObj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, kindIndex)
 			if err != nil {
 				logger.Debugw("Error getting entities for object. marking batch collector as having errors", "error", err.Error(), "key", item.Key, "controller", c.Resource.Kind)
 				batchCollector.MarkError()
@@ -590,9 +600,9 @@ func (c *Controller) objectHandler(obj interface{}, item EventItem) (*SyncResult
 	entitiesSet := make(map[string]interface{})
 	rawDataExamplesToReturn := make([]interface{}, 0)
 
-	for _, kindConfig := range c.Resource.KindConfigs {
+	for kindIndex, kindConfig := range c.Resource.KindConfigs {
 		logger.Debugw("Getting entities for object", "key", item.Key, "resource", c.Resource.Kind)
-		portEntities, rawDataExamples, err := c.getObjectEntities(obj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
+		portEntities, rawDataExamples, err := c.getObjectEntities(obj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, kindIndex)
 		if err != nil {
 			logger.Errorw("error getting entities", "error", err.Error(), "key", item.Key, "resource", c.Resource.Kind)
 			entitiesSet = nil
@@ -643,8 +653,9 @@ func isPassSelector(obj interface{}, selector port.Selector) (bool, error) {
 	return selectorResult, err
 }
 
-func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, mappings []port.EntityMapping, itemsToParse string) ([]port.EntityRequest, []interface{}, error) {
-	startTransform := time.Now()
+func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, mappings []port.EntityMapping, itemsToParse string, kindIndex int) ([]port.EntityRequest, []interface{}, error) {
+	kindLabel := fmt.Sprintf("%s-%d", c.Resource.Kind, kindIndex)
+	transformStart := time.Now()
 	unstructuredObj, ok := obj.(*unstructured.Unstructured)
 	if !ok {
 		metrics.ObjectCount.WithLabelValues(c.Resource.Kind, metrics.MetricFailedResult, metrics.MetricPhaseTransform).Add(1)
@@ -653,7 +664,7 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 	var structuredObj interface{}
 	err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.DeepCopy().Object, &structuredObj)
 	if err != nil {
-		metrics.ObjectCount.WithLabelValues(c.Resource.Kind, metrics.MetricFailedResult, metrics.MetricPhaseTransform).Add(1)
+		metrics.ObjectCount.WithLabelValues(kindLabel, metrics.MetricFailedResult, metrics.MetricPhaseTransform).Add(1)
 		return nil, nil, fmt.Errorf("error converting from unstructured: %v", err)
 	}
 
@@ -691,11 +702,11 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 		selectorResult, err := isPassSelector(objectToMap, selector)
 		logger.Debugw("Object passes selector", "object", objectToMap, "selector", selector.Query, "selectorResult", selectorResult)
 		if err != nil {
-			metrics.ObjectCount.WithLabelValues(c.Resource.Kind, metrics.MetricFailedResult, metrics.MetricPhaseTransform).Add(1)
+			metrics.ObjectCount.WithLabelValues(kindLabel, metrics.MetricFailedResult, metrics.MetricPhaseTransform).Add(1)
 			return nil, nil, err
 		}
 		if !selectorResult {
-			metrics.ObjectCount.WithLabelValues(c.Resource.Kind, metrics.MetricFilteredOutResult, metrics.MetricPhaseTransform).Add(1)
+			metrics.ObjectCount.WithLabelValues(kindLabel, metrics.MetricFilteredOutResult, metrics.MetricPhaseTransform).Add(1)
 			continue
 		}
 		logger.Debugw("Object passes selector. adding to raw data examples", "object", objectToMap, "selector", selector.Query)
@@ -705,14 +716,14 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 		logger.Debugw("Mapping entities", "object", objectToMap)
 		currentEntities, err := entity.MapEntities(objectToMap, mappings)
 		if err != nil {
-			metrics.ObjectCount.WithLabelValues(c.Resource.Kind, metrics.MetricFailedResult, metrics.MetricPhaseTransform).Add(1)
+			metrics.ObjectCount.WithLabelValues(kindLabel, metrics.MetricFailedResult, metrics.MetricPhaseTransform).Add(float64(len(currentEntities)))
 			return nil, nil, err
 		}
 		entities = append(entities, currentEntities...)
 	}
-	durationTransform := time.Since(startTransform).Seconds()
-	metrics.DurationSeconds.WithLabelValues(c.Resource.Kind, metrics.MetricPhaseTransform).Add(durationTransform)
-	metrics.ObjectCount.WithLabelValues(c.Resource.Kind, metrics.MetricTransformResult, metrics.MetricPhaseTransform).Add(float64(len(entities)))
+	metrics.ObjectCount.WithLabelValues(kindLabel, metrics.MetricTransformResult, metrics.MetricPhaseTransform).Add(float64(len(entities)))
+	transformDuration := time.Since(transformStart).Seconds()
+	c.transformDurations[kindLabel] += transformDuration
 	return entities, rawDataExamples, nil
 }
 
@@ -754,13 +765,13 @@ func (c *Controller) shouldSendUpdateEvent(old interface{}, new interface{}, upd
 	if updateEntityOnlyOnDiff == false {
 		return true
 	}
-	for _, kindConfig := range c.Resource.KindConfigs {
-		oldEntities, _, err := c.getObjectEntities(old, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
+	for kindIndex, kindConfig := range c.Resource.KindConfigs {
+		oldEntities, _, err := c.getObjectEntities(old, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, kindIndex)
 		if err != nil {
 			logger.Errorf("Error getting old entities: %v", err)
 			return true
 		}
-		newEntities, _, err := c.getObjectEntities(new, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
+		newEntities, _, err := c.getObjectEntities(new, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, kindIndex)
 		if err != nil {
 			logger.Errorf("Error getting new entities: %v", err)
 			return true
@@ -812,4 +823,9 @@ func calculateBulkSize(entities []port.EntityRequest, maxLength int, maxSizeInBy
 	maxObjectsPerBatch := int(math.Min(float64(maxLength), math.Floor(float64(maxSizeInBytes)/float64(estimatedObjectSize))))
 
 	return int(math.Max(1, float64(maxObjectsPerBatch)))
+}
+
+// WorkqueueLen returns the number of items in the initial sync workqueue.
+func (c *Controller) WorkqueueLen() int {
+	return c.initialSyncWorkqueue.Len()
 }
