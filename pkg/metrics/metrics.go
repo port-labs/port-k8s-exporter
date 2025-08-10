@@ -35,8 +35,7 @@ const (
 	MetricFilteredOutResult = "filtered_out"
 
 	// Metric load results
-	MetricLoadedResult  = "loaded"
-	MetricSkippedResult = "skipped"
+	MetricLoadedResult = "loaded"
 
 	// Metric deletion results
 	MetricDeletedResult = "deleted"

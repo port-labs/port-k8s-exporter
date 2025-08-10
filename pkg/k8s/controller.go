@@ -278,6 +278,7 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 	maxPayloadBytes := config.ApplicationConfig.BulkSyncMaxPayloadBytes
 	maxEntitiesPerBlueprintBatch := config.ApplicationConfig.BulkSyncMaxEntitiesPerBatch
 	totalEntities := 0
+	failedUpsertsCount := 0
 	for _, entities := range bc.entitiesByBlueprint {
 		totalEntities += len(entities)
 	}
@@ -301,7 +302,7 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 				bulkResponse, err := controller.portClient.BulkUpsertEntities(context.Background(), blueprint, batchEntities, "", controller.portClient.CreateMissingRelatedEntities)
 				if err != nil {
 					logger.Warnw("Bulk upsert failed", "blueprint", blueprint, "entityCount", len(batchEntities), "error", err)
-					bc.fallbackToIndividualUpserts(controller, batchEntities, &entitiesSet, &shouldDeleteStaleEntities)
+					failedUpsertsCount += bc.fallbackToIndividualUpserts(controller, batchEntities, &entitiesSet, &shouldDeleteStaleEntities)
 					continue
 				}
 				successCount := 0
@@ -330,7 +331,7 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 						}
 					}
 					if len(failedEntities) > 0 {
-						bc.fallbackToIndividualUpserts(controller, failedEntities, &entitiesSet, &shouldDeleteStaleEntities)
+						failedUpsertsCount += bc.fallbackToIndividualUpserts(controller, failedEntities, &entitiesSet, &shouldDeleteStaleEntities)
 					}
 				}
 				logger.Infow("Bulk upsert completed for blueprint", "blueprint", blueprint, "successCount", successCount, "failedCount", len(bulkResponse.Errors))
@@ -340,6 +341,8 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 	// Clear the batch
 	bc.entitiesByBlueprint = make(map[string][]port.EntityRequest)
 	bc.lastFlush = time.Now()
+	metrics.AddObjectCount(controller.Resource.Kind, metrics.MetricLoadedResult, metrics.MetricPhaseLoad, float64(len(entitiesSet)))
+	metrics.AddObjectCount(controller.Resource.Kind, metrics.MetricFailedResult, metrics.MetricPhaseLoad, float64(failedUpsertsCount))
 	return &SyncResult{
 		EntitiesSet:               entitiesSet,
 		RawDataExamples:           make([]interface{}, 0),
@@ -347,19 +350,22 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 	}
 }
 
-func (bc *BatchCollector) fallbackToIndividualUpserts(controller *Controller, entities []port.EntityRequest, entitiesSet *map[string]interface{}, shouldDeleteStaleEntities *bool) {
+func (bc *BatchCollector) fallbackToIndividualUpserts(controller *Controller, entities []port.EntityRequest, entitiesSet *map[string]interface{}, shouldDeleteStaleEntities *bool) int {
 	logger.Infow("Falling back to individual upserts", "entityCount", len(entities))
 
+	failedCount := 0
 	for _, entity := range entities {
 		handledEntity, err := controller.entityHandler(entity, CreateAction, port.ResyncSource)
 		if err != nil {
 			logger.Errorw("Individual upsert fallback failed", "identifier", entity.Identifier, "blueprint", entity.Blueprint, "error", err)
+			failedCount++
 			*shouldDeleteStaleEntities = false
 		} else if handledEntity != nil {
 			(*entitiesSet)[controller.portClient.GetEntityIdentifierKey(handledEntity)] = nil
 			logger.Infow("Individual upsert fallback succeeded", "identifier", entity.Identifier, "blueprint", entity.Blueprint)
 		}
 	}
+	return failedCount
 }
 
 func (bc *BatchCollector) ProcessRemaining(controller *Controller) *SyncResult {
