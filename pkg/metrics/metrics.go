@@ -79,23 +79,23 @@ type AggregatedMetrics struct {
 	mu              sync.Mutex
 }
 
+func newAggregatedMetrics() *AggregatedMetrics {
+	return &AggregatedMetrics{
+		DurationSeconds: make(map[[2]string]float64),
+		ObjectCount:     make(map[[3]string]float64),
+		Success:         make(map[[2]string]float64),
+	}
+}
+
 func getAggregatedMetrics() *AggregatedMetrics {
 	if aggregatedMetricsInstance == nil {
-		aggregatedMetricsInstance = &AggregatedMetrics{
-			DurationSeconds: make(map[[2]string]float64),
-			ObjectCount:     make(map[[3]string]float64),
-			Success:         make(map[[2]string]float64),
-		}
+		aggregatedMetricsInstance = newAggregatedMetrics()
 	}
 	return aggregatedMetricsInstance
 }
 
 func StartMeasuring() {
-	aggregatedMetricsInstance = &AggregatedMetrics{
-		DurationSeconds: make(map[[2]string]float64),
-		ObjectCount:     make(map[[3]string]float64),
-		Success:         make(map[[2]string]float64),
-	}
+	aggregatedMetricsInstance = newAggregatedMetrics()
 }
 
 func AddDuration(kind, phase string, duration float64) {
