@@ -88,13 +88,6 @@ func newAggregatedMetrics() *AggregatedMetrics {
 	return aggregatedMetricsInstance
 }
 
-func getAggregatedMetrics() *AggregatedMetrics {
-	if aggregatedMetricsInstance == nil {
-		panic("Cannot instrument metrics outside of MeasureResync context")
-	}
-	return aggregatedMetricsInstance
-}
-
 func flushMetrics(am *AggregatedMetrics) {
 	am.mu.Lock()
 	defer am.mu.Unlock()
@@ -107,28 +100,7 @@ func flushMetrics(am *AggregatedMetrics) {
 	for key, value := range am.Success {
 		success.WithLabelValues(key[0], key[1]).Set(value)
 	}
-}
-
-func MeasureResync(resyncFn func()) {
-	am := newAggregatedMetrics()
-	resyncFn()
-	flushMetrics(am)
-}
-
-func AddObjectCount(kind, objectCountType, phase string, count float64) {
-	am := getAggregatedMetrics()
-
-	am.mu.Lock()
-	defer am.mu.Unlock()
-	am.ObjectCount[[3]string{kind, objectCountType, phase}] += count
-}
-
-func SetSuccess(kind, phase string, successVal float64) {
-	am := getAggregatedMetrics()
-
-	am.mu.Lock()
-	defer am.mu.Unlock()
-	am.Success[[2]string{kind, phase}] = successVal
+	aggregatedMetricsInstance = nil
 }
 
 func StartMetricsServer(logger *zap.SugaredLogger, port int) {
@@ -144,24 +116,42 @@ func StartMetricsServer(logger *zap.SugaredLogger, port int) {
 	}()
 }
 
-func MeasureDuration(kind string, phase string, fn func(kind string, phase string)) {
-	start := time.Now()
-	am := getAggregatedMetrics()
+func MeasureResync(resyncFn func()) {
+	am := newAggregatedMetrics()
+	resyncFn()
+	flushMetrics(am)
+}
 
+func MeasureDuration(kind string, phase string, fn func(kind string, phase string)) {
+	if aggregatedMetricsInstance == nil {
+		return
+	}
+
+	start := time.Now()
 	fn(kind, phase)
-	am.mu.Lock()
-	defer am.mu.Unlock()
-	am.DurationSeconds[[2]string{kind, phase}] += time.Since(start).Seconds()
+	aggregatedMetricsInstance.mu.Lock()
+	defer aggregatedMetricsInstance.mu.Unlock()
+	aggregatedMetricsInstance.DurationSeconds[[2]string{kind, phase}] += time.Since(start).Seconds()
 }
 
 func MeasureOperation[T any](kind string, phase string, fn func(kind string, phase string) T) T {
 	start := time.Now()
-	am := getAggregatedMetrics()
-
 	result := fn(kind, phase)
-	am.mu.Lock()
-	defer am.mu.Unlock()
-	am.DurationSeconds[[2]string{kind, phase}] += time.Since(start).Seconds()
+	aggregatedMetricsInstance.mu.Lock()
+	defer aggregatedMetricsInstance.mu.Unlock()
+	aggregatedMetricsInstance.DurationSeconds[[2]string{kind, phase}] += time.Since(start).Seconds()
 
 	return result
+}
+
+func AddObjectCount(kind string, objectCountType string, phase string, count float64) {
+	aggregatedMetricsInstance.mu.Lock()
+	defer aggregatedMetricsInstance.mu.Unlock()
+	aggregatedMetricsInstance.ObjectCount[[3]string{kind, objectCountType, phase}] += count
+}
+
+func SetSuccess(kind string, phase string, successVal float64) {
+	aggregatedMetricsInstance.mu.Lock()
+	defer aggregatedMetricsInstance.mu.Unlock()
+	aggregatedMetricsInstance.Success[[2]string{kind, phase}] = successVal
 }
