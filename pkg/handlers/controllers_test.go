@@ -489,7 +489,7 @@ func (f *fixture) assertObjectsHandled(objects []struct{ kind, name string }) {
 }
 
 func (f *fixture) runControllersHandle() {
-	f.controllersHandler.Handle()
+	f.controllersHandler.Handle("test")
 }
 
 func TestSuccessfulControllersHandle(t *testing.T) {

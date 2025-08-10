@@ -3,6 +3,8 @@ package main
 import (
 	"errors"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/defaults"
@@ -16,7 +18,17 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/port/integration"
 )
 
-func initiateHandler(exporterConfig *port.Config, k8sClient *k8s.Client, portClient *cli.PortClient) (*handlers.ControllersHandler, error) {
+type ResyncType string
+
+const (
+	INITIAL_RESYNC   ResyncType = "initial resync"
+	SCHEDULED_RESYNC ResyncType = "scheduled resync"
+	MAPPING_CHANGED  ResyncType = "mapping changed"
+)
+
+var registerOnce sync.Once
+
+func initiateHandler(exporterConfig *port.Config, k8sClient *k8s.Client, portClient *cli.PortClient, resyncType ResyncType) (*handlers.ControllersHandler, error) {
 	i, err := integration.GetIntegration(portClient, exporterConfig.StateKey)
 	if err != nil {
 		return nil, fmt.Errorf("error getting Port integration: %v", err)
@@ -27,7 +39,7 @@ func initiateHandler(exporterConfig *port.Config, k8sClient *k8s.Client, portCli
 	}
 
 	newHandler := handlers.NewControllersHandler(exporterConfig, i.Config, k8sClient, portClient)
-	newHandler.Handle()
+	newHandler.Handle(string(resyncType))
 
 	return newHandler, nil
 }
@@ -63,9 +75,26 @@ func main() {
 		logger.Fatalf("Error creating event listener: %s", err.Error())
 	}
 
+	if config.ApplicationConfig.ResyncInterval > 0 {
+		go func() {
+			ticker := time.NewTicker(time.Minute * time.Duration(config.ApplicationConfig.ResyncInterval))
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					initiateHandler(applicationConfig, k8sClient, portClient, SCHEDULED_RESYNC)
+				}
+			}
+		}()
+	}
+
 	logger.Info("Starting controllers handler")
 	err = event_handler.Start(eventListener, func() (event_handler.IStoppableRsync, error) {
-		return initiateHandler(applicationConfig, k8sClient, portClient)
+		resyncType := MAPPING_CHANGED
+		registerOnce.Do(func() {
+			resyncType = INITIAL_RESYNC
+		})
+		return initiateHandler(applicationConfig, k8sClient, portClient, resyncType)
 	})
 
 	if err != nil {

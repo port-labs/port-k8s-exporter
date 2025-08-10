@@ -39,6 +39,6 @@ type ApplicationConfiguration struct {
 	// Debug Mode
 	DebugMode bool `json:"debugMode,omitempty"`
 	// Metrics Configuration
-	MetricsEnabled bool   `json:"metricsEnabled,omitempty"`
-	MetricsPort    int    `json:"metricsPort,omitempty"`
+	MetricsEnabled bool `json:"metricsEnabled,omitempty"`
+	MetricsPort    int  `json:"metricsPort,omitempty"`
 }

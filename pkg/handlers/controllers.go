@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"sync"
-	"time"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/crd"
@@ -27,6 +26,7 @@ type ControllersHandler struct {
 	stopCh           chan struct{}
 	isStopped        bool
 	portConfig       *port.IntegrationAppConfig
+	resyncMutex      sync.Mutex
 }
 
 type FullResyncResults struct {
@@ -35,8 +35,7 @@ type FullResyncResults struct {
 }
 
 func NewControllersHandler(exporterConfig *port.Config, portConfig *port.IntegrationAppConfig, k8sClient *k8s.Client, portClient *cli.PortClient) *ControllersHandler {
-	resync := time.Minute * time.Duration(exporterConfig.ResyncInterval)
-	informersFactory := dynamicinformer.NewDynamicSharedInformerFactory(k8sClient.DynamicClient, resync)
+	informersFactory := dynamicinformer.NewDynamicSharedInformerFactory(k8sClient.DynamicClient, 0)
 
 	crd.AutodiscoverCRDsToActions(portConfig, k8sClient.ApiExtensionClient, portClient)
 
@@ -77,7 +76,8 @@ func NewControllersHandler(exporterConfig *port.Config, portConfig *port.Integra
 	return controllersHandler
 }
 
-func (c *ControllersHandler) Handle() {
+func (c *ControllersHandler) Handle(resyncType string) {
+	logger.Infof("Starting resync due to %s", resyncType)
 	logger.Info("Starting informers")
 	c.informersFactory.Start(c.stopCh)
 
