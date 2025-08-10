@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -94,24 +95,6 @@ func getAggregatedMetrics() *AggregatedMetrics {
 	return aggregatedMetricsInstance
 }
 
-func MeasureResync(resyncFn func()) {
-	am := newAggregatedMetrics()
-	resyncFn()
-	flushMetrics(am)
-}
-
-func AddDuration(kind, phase string, duration float64) {
-	getAggregatedMetrics().AddDuration(kind, phase, duration)
-}
-
-func AddObjectCount(kind, objectCountType, phase string, count float64) {
-	getAggregatedMetrics().AddObjectCount(kind, objectCountType, phase, count)
-}
-
-func SetSuccess(kind, phase string, successVal float64) {
-	getAggregatedMetrics().SetSuccess(kind, phase, successVal)
-}
-
 func flushMetrics(am *AggregatedMetrics) {
 	am.mu.Lock()
 	defer am.mu.Unlock()
@@ -126,50 +109,59 @@ func flushMetrics(am *AggregatedMetrics) {
 	}
 }
 
-func RegisterMetrics() {
-	registerOnce.Do(func() {
-		prometheus.MustRegister(durationSeconds)
-		prometheus.MustRegister(objectCount)
-		prometheus.MustRegister(success)
-	})
+func MeasureResync(resyncFn func()) {
+	am := newAggregatedMetrics()
+	resyncFn()
+	flushMetrics(am)
 }
 
-func StartMetricsServer(logger *zap.SugaredLogger) {
-	go func() {
-		logger.Infof("Starting metrics server on port %s", "6556")
-		RegisterMetrics()
-		http.Handle("/metrics", promhttp.Handler())
-		_ = http.ListenAndServe(":6556", nil)
-	}()
-}
+func AddObjectCount(kind, objectCountType, phase string, count float64) {
+	am := getAggregatedMetrics()
 
-func (am *AggregatedMetrics) AddDuration(kind, phase string, duration float64) {
-	am.mu.Lock()
-	defer am.mu.Unlock()
-	am.DurationSeconds[[2]string{kind, phase}] += duration
-}
-
-func MeasureDuration(kind string, phase string, fn func(kind string, phase string)) {
-	start := time.Now()
-	fn(kind, phase)
-	durationSeconds.WithLabelValues(kind, phase).Set(time.Since(start).Seconds())
-}
-
-func MeasureOperation[T any](kind string, phase string, fn func(kind string, phase string) T) T {
-	start := time.Now()
-	result := fn(kind, phase)
-	durationSeconds.WithLabelValues(kind, phase).Set(time.Since(start).Seconds())
-	return result
-}
-
-func (am *AggregatedMetrics) AddObjectCount(kind, objectCountType, phase string, count float64) {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 	am.ObjectCount[[3]string{kind, objectCountType, phase}] += count
 }
 
-func (am *AggregatedMetrics) SetSuccess(kind, phase string, success float64) {
+func SetSuccess(kind, phase string, successVal float64) {
+	am := getAggregatedMetrics()
+
 	am.mu.Lock()
 	defer am.mu.Unlock()
-	am.Success[[2]string{kind, phase}] = success
+	am.Success[[2]string{kind, phase}] = successVal
+}
+
+func StartMetricsServer(logger *zap.SugaredLogger, port int) {
+	go func() {
+		logger.Infof("Starting metrics server on port %d", port)
+		registerOnce.Do(func() {
+			prometheus.MustRegister(durationSeconds)
+			prometheus.MustRegister(objectCount)
+			prometheus.MustRegister(success)
+		})
+		http.Handle("/metrics", promhttp.Handler())
+		_ = http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
+	}()
+}
+
+func MeasureDuration(kind string, phase string, fn func(kind string, phase string)) {
+	start := time.Now()
+	am := getAggregatedMetrics()
+
+	fn(kind, phase)
+	am.mu.Lock()
+	defer am.mu.Unlock()
+	am.DurationSeconds[[2]string{kind, phase}] += time.Since(start).Seconds()
+}
+
+func MeasureOperation[T any](kind string, phase string, fn func(kind string, phase string) T) T {
+	start := time.Now()
+	am := getAggregatedMetrics()
+
+	result := fn(kind, phase)
+	am.mu.Lock()
+	defer am.mu.Unlock()
+	am.DurationSeconds[[2]string{kind, phase}] += time.Since(start).Seconds()
+
+	return result
 }

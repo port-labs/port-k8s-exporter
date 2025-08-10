@@ -37,8 +37,6 @@ func main() {
 	defer logger.Shutdown()
 	logger.Infow("Starting Port K8s Exporter", "version", Version)
 
-	metrics.StartMetricsServer(logger.GetLogger())
-
 	k8sConfig := k8s.NewKubeConfig()
 	applicationConfig, err := config.NewConfiguration()
 	if err != nil {
@@ -77,7 +75,15 @@ func main() {
 
 func init() {
 	config.Init()
+	initLogger()
 
+	// Initialize metrics server if enabled
+	if config.ApplicationConfig.MetricsEnabled {
+		metrics.StartMetricsServer(logger.GetLogger(), config.ApplicationConfig.MetricsPort)
+	}
+}
+
+func initLogger() {
 	// Initialize logger with HTTP support if enabled
 	if config.ApplicationConfig.HTTPLoggingEnabled {
 		initHTTPLogger()

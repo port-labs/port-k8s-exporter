@@ -59,6 +59,10 @@ func Init() {
 	//Debug Mode
 	NewBool(&ApplicationConfig.DebugMode, "debug-mode", false, "Debug mode. Optional.")
 
+	// Metrics Configuration
+	NewBool(&ApplicationConfig.MetricsEnabled, "metrics-enabled", true, "Enable metrics. Optional.")
+	NewInt(&ApplicationConfig.MetricsPort, "metrics-port", 9090, "Metrics port. Optional.")
+
 	flag.Parse()
 }
 
