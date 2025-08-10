@@ -29,6 +29,11 @@ type ControllersHandler struct {
 	portConfig       *port.IntegrationAppConfig
 }
 
+type FullResyncResults struct {
+	EntitiesSets              []map[string]interface{}
+	ShouldDeleteStaleEntities bool
+}
+
 func NewControllersHandler(exporterConfig *port.Config, portConfig *port.IntegrationAppConfig, k8sClient *k8s.Client, portClient *cli.PortClient) *ControllersHandler {
 	resync := time.Minute * time.Duration(exporterConfig.ResyncInterval)
 	informersFactory := dynamicinformer.NewDynamicSharedInformerFactory(k8sClient.DynamicClient, resync)
@@ -76,7 +81,8 @@ func (c *ControllersHandler) Handle() {
 	logger.Info("Starting informers")
 	c.informersFactory.Start(c.stopCh)
 
-	currentEntitiesSets, shouldDeleteStaleEntities := syncAllControllers(c)
+	metrics.StartMeasuring()
+	resyncResults := syncAllControllers(c)
 
 	ctx, cancelCtx := context.WithCancel(context.Background())
 	defer cancelCtx()
@@ -85,61 +91,62 @@ func (c *ControllersHandler) Handle() {
 		cancelCtx()
 	}()
 
-	if shouldDeleteStaleEntities {
+	if resyncResults.ShouldDeleteStaleEntities {
 		logger.Info("Deleting stale entities")
-		c.runDeleteStaleEntities(ctx, currentEntitiesSets)
+		c.runDeleteStaleEntities(ctx, resyncResults.EntitiesSets)
 		logger.Info("Done deleting stale entities")
 	} else {
 		logger.Warning("Skipping delete of stale entities due to a failure in getting all current entities from k8s")
 	}
+	metrics.FlushMetrics()
 }
 
-func syncAllControllers(c *ControllersHandler) ([]map[string]interface{}, bool) {
-	start := time.Now()
-	currentEntitiesSets := make([]map[string]interface{}, 0)
-	shouldDeleteStaleEntities := true
-	var syncWg sync.WaitGroup
+func syncAllControllers(c *ControllersHandler) *FullResyncResults {
+	return metrics.MeasureOperation[*FullResyncResults](metrics.MetricKindResync, metrics.MetricPhaseResync, func(kind string, phase string) *FullResyncResults {
+		currentEntitiesSets := make([]map[string]interface{}, 0)
+		shouldDeleteStaleEntities := true
+		var syncWg sync.WaitGroup
 
-	for _, controller := range c.controllers {
-		go func() {
-			<-c.stopCh
-			logger.Info("Shutting down controllers")
-			controller.Shutdown()
-			// Flush any remaining logs before exit
-			logger.Info("Exporter exiting")
-			logger.Shutdown()
-		}()
-
-		logger.Infof("Waiting for informer cache to sync for resource '%s'", controller.Resource.Kind)
-		if err := controller.WaitForCacheSync(c.stopCh); err != nil {
-			logger.Fatalf("Error while waiting for informer cache sync: %s", err.Error())
-		}
-
-		// Extraction phase ends after informer cache is populated
-		durationExtract := time.Since(start).Seconds()
-		metrics.DurationSeconds.WithLabelValues(controller.Resource.Kind, metrics.MetricPhaseExtract).Set(durationExtract)
-		metrics.ObjectCount.WithLabelValues(controller.Resource.Kind, metrics.MetricRawExtractedResult, metrics.MetricPhaseExtract).Set(float64(controller.WorkqueueLen()))
-
-		if c.portConfig.CreateMissingRelatedEntities {
-			syncWg.Add(1)
+		for _, controller := range c.controllers {
 			go func() {
-				defer syncWg.Done()
-				controllerEntitiesSet, controllerShouldDeleteStaleEntities := syncController(controller, c)
-				currentEntitiesSets = append(currentEntitiesSets, controllerEntitiesSet)
-				shouldDeleteStaleEntities = shouldDeleteStaleEntities && controllerShouldDeleteStaleEntities
+				<-c.stopCh
+				logger.Info("Shutting down controllers")
+				controller.Shutdown()
+				// Flush any remaining logs before exit
+				logger.Info("Exporter exiting")
+				logger.Shutdown()
 			}()
-			continue
-		}
-		controllerEntitiesSet, controllerShouldDeleteStaleEntities := syncController(controller, c)
-		currentEntitiesSets = append(currentEntitiesSets, controllerEntitiesSet)
-		shouldDeleteStaleEntities = shouldDeleteStaleEntities && controllerShouldDeleteStaleEntities
-	}
-	syncWg.Wait()
-	duration := time.Since(start).Seconds()
-	metrics.DurationSeconds.WithLabelValues(metrics.MetricKindResync, metrics.MetricPhaseResync).Set(duration)
-	metrics.Success.WithLabelValues(metrics.MetricKindResync, metrics.MetricPhaseResync).Set(1)
 
-	return currentEntitiesSets, shouldDeleteStaleEntities
+			metrics.MeasureDuration(controller.Resource.Kind, metrics.MetricPhaseExtract, func(kind string, phase string) {
+				logger.Infof("Waiting for informer cache to sync for resource '%s'", controller.Resource.Kind)
+				if err := controller.WaitForCacheSync(c.stopCh); err != nil {
+					logger.Fatalf("Error while waiting for informer cache sync: %s", err.Error())
+				}
+				metrics.AddObjectCount(kind, metrics.MetricRawExtractedResult, phase, float64(controller.WorkqueueLen()))
+			})
+
+			if c.portConfig.CreateMissingRelatedEntities {
+				syncWg.Add(1)
+				go func() {
+					defer syncWg.Done()
+					controllerEntitiesSet, controllerShouldDeleteStaleEntities := syncController(controller, c)
+					currentEntitiesSets = append(currentEntitiesSets, controllerEntitiesSet)
+					shouldDeleteStaleEntities = shouldDeleteStaleEntities && controllerShouldDeleteStaleEntities
+				}()
+				continue
+			}
+			controllerEntitiesSet, controllerShouldDeleteStaleEntities := syncController(controller, c)
+			currentEntitiesSets = append(currentEntitiesSets, controllerEntitiesSet)
+			shouldDeleteStaleEntities = shouldDeleteStaleEntities && controllerShouldDeleteStaleEntities
+		}
+		syncWg.Wait()
+		metrics.SetSuccess(kind, phase, 1)
+
+		return &FullResyncResults{
+			EntitiesSets:              currentEntitiesSets,
+			ShouldDeleteStaleEntities: shouldDeleteStaleEntities,
+		}
+	})
 }
 
 func syncController(controller *k8s.Controller, c *ControllersHandler) (map[string]interface{}, bool) {
@@ -161,13 +168,13 @@ func syncController(controller *k8s.Controller, c *ControllersHandler) (map[stri
 }
 
 func (c *ControllersHandler) runDeleteStaleEntities(ctx context.Context, currentEntitiesSet []map[string]interface{}) {
-	startDelete := time.Now()
-	err := c.portClient.DeleteStaleEntities(ctx, c.stateKey, goutils.MergeMaps(currentEntitiesSet...))
-	if err != nil {
-		logger.Errorf("error deleting stale entities: %s", err.Error())
-	}
-	metrics.DurationSeconds.WithLabelValues(metrics.MetricKindReconciliation, metrics.MetricPhaseDelete).Set(time.Since(startDelete).Seconds())
-	metrics.Success.WithLabelValues(metrics.MetricKindReconciliation, metrics.MetricPhaseDelete).Set(1)
+	metrics.MeasureDuration(metrics.MetricKindReconciliation, metrics.MetricPhaseDelete, func(kind string, phase string) {
+		err := c.portClient.DeleteStaleEntities(ctx, c.stateKey, goutils.MergeMaps(currentEntitiesSet...))
+		if err != nil {
+			logger.Errorf("error deleting stale entities: %s", err.Error())
+		}
+		metrics.SetSuccess(kind, phase, 1)
+	})
 }
 
 func (c *ControllersHandler) Stop() {

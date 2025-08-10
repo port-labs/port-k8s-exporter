@@ -58,8 +58,6 @@ type Controller struct {
 	eventsWorkqueue      workqueue.RateLimitingInterface
 	initialSyncWorkqueue workqueue.RateLimitingInterface
 	isInitialSyncDone    bool
-	transformDurations   map[string]float64
-	loadDurations        map[string]float64
 }
 
 func NewController(resource port.AggregatedResource, informer informers.GenericInformer, integrationConfig *port.IntegrationAppConfig, applicationConfig *config.ApplicationConfiguration) *Controller {
@@ -166,10 +164,6 @@ func (c *Controller) RunInitialSync() *SyncResult {
 	shouldDeleteStaleEntities := true
 	hasError := false
 
-	// --- RESET duration accumulators ---
-	c.transformDurations = make(map[string]float64)
-	c.loadDurations = make(map[string]float64)
-
 	totalBatchSize := c.calculateTotalBatchSize()
 	batchTimeout := time.Duration(config.ApplicationConfig.BulkSyncBatchTimeoutSeconds) * time.Second
 	batchCollector := NewBatchCollector(totalBatchSize, batchTimeout)
@@ -186,7 +180,7 @@ func (c *Controller) RunInitialSync() *SyncResult {
 		syncResult, requeueCounterDiff, shouldContinue = c.processNextWorkItemWithBatching(c.initialSyncWorkqueue, batchCollector)
 		if syncResult == nil && requeueCounterDiff == 0 {
 			hasError = true
-			metrics.ObjectCount.WithLabelValues(c.Resource.Kind, metrics.MetricFailedResult, metrics.MetricPhaseExtract).Add(1)
+			metrics.AddObjectCount(c.Resource.Kind, metrics.MetricFailedResult, metrics.MetricPhaseExtract, 1)
 		}
 		logger.Debugw("Processed next work item with batching", "syncResult", syncResult, "requeueCounterDiff", requeueCounterDiff, "shouldContinue", shouldContinue)
 		requeueCounter += requeueCounterDiff
@@ -211,17 +205,9 @@ func (c *Controller) RunInitialSync() *SyncResult {
 	}
 
 	if hasError {
-		metrics.Success.WithLabelValues(c.Resource.Kind, metrics.MetricPhaseResync).Set(0)
+		metrics.SetSuccess(c.Resource.Kind, metrics.MetricPhaseResync, 0)
 	} else {
-		metrics.Success.WithLabelValues(c.Resource.Kind, metrics.MetricPhaseResync).Set(1)
-	}
-
-	// --- REPORT transform and load duration metrics per kind index ---
-	for kindLabel, duration := range c.transformDurations {
-		metrics.DurationSeconds.WithLabelValues(kindLabel, metrics.MetricPhaseTransform).Set(duration)
-	}
-	for kindLabel, duration := range c.loadDurations {
-		metrics.DurationSeconds.WithLabelValues(kindLabel, metrics.MetricPhaseLoad).Set(duration)
+		metrics.SetSuccess(c.Resource.Kind, metrics.MetricPhaseResync, 1)
 	}
 
 	return &SyncResult{
@@ -303,8 +289,7 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 			continue
 		}
 		logger.Infow("Processing entities for blueprint", "blueprint", blueprint, "entityCount", len(entities))
-		kindLabel := controller.Resource.Kind
-		metrics.MeasureDuration(func() {
+		metrics.MeasureDuration(controller.Resource.Kind, metrics.MetricPhaseLoad, func(kind string, phase string) {
 			optimalBatchSize := calculateBulkSize(entities, maxEntitiesPerBlueprintBatch, maxPayloadBytes)
 			logger.Infow("Calculated optimal batch size for blueprint", "blueprint", blueprint, "optimalBatchSize", optimalBatchSize)
 			for i := 0; i < len(entities); i += optimalBatchSize {
@@ -350,8 +335,6 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 				}
 				logger.Infow("Bulk upsert completed for blueprint", "blueprint", blueprint, "successCount", successCount, "failedCount", len(bulkResponse.Errors))
 			}
-		}, func(duration float64) {
-			controller.loadDurations[kindLabel] += duration
 		})
 	}
 	// Clear the batch
@@ -387,7 +370,6 @@ func (bc *BatchCollector) ProcessRemaining(controller *Controller) *SyncResult {
 }
 
 func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLimitingInterface, batchCollector *BatchCollector) (*SyncResult, int, bool) {
-	startLoad := time.Now()
 	if batchCollector.ShouldFlush() {
 		logger.Debugw("Batch collector should flush", "controller", c.Resource.Kind)
 		syncResult := batchCollector.ProcessBatch(c)
@@ -493,8 +475,6 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 		utilruntime.HandleError(err)
 	}
 
-	durationLoad := time.Since(startLoad).Seconds()
-	metrics.DurationSeconds.WithLabelValues(c.Resource.Kind, metrics.MetricPhaseLoad).Set(durationLoad)
 	return syncResult, requeueCounterDiff, true
 }
 
@@ -641,24 +621,23 @@ func isPassSelector(obj interface{}, selector port.Selector) (bool, error) {
 }
 
 func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, mappings []port.EntityMapping, itemsToParse string, kindIndex int) ([]port.EntityRequest, []interface{}, error) {
-	kindLabel := fmt.Sprintf("%s-%d", c.Resource.Kind, kindIndex)
 	var (
 		entities        []port.EntityRequest
 		rawDataExamples []interface{}
 		err             error
 	)
 
-	metrics.MeasureDuration(func() {
+	metrics.MeasureDuration(fmt.Sprintf("%s-%d", c.Resource.Kind, kindIndex), metrics.MetricPhaseTransform, func(kind string, phase string) {
 		unstructuredObj, ok := obj.(*unstructured.Unstructured)
 		if !ok {
-			metrics.ObjectCount.WithLabelValues(c.Resource.Kind, metrics.MetricFailedResult, metrics.MetricPhaseTransform).Add(1)
+			metrics.AddObjectCount(kind, metrics.MetricFailedResult, phase, 1)
 			err = fmt.Errorf("error casting to unstructured")
 			return
 		}
 		var structuredObj interface{}
 		err = runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.DeepCopy().Object, &structuredObj)
 		if err != nil {
-			metrics.ObjectCount.WithLabelValues(kindLabel, metrics.MetricFailedResult, metrics.MetricPhaseTransform).Add(1)
+			metrics.AddObjectCount(kind, metrics.MetricFailedResult, phase, 1)
 			err = fmt.Errorf("error converting from unstructured: %v", err)
 			return
 		}
@@ -694,12 +673,12 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 			selectorResult, selErr := isPassSelector(objectToMap, selector)
 			logger.Debugw("Object passes selector", "object", objectToMap, "selector", selector.Query, "selectorResult", selectorResult)
 			if selErr != nil {
-				metrics.ObjectCount.WithLabelValues(kindLabel, metrics.MetricFailedResult, metrics.MetricPhaseTransform).Add(1)
+				metrics.AddObjectCount(kind, metrics.MetricFailedResult, phase, 1)
 				err = selErr
 				return
 			}
 			if !selectorResult {
-				metrics.ObjectCount.WithLabelValues(kindLabel, metrics.MetricFilteredOutResult, metrics.MetricPhaseTransform).Add(1)
+				metrics.AddObjectCount(kind, metrics.MetricFilteredOutResult, phase, 1)
 				continue
 			}
 			logger.Debugw("Object passes selector. adding to raw data examples", "object", objectToMap, "selector", selector.Query)
@@ -709,15 +688,13 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 			logger.Debugw("Mapping entities", "object", objectToMap)
 			currentEntities, mapErr := entity.MapEntities(objectToMap, mappings)
 			if mapErr != nil {
-				metrics.ObjectCount.WithLabelValues(kindLabel, metrics.MetricFailedResult, metrics.MetricPhaseTransform).Add(float64(len(currentEntities)))
+				metrics.AddObjectCount(kind, metrics.MetricFailedResult, phase, float64(len(currentEntities)))
 				err = mapErr
 				return
 			}
 			entities = append(entities, currentEntities...)
 		}
-		metrics.ObjectCount.WithLabelValues(kindLabel, metrics.MetricTransformResult, metrics.MetricPhaseTransform).Add(float64(len(entities)))
-	}, func(duration float64) {
-		c.transformDurations[kindLabel] += duration
+		metrics.AddObjectCount(kind, metrics.MetricTransformResult, phase, float64(len(entities)))
 	})
 	return entities, rawDataExamples, err
 }

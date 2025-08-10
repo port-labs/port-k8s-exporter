@@ -138,8 +138,8 @@ func (c *PortClient) DeleteStaleEntities(ctx context.Context, stateKey string, e
 		}
 	}
 
-	metrics.ObjectCount.WithLabelValues(metrics.MetricKindReconciliation, metrics.MetricDeletedResult, metrics.MetricPhaseDelete).Set(float64(successCount))
-	metrics.ObjectCount.WithLabelValues(metrics.MetricKindReconciliation, metrics.MetricFailedResult, metrics.MetricPhaseDelete).Set(float64(failedCount))
+	metrics.AddObjectCount(metrics.MetricKindReconciliation, metrics.MetricDeletedResult, metrics.MetricPhaseDelete, float64(successCount))
+	metrics.AddObjectCount(metrics.MetricKindReconciliation, metrics.MetricFailedResult, metrics.MetricPhaseDelete, float64(failedCount))
 	return nil
 }
 
