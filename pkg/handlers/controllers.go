@@ -81,24 +81,24 @@ func (c *ControllersHandler) Handle() {
 	logger.Info("Starting informers")
 	c.informersFactory.Start(c.stopCh)
 
-	metrics.StartMeasuring()
-	resyncResults := syncAllControllers(c)
+	metrics.MeasureResync(func() {
+		resyncResults := syncAllControllers(c)
 
-	ctx, cancelCtx := context.WithCancel(context.Background())
-	defer cancelCtx()
-	go func() {
-		<-c.stopCh
-		cancelCtx()
-	}()
+		ctx, cancelCtx := context.WithCancel(context.Background())
+		defer cancelCtx()
+		go func() {
+			<-c.stopCh
+			cancelCtx()
+		}()
 
-	if resyncResults.ShouldDeleteStaleEntities {
-		logger.Info("Deleting stale entities")
-		c.runDeleteStaleEntities(ctx, resyncResults.EntitiesSets)
-		logger.Info("Done deleting stale entities")
-	} else {
-		logger.Warning("Skipping delete of stale entities due to a failure in getting all current entities from k8s")
-	}
-	metrics.FlushMetrics()
+		if resyncResults.ShouldDeleteStaleEntities {
+			logger.Info("Deleting stale entities")
+			c.runDeleteStaleEntities(ctx, resyncResults.EntitiesSets)
+			logger.Info("Done deleting stale entities")
+		} else {
+			logger.Warning("Skipping delete of stale entities due to a failure in getting all current entities from k8s")
+		}
+	})
 }
 
 func syncAllControllers(c *ControllersHandler) *FullResyncResults {

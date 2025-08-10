@@ -79,22 +79,25 @@ type AggregatedMetrics struct {
 }
 
 func newAggregatedMetrics() *AggregatedMetrics {
-	return &AggregatedMetrics{
+	aggregatedMetricsInstance = &AggregatedMetrics{
 		DurationSeconds: make(map[[2]string]float64),
 		ObjectCount:     make(map[[3]string]float64),
 		Success:         make(map[[2]string]float64),
 	}
+	return aggregatedMetricsInstance
 }
 
 func getAggregatedMetrics() *AggregatedMetrics {
 	if aggregatedMetricsInstance == nil {
-		aggregatedMetricsInstance = newAggregatedMetrics()
+		panic("Cannot instrument metrics outside of MeasureResync context")
 	}
 	return aggregatedMetricsInstance
 }
 
-func StartMeasuring() {
-	aggregatedMetricsInstance = newAggregatedMetrics()
+func MeasureResync(resyncFn func()) {
+	am := newAggregatedMetrics()
+	resyncFn()
+	flushMetrics(am)
 }
 
 func AddDuration(kind, phase string, duration float64) {
@@ -109,8 +112,7 @@ func SetSuccess(kind, phase string, successVal float64) {
 	getAggregatedMetrics().SetSuccess(kind, phase, successVal)
 }
 
-func FlushMetrics() {
-	am := getAggregatedMetrics()
+func flushMetrics(am *AggregatedMetrics) {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 	for key, value := range am.DurationSeconds {
