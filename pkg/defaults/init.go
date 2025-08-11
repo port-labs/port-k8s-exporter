@@ -98,7 +98,7 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config,
 		}
 		return token, expiresIn, nil
 	}, logger.LoggerIntegrationData{
-		IntegrationVersion:    existingIntegration.Version,
+		IntegrationVersion:    version,
 		IntegrationIdentifier: existingIntegration.Identifier,
 	})
 	if applicationConfig.CreateDefaultResources && applicationConfig.CreatePortResourcesOrigin != port.CreatePortResourcesOriginPort {

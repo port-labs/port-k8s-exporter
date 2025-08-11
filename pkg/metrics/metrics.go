@@ -118,40 +118,60 @@ func StartMetricsServer(logger *zap.SugaredLogger, port int) {
 
 func MeasureResync[T any](resyncFn func() (T, error)) (T, error) {
 	am := newAggregatedMetrics()
-	res, err := resyncFn()	
+	res, err := resyncFn()
 	flushMetrics(am)
 	return res, err
 }
 
-func MeasureDuration(kind string, phase string, fn func(kind string, phase string)) {
-	if aggregatedMetricsInstance == nil {
-		return
-	}
-
+func MeasureDuration2(kind string, phase string, fn func(kind string, phase string)) {
 	start := time.Now()
 	fn(kind, phase)
-	aggregatedMetricsInstance.mu.Lock()
-	defer aggregatedMetricsInstance.mu.Unlock()
-	aggregatedMetricsInstance.DurationSeconds[[2]string{kind, phase}] += time.Since(start).Seconds()
+	if aggregatedMetricsInstance != nil {
+		aggregatedMetricsInstance.mu.Lock()
+		defer aggregatedMetricsInstance.mu.Unlock()
+		aggregatedMetricsInstance.DurationSeconds[[2]string{kind, phase}] += time.Since(start).Seconds()
+	}
+}
+
+func MeasureDuration[T any](kind string, phase string, fn func(kind string, phase string) (T, error)) (T, error) {
+	start := time.Now()
+	result, err := fn(kind, phase)
+	if aggregatedMetricsInstance != nil {
+		aggregatedMetricsInstance.mu.Lock()
+		defer aggregatedMetricsInstance.mu.Unlock()
+		aggregatedMetricsInstance.DurationSeconds[[2]string{kind, phase}] += time.Since(start).Seconds()
+	}
+
+	return result, err
 }
 
 func MeasureOperation[T any](kind string, phase string, fn func(kind string, phase string) T) T {
 	start := time.Now()
 	result := fn(kind, phase)
-	aggregatedMetricsInstance.mu.Lock()
-	defer aggregatedMetricsInstance.mu.Unlock()
-	aggregatedMetricsInstance.DurationSeconds[[2]string{kind, phase}] += time.Since(start).Seconds()
+	if aggregatedMetricsInstance != nil {
+		aggregatedMetricsInstance.mu.Lock()
+		defer aggregatedMetricsInstance.mu.Unlock()
+		aggregatedMetricsInstance.DurationSeconds[[2]string{kind, phase}] += time.Since(start).Seconds()
+	}
 
 	return result
 }
 
 func AddObjectCount(kind string, objectCountType string, phase string, count float64) {
+	if aggregatedMetricsInstance == nil {
+		return
+	}
+
 	aggregatedMetricsInstance.mu.Lock()
 	defer aggregatedMetricsInstance.mu.Unlock()
 	aggregatedMetricsInstance.ObjectCount[[3]string{kind, objectCountType, phase}] += count
 }
 
 func SetSuccess(kind string, phase string, isAborted bool, successVal float64) {
+	if aggregatedMetricsInstance == nil {
+		return
+	}
+
 	aggregatedMetricsInstance.mu.Lock()
 	defer aggregatedMetricsInstance.mu.Unlock()
 	aggregatedMetricsInstance.Success[[3]string{kind, phase, fmt.Sprintf("%v", isAborted)}] = successVal

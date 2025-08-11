@@ -30,7 +30,8 @@ func runJQQuery(jqQuery string, obj interface{}) (interface{}, error) {
 	queryRes, ok := code.Run(obj).Next()
 
 	if !ok {
-		return nil, fmt.Errorf("query should return at least one value")
+		logger.Errorw(fmt.Sprintf("Failed to run jq query. Query: %s, Object: %#v", jqQuery, obj), "jqQuery", jqQuery, "obj", obj)
+		return nil, fmt.Errorf("Failed to run jq query")
 	}
 
 	err, ok = queryRes.(error)
@@ -49,7 +50,8 @@ func ParseBool(jqQuery string, obj interface{}) (bool, error) {
 
 	boolean, ok := queryRes.(bool)
 	if !ok {
-		return false, fmt.Errorf("failed to parse bool: %#v", queryRes)
+		logger.Errorw(fmt.Sprintf("bool result expected from query: '%#v', but got: %#v", jqQuery, queryRes), "jqQuery", jqQuery, "queryRes", queryRes)
+		return false, fmt.Errorf("failed to parse bool")
 	}
 
 	return boolean, nil
@@ -63,7 +65,8 @@ func ParseString(jqQuery string, obj interface{}) (string, error) {
 
 	str, ok := queryRes.(string)
 	if !ok {
-		return "", fmt.Errorf("failed to parse string with jq '%#v': %#v", jqQuery, queryRes)
+		logger.Errorw(fmt.Sprintf("string result expected from query: '%#v', but got: %#v", jqQuery, queryRes), "jqQuery", jqQuery, "queryRes", queryRes)
+		return "", fmt.Errorf("failed to parse string with jq")
 	}
 
 	return strings.Trim(str, "\""), nil
@@ -87,7 +90,8 @@ func ParseArray(jqQuery string, obj interface{}) ([]interface{}, error) {
 
 	items, ok := queryRes.([]interface{})
 	if !ok {
-		return nil, fmt.Errorf("failed to parse array with jq '%#v': %#v", jqQuery, queryRes)
+		logger.Errorw(fmt.Sprintf("array result expected from query: '%#v', but got: %#v", jqQuery, queryRes), "jqQuery", jqQuery, "queryRes", queryRes)
+		return nil, fmt.Errorf("failed to parse array")
 	}
 
 	return items, nil
@@ -99,6 +103,7 @@ func ParseMapInterface(jqQueries map[string]string, obj interface{}) (map[string
 	for key, jqQuery := range jqQueries {
 		queryRes, err := ParseInterface(jqQuery, obj)
 		if err != nil {
+			logger.Errorw(fmt.Sprintf("error parsing property %s. Error: %s", key, err.Error()), "key", key, "error", err, "jqQuery", jqQuery, "obj", obj)
 			return nil, err
 		}
 
