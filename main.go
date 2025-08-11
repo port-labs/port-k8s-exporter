@@ -27,21 +27,31 @@ const (
 )
 
 var registerOnce sync.Once
+var controllerHandler *handlers.ControllersHandler
 
-func initiateHandler(exporterConfig *port.Config, k8sClient *k8s.Client, portClient *cli.PortClient, resyncType ResyncType) (*handlers.ControllersHandler, error) {
-	i, err := integration.GetIntegration(portClient, exporterConfig.StateKey)
-	if err != nil {
-		return nil, fmt.Errorf("error getting Port integration: %v", err)
-	}
-	if i.Config == nil {
-		return nil, errors.New("integration config is nil")
-
+func runResync(exporterConfig *port.Config, k8sClient *k8s.Client, portClient *cli.PortClient, resyncType ResyncType) error {
+	if controllerHandler != (*handlers.ControllersHandler)(nil) {
+		controllerHandler.Stop()
 	}
 
-	newHandler := handlers.NewControllersHandler(exporterConfig, i.Config, k8sClient, portClient)
-	newHandler.Handle(string(resyncType))
+	newController, resyncErr := metrics.MeasureResync(func() (*handlers.ControllersHandler, error) {
+		i, err := integration.GetIntegration(portClient, exporterConfig.StateKey)
+		if err != nil {
+			metrics.SetSuccess(metrics.MetricKindResync, metrics.MetricPhaseResync, false, 0)
+			return nil, fmt.Errorf("error getting Port integration: %v", err)
+		}
+		if i.Config == nil {
+			metrics.SetSuccess(metrics.MetricKindResync, metrics.MetricPhaseResync, false, 0)
+			return nil, errors.New("integration config is nil")
+		}
 
-	return newHandler, nil
+		newHandler := handlers.NewControllersHandler(exporterConfig, i.Config, k8sClient, portClient)
+		newHandler.Handle(string(resyncType))
+		return newHandler, nil
+	})
+	controllerHandler = newController
+
+	return resyncErr
 }
 
 func main() {
@@ -82,19 +92,19 @@ func main() {
 			for {
 				select {
 				case <-ticker.C:
-					initiateHandler(applicationConfig, k8sClient, portClient, SCHEDULED_RESYNC)
+					runResync(applicationConfig, k8sClient, portClient, SCHEDULED_RESYNC)
 				}
 			}
 		}()
 	}
 
 	logger.Info("Starting controllers handler")
-	err = event_handler.Start(eventListener, func() (event_handler.IStoppableRsync, error) {
+	err = event_handler.Start(eventListener, func() error {
 		resyncType := MAPPING_CHANGED
 		registerOnce.Do(func() {
 			resyncType = INITIAL_RESYNC
 		})
-		return initiateHandler(applicationConfig, k8sClient, portClient, resyncType)
+		return runResync(applicationConfig, k8sClient, portClient, resyncType)
 	})
 
 	if err != nil {

@@ -81,24 +81,25 @@ func (c *ControllersHandler) Handle(resyncType string) {
 	logger.Info("Starting informers")
 	c.informersFactory.Start(c.stopCh)
 
-	metrics.MeasureResync(func() {
-		resyncResults := syncAllControllers(c)
+	resyncResults := syncAllControllers(c)
 
-		ctx, cancelCtx := context.WithCancel(context.Background())
-		defer cancelCtx()
-		go func() {
-			<-c.stopCh
-			cancelCtx()
-		}()
+	ctx, cancelCtx := context.WithCancel(context.Background())
+	defer cancelCtx()
+	go func() {
+		<-c.stopCh
+		metrics.SetSuccess(metrics.MetricKindResync, metrics.MetricPhaseResync, true, 0)
+		cancelCtx()
+	}()
 
-		if resyncResults.ShouldDeleteStaleEntities {
-			logger.Info("Deleting stale entities")
-			c.runDeleteStaleEntities(ctx, resyncResults.EntitiesSets)
-			logger.Info("Done deleting stale entities")
-		} else {
-			logger.Warning("Skipping delete of stale entities due to a failure in getting all current entities from k8s")
-		}
-	})
+	if resyncResults.ShouldDeleteStaleEntities {
+		logger.Info("Deleting stale entities")
+		c.runDeleteStaleEntities(ctx, resyncResults.EntitiesSets)
+		logger.Info("Done deleting stale entities")
+		metrics.SetSuccess(metrics.MetricDeletedResult, metrics.MetricPhaseDelete, false, 1)
+	} else {
+		logger.Warning("Skipping delete of stale entities due to a failure in getting all current entities from k8s")
+		metrics.SetSuccess(metrics.MetricDeletedResult, metrics.MetricPhaseDelete, false, 0)
+	}
 }
 
 func syncAllControllers(c *ControllersHandler) *FullResyncResults {
@@ -140,7 +141,11 @@ func syncAllControllers(c *ControllersHandler) *FullResyncResults {
 			shouldDeleteStaleEntities = shouldDeleteStaleEntities && controllerShouldDeleteStaleEntities
 		}
 		syncWg.Wait()
-		metrics.SetSuccess(kind, phase, 1)
+		success := 1
+		if !shouldDeleteStaleEntities {
+			success = 0
+		}
+		metrics.SetSuccess(kind, phase, false, float64(success))
 
 		return &FullResyncResults{
 			EntitiesSets:              currentEntitiesSets,
@@ -173,7 +178,6 @@ func (c *ControllersHandler) runDeleteStaleEntities(ctx context.Context, current
 		if err != nil {
 			logger.Errorf("error deleting stale entities: %s", err.Error())
 		}
-		metrics.SetSuccess(kind, phase, 1)
 	})
 }
 

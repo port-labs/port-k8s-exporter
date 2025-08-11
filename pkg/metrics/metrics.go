@@ -66,7 +66,7 @@ var (
 			Name: MetricSuccessName,
 			Help: "success description",
 		},
-		[]string{"kind", "phase"},
+		[]string{"kind", "phase", "is_aborted"},
 	)
 
 	aggregatedMetricsInstance *AggregatedMetrics
@@ -75,7 +75,7 @@ var (
 type AggregatedMetrics struct {
 	DurationSeconds map[[2]string]float64 // [kind, phase] -> duration
 	ObjectCount     map[[3]string]float64 // [kind, object_count_type, phase] -> count
-	Success         map[[2]string]float64 // [kind, phase] -> success (0 or 1)
+	Success         map[[3]string]float64 // [kind, phase, is_aborted] -> success (0 or 1)
 	mu              sync.Mutex
 }
 
@@ -83,7 +83,7 @@ func newAggregatedMetrics() *AggregatedMetrics {
 	aggregatedMetricsInstance = &AggregatedMetrics{
 		DurationSeconds: make(map[[2]string]float64),
 		ObjectCount:     make(map[[3]string]float64),
-		Success:         make(map[[2]string]float64),
+		Success:         make(map[[3]string]float64),
 	}
 	return aggregatedMetricsInstance
 }
@@ -98,7 +98,7 @@ func flushMetrics(am *AggregatedMetrics) {
 		objectCount.WithLabelValues(key[0], key[1], key[2]).Set(value)
 	}
 	for key, value := range am.Success {
-		success.WithLabelValues(key[0], key[1]).Set(value)
+		success.WithLabelValues(key[0], key[1], key[2]).Set(value)
 	}
 	aggregatedMetricsInstance = nil
 }
@@ -116,10 +116,11 @@ func StartMetricsServer(logger *zap.SugaredLogger, port int) {
 	}()
 }
 
-func MeasureResync(resyncFn func()) {
+func MeasureResync[T any](resyncFn func() (T, error)) (T, error) {
 	am := newAggregatedMetrics()
-	resyncFn()
+	res, err := resyncFn()	
 	flushMetrics(am)
+	return res, err
 }
 
 func MeasureDuration(kind string, phase string, fn func(kind string, phase string)) {
@@ -150,8 +151,8 @@ func AddObjectCount(kind string, objectCountType string, phase string, count flo
 	aggregatedMetricsInstance.ObjectCount[[3]string{kind, objectCountType, phase}] += count
 }
 
-func SetSuccess(kind string, phase string, successVal float64) {
+func SetSuccess(kind string, phase string, isAborted bool, successVal float64) {
 	aggregatedMetricsInstance.mu.Lock()
 	defer aggregatedMetricsInstance.mu.Unlock()
-	aggregatedMetricsInstance.Success[[2]string{kind, phase}] = successVal
+	aggregatedMetricsInstance.Success[[3]string{kind, phase, fmt.Sprintf("%v", isAborted)}] = successVal
 }

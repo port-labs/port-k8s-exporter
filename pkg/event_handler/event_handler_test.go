@@ -40,11 +40,9 @@ func TestStartKafkaEventListener(t *testing.T) {
 		thirdResponse,
 	}
 
-	err := Start(eventListenerMock, func() (IStoppableRsync, error) {
-		r := responses[0]
+	err := Start(eventListenerMock, func() error {
 		responses = responses[1:]
-
-		return r, nil
+		return nil
 	})
 
 	if err != nil {

@@ -180,7 +180,6 @@ func (c *Controller) RunInitialSync() *SyncResult {
 		syncResult, requeueCounterDiff, shouldContinue = c.processNextWorkItemWithBatching(c.initialSyncWorkqueue, batchCollector)
 		if syncResult == nil && requeueCounterDiff == 0 {
 			hasError = true
-			metrics.AddObjectCount(c.Resource.Kind, metrics.MetricFailedResult, metrics.MetricPhaseExtract, 1)
 		}
 		logger.Debugw("Processed next work item with batching", "syncResult", syncResult, "requeueCounterDiff", requeueCounterDiff, "shouldContinue", shouldContinue)
 		requeueCounter += requeueCounterDiff
@@ -205,9 +204,9 @@ func (c *Controller) RunInitialSync() *SyncResult {
 	}
 
 	if hasError {
-		metrics.SetSuccess(c.Resource.Kind, metrics.MetricPhaseResync, 0)
+		metrics.SetSuccess(c.Resource.Kind, metrics.MetricPhaseResync, false, 0)
 	} else {
-		metrics.SetSuccess(c.Resource.Kind, metrics.MetricPhaseResync, 1)
+		metrics.SetSuccess(c.Resource.Kind, metrics.MetricPhaseResync, false, 1)
 	}
 
 	return &SyncResult{
