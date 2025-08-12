@@ -472,6 +472,7 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 				if numRequeues >= MaxNumRequeues {
 					logger.Debugw("Removing object from workqueue because it's been requeued too many times", "error", err.Error(), "key", item.Key, "controller", c.Resource.Kind, "eventSource", item.EventSource)
 					workqueue.Forget(obj)
+					metrics.AddObjectCount(kindLabel, metrics.MetricFailedResult, metrics.MetricPhaseTransform, 1)
 					return nil, requeueCounterDiff, fmt.Errorf("error getting entities for object '%s'. Out of retries - object will not be processed", item.Key)
 				}
 
@@ -669,13 +670,13 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 		var result TransformResult
 		unstructuredObj, ok := obj.(*unstructured.Unstructured)
 		if !ok {
-			metrics.AddObjectCount(kind, metrics.MetricFailedResult, phase, 1)
+			// metrics.AddObjectCount(kind, metrics.MetricFailedResult, phase, 1)
 			return &result, fmt.Errorf("error casting to unstructured")
 		}
 		var structuredObj interface{}
 		err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.DeepCopy().Object, &structuredObj)
 		if err != nil {
-			metrics.AddObjectCount(kind, metrics.MetricFailedResult, phase, 1)
+			// metrics.AddObjectCount(kind, metrics.MetricFailedResult, phase, 1)
 			return &result, fmt.Errorf("error converting from unstructured: %v", err)
 		}
 		entities := make([]port.EntityRequest, 0, len(mappings))
@@ -689,6 +690,7 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 			items, parseItemsError := jq.ParseArray(itemsToParse, structuredObj)
 			if parseItemsError != nil {
 				logger.Errorw(fmt.Sprintf("error parsing items to parse. Error: %s", parseItemsError.Error()), "object", structuredObj, "itemsToParse", itemsToParse, "error", parseItemsError, "resource", c.Resource.Kind)
+				// metrics.AddObjectCount(kind, metrics.MetricFailedResult, phase, 1)
 				return &result, parseItemsError
 			}
 
@@ -712,7 +714,6 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 			logger.Debugw("Object passes selector", "object", objectToMap, "selector", selector.Query, "selectorResult", selectorResult)
 			if err != nil {
 				logger.Errorw(fmt.Sprintf("error checking if object passes selector. Error: %s", err.Error()), "object", objectToMap, "selector", selector.Query, "error", err)
-				metrics.AddObjectCount(kind, metrics.MetricFailedResult, phase, 1)
 				return &result, err
 			}
 			if !selectorResult {
@@ -726,7 +727,6 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 			logger.Debugw("Mapping entities", "object", objectToMap)
 			currentEntities, err := entity.MapEntities(objectToMap, mappings)
 			if err != nil {
-				metrics.AddObjectCount(kind, metrics.MetricFailedResult, phase, float64(len(currentEntities)))
 				return &result, err
 			}
 			entities = append(entities, currentEntities...)
