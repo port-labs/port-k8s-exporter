@@ -106,7 +106,7 @@ func (c *ControllersHandler) Handle(resyncType string) {
 }
 
 func syncAllControllers(c *ControllersHandler) (*FullResyncResults, error) {
-	return metrics.MeasureDuration[*FullResyncResults](metrics.MetricKindResync, metrics.MetricPhaseResync, func(kind string, phase string) (*FullResyncResults, error) {
+	return metrics.MeasureDuration[*FullResyncResults](metrics.MetricKindResync, metrics.MetricPhaseResync, func(phase string) (*FullResyncResults, error) {
 		currentEntitiesSets := make([]map[string]interface{}, 0)
 		shouldDeleteStaleEntities := true
 		var syncWg sync.WaitGroup
@@ -118,12 +118,12 @@ func syncAllControllers(c *ControllersHandler) (*FullResyncResults, error) {
 				controller.Shutdown()
 			}()
 
-			metrics.MeasureDuration(metrics.GetKindLabel(controller.Resource.Kind, nil), metrics.MetricPhaseExtract, func(kind string, phase string) (struct{}, error) {
+			metrics.MeasureDuration(metrics.GetKindLabel(controller.Resource.Kind, nil), metrics.MetricPhaseExtract, func(phase string) (struct{}, error) {
 				logger.Infof("Waiting for informer cache to sync for resource '%s'", controller.Resource.Kind)
 				if err := controller.WaitForCacheSync(c.stopCh); err != nil {
 					logger.Fatalf("Error while waiting for informer cache sync: %s", err.Error())
 				}
-				metrics.AddObjectCount(kind, metrics.MetricRawExtractedResult, phase, float64(controller.WorkqueueLen()))
+				metrics.AddObjectCount(metrics.GetKindLabel(controller.Resource.Kind, nil), metrics.MetricRawExtractedResult, phase, float64(controller.WorkqueueLen()))
 				return struct{}{}, nil
 			})
 
@@ -146,7 +146,7 @@ func syncAllControllers(c *ControllersHandler) (*FullResyncResults, error) {
 		if !shouldDeleteStaleEntities {
 			success = 0
 		}
-		metrics.SetSuccess(kind, phase, float64(success))
+		metrics.SetSuccess(metrics.MetricKindResync, phase, float64(success))
 
 		return &FullResyncResults{
 			EntitiesSets:              currentEntitiesSets,
@@ -175,7 +175,7 @@ func syncController(controller *k8s.Controller, c *ControllersHandler) (map[stri
 }
 
 func (c *ControllersHandler) runDeleteStaleEntities(ctx context.Context, currentEntitiesSet []map[string]interface{}) {
-	metrics.MeasureDuration(metrics.MetricKindReconciliation, metrics.MetricPhaseDelete, func(kind string, phase string) (struct{}, error) {
+	metrics.MeasureDuration(metrics.MetricKindReconciliation, metrics.MetricPhaseDelete, func(phase string) (struct{}, error) {
 		err := c.portClient.DeleteStaleEntities(ctx, c.stateKey, goutils.MergeMaps(currentEntitiesSet...))
 		if err != nil {
 			logger.Errorf("error deleting stale entities: %s", err.Error())

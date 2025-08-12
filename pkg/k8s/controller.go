@@ -303,7 +303,7 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 			entities = append(entities, entityWithKind.Entity)
 		}
 		logger.Infow("Processing entities for blueprint", "blueprint", blueprint, "entityCount", len(entities))
-		metrics.MeasureDuration(metrics.GetKindLabel(controller.Resource.Kind, nil), metrics.MetricPhaseLoad, func(kind string, phase string) (struct{}, error) {
+		metrics.MeasureDuration(metrics.GetKindLabel(controller.Resource.Kind, nil), metrics.MetricPhaseLoad, func(phase string) (struct{}, error) {
 			optimalBatchSize := calculateBulkSize(entities, maxEntitiesPerBlueprintBatch, maxPayloadBytes)
 			logger.Infow("Calculated optimal batch size for blueprint", "blueprint", blueprint, "optimalBatchSize", optimalBatchSize)
 			for i := 0; i < len(entities); i += optimalBatchSize {
@@ -464,7 +464,7 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 		rawDataExamples := make([]interface{}, 0)
 		for kindIndex, kindConfig := range c.Resource.KindConfigs {
 			kindLabel := metrics.GetKindLabel(c.Resource.Kind, &kindIndex)
-			portEntities, rawDataExamplesForObj, err := c.getObjectEntities(k8sObj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
+			portEntities, rawDataExamplesForObj, err := c.getObjectEntities(k8sObj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, kindIndex)
 			if err != nil {
 				logger.Errorw(fmt.Sprintf("Error getting entities for object %s. Error: %s", item.Key, err.Error()), "key", item.Key, "controller", c.Resource.Kind, "error", err, "eventSource", item.EventSource)
 				logger.Debugw("Marking batch collector as having errors", "controller", c.Resource.Kind)
@@ -609,9 +609,9 @@ func (c *Controller) objectHandler(obj interface{}, item EventItem) (*SyncResult
 	entitiesSet := make(map[string]interface{})
 	rawDataExamplesToReturn := make([]interface{}, 0)
 
-	for _, kindConfig := range c.Resource.KindConfigs {
+	for kindIndex, kindConfig := range c.Resource.KindConfigs {
 		logger.Debugw("Getting entities for object", "key", item.Key, "resource", c.Resource.Kind, "eventSource", item.EventSource)
-		portEntities, rawDataExamples, err := c.getObjectEntities(obj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
+		portEntities, rawDataExamples, err := c.getObjectEntities(obj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, kindIndex)
 		if err != nil {
 			logger.Errorw(fmt.Sprintf("error getting entities. Error: %s", err.Error()), "key", item.Key, "resource", c.Resource.Kind, "error", err, "eventSource", item.EventSource)
 			entitiesSet = nil
@@ -666,18 +666,17 @@ func isPassSelector(obj interface{}, selector port.Selector) (bool, error) {
 	return selectorResult, err
 }
 
-func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, mappings []port.EntityMapping, itemsToParse string) ([]port.EntityRequest, []interface{}, error) {
-	transformResult, err := metrics.MeasureDuration(metrics.GetKindLabel(c.Resource.Kind, nil), metrics.MetricPhaseTransform, func(kind string, phase string) (*TransformResult, error) {
+func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, mappings []port.EntityMapping, itemsToParse string, kindIndex int) ([]port.EntityRequest, []interface{}, error) {
+	transformResult, err := metrics.MeasureDuration(metrics.GetKindLabel(c.Resource.Kind, nil), metrics.MetricPhaseTransform, func(phase string) (*TransformResult, error) {
+		kindLabel := metrics.GetKindLabel(c.Resource.Kind, &kindIndex)
 		var result TransformResult
 		unstructuredObj, ok := obj.(*unstructured.Unstructured)
 		if !ok {
-			// metrics.AddObjectCount(kind, metrics.MetricFailedResult, phase, 1)
 			return &result, fmt.Errorf("error casting to unstructured")
 		}
 		var structuredObj interface{}
 		err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.DeepCopy().Object, &structuredObj)
 		if err != nil {
-			// metrics.AddObjectCount(kind, metrics.MetricFailedResult, phase, 1)
 			return &result, fmt.Errorf("error converting from unstructured: %v", err)
 		}
 		entities := make([]port.EntityRequest, 0, len(mappings))
@@ -691,7 +690,6 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 			items, parseItemsError := jq.ParseArray(itemsToParse, structuredObj)
 			if parseItemsError != nil {
 				logger.Errorw(fmt.Sprintf("error parsing items to parse. Error: %s", parseItemsError.Error()), "object", structuredObj, "itemsToParse", itemsToParse, "error", parseItemsError, "resource", c.Resource.Kind)
-				// metrics.AddObjectCount(kind, metrics.MetricFailedResult, phase, 1)
 				return &result, parseItemsError
 			}
 
@@ -718,7 +716,7 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 				return &result, err
 			}
 			if !selectorResult {
-				metrics.AddObjectCount(kind, metrics.MetricFilteredOutResult, phase, 1)
+				metrics.AddObjectCount(kindLabel, metrics.MetricFilteredOutResult, phase, 1)
 				continue
 			}
 			logger.Debugw("Object passes selector. adding to raw data examples", "object", objectToMap, "selector", selector.Query)
@@ -732,7 +730,7 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 			}
 			entities = append(entities, currentEntities...)
 		}
-		metrics.AddObjectCount(kind, metrics.MetricTransformResult, phase, float64(len(entities)))
+		metrics.AddObjectCount(kindLabel, metrics.MetricTransformResult, phase, float64(len(entities)))
 		return &TransformResult{
 			Entities:        entities,
 			RawDataExamples: rawDataExamples,
@@ -782,13 +780,13 @@ func (c *Controller) shouldSendUpdateEvent(old interface{}, new interface{}, upd
 	if updateEntityOnlyOnDiff == false {
 		return true
 	}
-	for _, kindConfig := range c.Resource.KindConfigs {
-		oldEntities, _, err := c.getObjectEntities(old, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
+	for kindIndex, kindConfig := range c.Resource.KindConfigs {
+		oldEntities, _, err := c.getObjectEntities(old, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, kindIndex)
 		if err != nil {
 			logger.Errorf("Error getting old entities: %v", err)
 			return true
 		}
-		newEntities, _, err := c.getObjectEntities(new, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse)
+		newEntities, _, err := c.getObjectEntities(new, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, kindIndex)
 		if err != nil {
 			logger.Errorf("Error getting new entities: %v", err)
 			return true
