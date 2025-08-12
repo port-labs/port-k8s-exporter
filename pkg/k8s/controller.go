@@ -223,8 +223,13 @@ func (c *Controller) RunInitialSync() *SyncResult {
 	}
 }
 
+type EntityWithKind struct {
+	Entity port.EntityRequest
+	Kind   string
+}
+
 type BatchCollector struct {
-	entitiesByBlueprint map[string][]port.EntityRequest
+	entitiesByBlueprint map[string][]EntityWithKind
 	maxBatchSize        int
 	timeout             time.Duration
 	lastFlush           time.Time
@@ -233,7 +238,7 @@ type BatchCollector struct {
 
 func NewBatchCollector(maxBatchSize int, timeout time.Duration) *BatchCollector {
 	return &BatchCollector{
-		entitiesByBlueprint: make(map[string][]port.EntityRequest),
+		entitiesByBlueprint: make(map[string][]EntityWithKind),
 		maxBatchSize:        maxBatchSize,
 		timeout:             timeout,
 		lastFlush:           time.Now(),
@@ -241,11 +246,11 @@ func NewBatchCollector(maxBatchSize int, timeout time.Duration) *BatchCollector 
 	}
 }
 
-func (bc *BatchCollector) AddEntity(entity port.EntityRequest) {
+func (bc *BatchCollector) AddEntity(entity port.EntityRequest, kind string) {
 	if bc.entitiesByBlueprint[entity.Blueprint] == nil {
-		bc.entitiesByBlueprint[entity.Blueprint] = make([]port.EntityRequest, 0)
+		bc.entitiesByBlueprint[entity.Blueprint] = make([]EntityWithKind, 0)
 	}
-	bc.entitiesByBlueprint[entity.Blueprint] = append(bc.entitiesByBlueprint[entity.Blueprint], entity)
+	bc.entitiesByBlueprint[entity.Blueprint] = append(bc.entitiesByBlueprint[entity.Blueprint], EntityWithKind{Entity: entity, Kind: kind})
 }
 
 func (bc *BatchCollector) MarkError() {
@@ -284,16 +289,21 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 	maxPayloadBytes := config.ApplicationConfig.BulkSyncMaxPayloadBytes
 	maxEntitiesPerBlueprintBatch := config.ApplicationConfig.BulkSyncMaxEntitiesPerBatch
 	totalEntities := 0
-	failedUpsertsCount := 0
-	for _, entities := range bc.entitiesByBlueprint {
-		totalEntities += len(entities)
+	successCountWithKind := make(map[string]int)
+	failedUpsertsCountWithKind := make(map[string]int)
+	for _, entitiesWithKind := range bc.entitiesByBlueprint {
+		totalEntities += len(entitiesWithKind)
 	}
 	logger.Infow("Batch processing", "totalEntities", totalEntities, "blueprintCount", len(bc.entitiesByBlueprint), "maxPayloadBytes", maxPayloadBytes, "maxEntitiesPerBlueprintBatch", maxEntitiesPerBlueprintBatch)
 
-	for blueprint, entities := range bc.entitiesByBlueprint {
-		if len(entities) == 0 {
+	for blueprint, entitiesWithKind := range bc.entitiesByBlueprint {
+		if len(entitiesWithKind) == 0 {
 			logger.Debugw("Skipping blueprint with no entities", "blueprint", blueprint)
 			continue
+		}
+		entities := make([]port.EntityRequest, 0)
+		for _, entityWithKind := range entitiesWithKind {
+			entities = append(entities, entityWithKind.Entity)
 		}
 		logger.Infow("Processing entities for blueprint", "blueprint", blueprint, "entityCount", len(entities))
 		metrics.MeasureDuration2(controller.Resource.Kind, metrics.MetricPhaseLoad, func(kind string, phase string) {
@@ -305,10 +315,11 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 					end = len(entities)
 				}
 				batchEntities := entities[i:end]
+				batchEntitiesWithKind := entitiesWithKind[i:end]
 				bulkResponse, err := controller.portClient.BulkUpsertEntities(context.Background(), blueprint, batchEntities, "", controller.portClient.CreateMissingRelatedEntities)
 				if err != nil {
 					logger.Warnw(fmt.Sprintf("Bulk upsert failed. Blueprint: %s, Error: %s", blueprint, err.Error()), "blueprint", blueprint, "entityCount", len(batchEntities), "error", err)
-					failedUpsertsCount += bc.fallbackToIndividualUpserts(controller, batchEntities, &entitiesSet, &shouldDeleteStaleEntities)
+					bc.fallbackToIndividualUpserts(controller, batchEntitiesWithKind, &entitiesSet, &shouldDeleteStaleEntities, &successCountWithKind, &failedUpsertsCountWithKind)
 					continue
 				}
 				successCount := 0
@@ -330,14 +341,14 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 						failedIdentifiers[bulkError.Identifier] = true
 						logger.Infow("Bulk upsert failed for entity", "blueprint", blueprint, "identifier", bulkError.Identifier, "message", bulkError.Message)
 					}
-					failedEntities := make([]port.EntityRequest, 0)
-					for _, entity := range batchEntities {
-						if failedIdentifiers[fmt.Sprintf("%v", entity.Identifier)] {
-							failedEntities = append(failedEntities, entity)
+					failedEntitiesWithKind := make([]EntityWithKind, 0)
+					for _, entityWithKind := range batchEntitiesWithKind {
+						if failedIdentifiers[fmt.Sprintf("%v", entityWithKind.Entity.Identifier)] {
+							failedEntitiesWithKind = append(failedEntitiesWithKind, entityWithKind)
 						}
 					}
-					if len(failedEntities) > 0 {
-						failedUpsertsCount += bc.fallbackToIndividualUpserts(controller, failedEntities, &entitiesSet, &shouldDeleteStaleEntities)
+					if len(failedEntitiesWithKind) > 0 {
+						bc.fallbackToIndividualUpserts(controller, failedEntitiesWithKind, &entitiesSet, &shouldDeleteStaleEntities, &successCountWithKind, &failedUpsertsCountWithKind)
 					}
 				}
 				logger.Infow(fmt.Sprintf("Bulk upsert completed for blueprint %s.", blueprint), "blueprint", blueprint, "successCount", successCount, "failedCount", len(bulkResponse.Errors))
@@ -345,10 +356,21 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 		})
 	}
 	// Clear the batch
-	bc.entitiesByBlueprint = make(map[string][]port.EntityRequest)
+	bc.entitiesByBlueprint = make(map[string][]EntityWithKind)
 	bc.lastFlush = time.Now()
-	metrics.AddObjectCount(controller.Resource.Kind, metrics.MetricLoadedResult, metrics.MetricPhaseLoad, float64(len(entitiesSet)))
-	metrics.AddObjectCount(controller.Resource.Kind, metrics.MetricFailedResult, metrics.MetricPhaseLoad, float64(failedUpsertsCount))
+
+	go func () {
+		for kindLabel, count := range successCountWithKind {
+			metrics.AddObjectCount(kindLabel, metrics.MetricLoadedResult, metrics.MetricPhaseLoad, float64(count))
+		}
+	}()
+
+	go func () {
+		for kindLabel, count := range failedUpsertsCountWithKind {
+			metrics.AddObjectCount(kindLabel, metrics.MetricFailedResult, metrics.MetricPhaseLoad, float64(count))
+		}
+	}()
+	 
 	return &SyncResult{
 		EntitiesSet:               entitiesSet,
 		RawDataExamples:           make([]interface{}, 0),
@@ -356,22 +378,21 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 	}
 }
 
-func (bc *BatchCollector) fallbackToIndividualUpserts(controller *Controller, entities []port.EntityRequest, entitiesSet *map[string]interface{}, shouldDeleteStaleEntities *bool) int {
-	logger.Infow("Falling back to individual upserts", "entityCount", len(entities))
+func (bc *BatchCollector) fallbackToIndividualUpserts(controller *Controller, entitiesWithKind []EntityWithKind, entitiesSet *map[string]interface{}, shouldDeleteStaleEntities *bool, successCountWithKind *map[string]int, failedUpsertsCountWithKind *map[string]int) {
+	logger.Infow("Falling back to individual upserts", "entityCount", len(entitiesWithKind))
 
-	failedCount := 0
-	for _, entity := range entities {
-		handledEntity, err := controller.entityHandler(entity, CreateAction, port.ResyncSource)
+	for _, entityWithKind := range entitiesWithKind {
+		handledEntity, err := controller.entityHandler(entityWithKind.Entity, CreateAction, port.ResyncSource)
 		if err != nil {
-			logger.Errorw("Individual upsert fallback failed", "identifier", entity.Identifier, "blueprint", entity.Blueprint, "error", err)
-			failedCount++
+			logger.Errorw("Individual upsert fallback failed", "identifier", entityWithKind.Entity.Identifier, "blueprint", entityWithKind.Entity.Blueprint, "error", err)
+			(*failedUpsertsCountWithKind)[entityWithKind.Kind]++
 			*shouldDeleteStaleEntities = false
 		} else if handledEntity != nil {
 			(*entitiesSet)[controller.portClient.GetEntityIdentifierKey(handledEntity)] = nil
-			logger.Infow("Individual upsert fallback succeeded", "identifier", entity.Identifier, "blueprint", entity.Blueprint)
+			logger.Infow("Individual upsert fallback succeeded", "identifier", entityWithKind.Entity.Identifier, "blueprint", entityWithKind.Entity.Blueprint)
+			(*successCountWithKind)[entityWithKind.Kind]++
 		}
 	}
-	return failedCount
 }
 
 func (bc *BatchCollector) ProcessRemaining(controller *Controller) *SyncResult {
@@ -443,6 +464,7 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 
 		rawDataExamples := make([]interface{}, 0)
 		for kindIndex, kindConfig := range c.Resource.KindConfigs {
+			kindLabel := fmt.Sprintf("%s-%d", c.Resource.Kind, kindIndex)
 			portEntities, rawDataExamplesForObj, err := c.getObjectEntities(k8sObj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, kindIndex)
 			if err != nil {
 				logger.Errorw(fmt.Sprintf("Error getting entities for object %s. Error: %s", item.Key, err.Error()), "key", item.Key, "controller", c.Resource.Kind, "error", err, "eventSource", item.EventSource)
@@ -473,7 +495,7 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 
 			for _, portEntity := range portEntities {
 				logger.Debugw("Adding entity to batch collector", "identifier", portEntity.Identifier, "blueprint", portEntity.Blueprint)
-				batchCollector.AddEntity(portEntity)
+				batchCollector.AddEntity(portEntity, kindLabel)
 			}
 		}
 
