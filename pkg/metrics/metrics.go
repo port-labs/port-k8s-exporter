@@ -142,7 +142,7 @@ func MeasureResync[T any](resyncFn func() (T, error)) (T, error) {
 	return res, err
 }
 
-func MeasureDuration2(kind string, phase string, fn func(kind string, phase string)) {
+func MeasureDurationVoid(kind string, phase string, fn func(kind string, phase string)) {
 	start := time.Now()
 	fn(kind, phase)
 	if aggregatedMetricsInstance != nil {
@@ -162,18 +162,6 @@ func MeasureDuration[T any](kind string, phase string, fn func(kind string, phas
 	}
 
 	return result, err
-}
-
-func MeasureOperation[T any](kind string, phase string, fn func(kind string, phase string) T) T {
-	start := time.Now()
-	result := fn(kind, phase)
-	if aggregatedMetricsInstance != nil {
-		aggregatedMetricsInstance.mu.Lock()
-		defer aggregatedMetricsInstance.mu.Unlock()
-		aggregatedMetricsInstance.DurationSeconds[[2]string{kind, phase}] += time.Since(start).Seconds()
-	}
-
-	return result
 }
 
 func AddObjectCount(kind string, objectCountType string, phase string, count float64) {

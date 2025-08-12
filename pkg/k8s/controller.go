@@ -303,7 +303,7 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 			entities = append(entities, entityWithKind.Entity)
 		}
 		logger.Infow("Processing entities for blueprint", "blueprint", blueprint, "entityCount", len(entities))
-		metrics.MeasureDuration2(metrics.GetKindLabel(controller.Resource.Kind, nil), metrics.MetricPhaseLoad, func(kind string, phase string) {
+		metrics.MeasureDurationVoid(metrics.GetKindLabel(controller.Resource.Kind, nil), metrics.MetricPhaseLoad, func(kind string, phase string) {
 			optimalBatchSize := calculateBulkSize(entities, maxEntitiesPerBlueprintBatch, maxPayloadBytes)
 			logger.Infow("Calculated optimal batch size for blueprint", "blueprint", blueprint, "optimalBatchSize", optimalBatchSize)
 			for i := 0; i < len(entities); i += optimalBatchSize {

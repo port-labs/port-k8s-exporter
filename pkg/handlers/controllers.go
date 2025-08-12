@@ -81,7 +81,11 @@ func (c *ControllersHandler) Handle(resyncType string) {
 	logger.Info("Starting informers")
 	c.informersFactory.Start(c.stopCh)
 
-	resyncResults := syncAllControllers(c)
+	resyncResults, err := syncAllControllers(c)
+	if err != nil {
+		logger.Errorf("Error syncing controllers: %s", err.Error())
+		return
+	}
 
 	ctx, cancelCtx := context.WithCancel(context.Background())
 	defer cancelCtx()
@@ -102,8 +106,8 @@ func (c *ControllersHandler) Handle(resyncType string) {
 	}
 }
 
-func syncAllControllers(c *ControllersHandler) *FullResyncResults {
-	return metrics.MeasureOperation[*FullResyncResults](metrics.MetricKindResync, metrics.MetricPhaseResync, func(kind string, phase string) *FullResyncResults {
+func syncAllControllers(c *ControllersHandler) (*FullResyncResults, error) {
+	return metrics.MeasureDuration[*FullResyncResults](metrics.MetricKindResync, metrics.MetricPhaseResync, func(kind string, phase string) (*FullResyncResults, error) {
 		currentEntitiesSets := make([]map[string]interface{}, 0)
 		shouldDeleteStaleEntities := true
 		var syncWg sync.WaitGroup
@@ -118,7 +122,7 @@ func syncAllControllers(c *ControllersHandler) *FullResyncResults {
 				logger.Shutdown()
 			}()
 
-			metrics.MeasureDuration2(metrics.GetKindLabel(controller.Resource.Kind, nil), metrics.MetricPhaseExtract, func(kind string, phase string) {
+			metrics.MeasureDurationVoid(metrics.GetKindLabel(controller.Resource.Kind, nil), metrics.MetricPhaseExtract, func(kind string, phase string) {
 				logger.Infof("Waiting for informer cache to sync for resource '%s'", controller.Resource.Kind)
 				if err := controller.WaitForCacheSync(c.stopCh); err != nil {
 					logger.Fatalf("Error while waiting for informer cache sync: %s", err.Error())
@@ -150,7 +154,7 @@ func syncAllControllers(c *ControllersHandler) *FullResyncResults {
 		return &FullResyncResults{
 			EntitiesSets:              currentEntitiesSets,
 			ShouldDeleteStaleEntities: shouldDeleteStaleEntities,
-		}
+		}, nil
 	})
 }
 
@@ -174,7 +178,7 @@ func syncController(controller *k8s.Controller, c *ControllersHandler) (map[stri
 }
 
 func (c *ControllersHandler) runDeleteStaleEntities(ctx context.Context, currentEntitiesSet []map[string]interface{}) {
-	metrics.MeasureDuration2(metrics.MetricKindReconciliation, metrics.MetricPhaseDelete, func(kind string, phase string) {
+	metrics.MeasureDurationVoid(metrics.MetricKindReconciliation, metrics.MetricPhaseDelete, func(kind string, phase string) {
 		err := c.portClient.DeleteStaleEntities(ctx, c.stateKey, goutils.MergeMaps(currentEntitiesSet...))
 		if err != nil {
 			logger.Errorf("error deleting stale entities: %s", err.Error())
