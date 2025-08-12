@@ -167,7 +167,6 @@ func (c *Controller) RunInitialSync() *SyncResult {
 	entitiesSet := make(map[string]interface{})
 	rawDataExamples := make([]interface{}, 0)
 	shouldDeleteStaleEntities := true
-	hasError := false
 
 	totalBatchSize := c.calculateTotalBatchSize()
 	batchTimeout := time.Duration(config.ApplicationConfig.BulkSyncBatchTimeoutSeconds) * time.Second
@@ -183,9 +182,6 @@ func (c *Controller) RunInitialSync() *SyncResult {
 	for shouldContinue && (requeueCounter > 0 || c.initialSyncWorkqueue.Len() > 0 || !c.eventHandler.HasSynced()) {
 		logger.Debugw("Processing next work item with batching", "requeueCounter", requeueCounter, "initialSyncWorkqueueLen", c.initialSyncWorkqueue.Len(), "eventHandlerHasSynced", c.eventHandler.HasSynced())
 		syncResult, requeueCounterDiff, shouldContinue = c.processNextWorkItemWithBatching(c.initialSyncWorkqueue, batchCollector)
-		if syncResult == nil && requeueCounterDiff == 0 {
-			hasError = true
-		}
 		logger.Debugw("Processed next work item with batching", "syncResult", syncResult, "requeueCounterDiff", requeueCounterDiff, "shouldContinue", shouldContinue)
 		requeueCounter += requeueCounterDiff
 		if syncResult != nil {
@@ -207,10 +203,9 @@ func (c *Controller) RunInitialSync() *SyncResult {
 	if batchCollector.HasErrors() {
 		logger.Debug("Batch Collector has errors setting the delete flag to false")
 		shouldDeleteStaleEntities = false
-		hasError = true
 	}
 
-	if hasError {
+	if !shouldDeleteStaleEntities {
 		metrics.SetSuccess(c.Resource.Kind, metrics.MetricPhaseResync, false, 0)
 	} else {
 		metrics.SetSuccess(c.Resource.Kind, metrics.MetricPhaseResync, false, 1)
