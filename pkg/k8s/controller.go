@@ -303,7 +303,7 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 			entities = append(entities, entityWithKind.Entity)
 		}
 		logger.Infow("Processing entities for blueprint", "blueprint", blueprint, "entityCount", len(entities))
-		metrics.MeasureDurationVoid(metrics.GetKindLabel(controller.Resource.Kind, nil), metrics.MetricPhaseLoad, func(kind string, phase string) {
+		metrics.MeasureDuration(metrics.GetKindLabel(controller.Resource.Kind, nil), metrics.MetricPhaseLoad, func(kind string, phase string) (struct{}, error) {
 			optimalBatchSize := calculateBulkSize(entities, maxEntitiesPerBlueprintBatch, maxPayloadBytes)
 			logger.Infow("Calculated optimal batch size for blueprint", "blueprint", blueprint, "optimalBatchSize", optimalBatchSize)
 			for i := 0; i < len(entities); i += optimalBatchSize {
@@ -351,6 +351,7 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 				}
 				logger.Infow(fmt.Sprintf("Bulk upsert completed for blueprint %s.", blueprint), "blueprint", blueprint, "successCount", successCount, "failedCount", len(bulkResponse.Errors))
 			}
+			return struct{}{}, nil
 		})
 	}
 	// Clear the batch

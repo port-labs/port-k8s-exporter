@@ -122,12 +122,13 @@ func syncAllControllers(c *ControllersHandler) (*FullResyncResults, error) {
 				logger.Shutdown()
 			}()
 
-			metrics.MeasureDurationVoid(metrics.GetKindLabel(controller.Resource.Kind, nil), metrics.MetricPhaseExtract, func(kind string, phase string) {
+			metrics.MeasureDuration(metrics.GetKindLabel(controller.Resource.Kind, nil), metrics.MetricPhaseExtract, func(kind string, phase string) (struct{}, error) {
 				logger.Infof("Waiting for informer cache to sync for resource '%s'", controller.Resource.Kind)
 				if err := controller.WaitForCacheSync(c.stopCh); err != nil {
 					logger.Fatalf("Error while waiting for informer cache sync: %s", err.Error())
 				}
 				metrics.AddObjectCount(kind, metrics.MetricRawExtractedResult, phase, float64(controller.WorkqueueLen()))
+				return struct{}{}, nil
 			})
 
 			if c.portConfig.CreateMissingRelatedEntities {
@@ -178,11 +179,12 @@ func syncController(controller *k8s.Controller, c *ControllersHandler) (map[stri
 }
 
 func (c *ControllersHandler) runDeleteStaleEntities(ctx context.Context, currentEntitiesSet []map[string]interface{}) {
-	metrics.MeasureDurationVoid(metrics.MetricKindReconciliation, metrics.MetricPhaseDelete, func(kind string, phase string) {
+	metrics.MeasureDuration(metrics.MetricKindReconciliation, metrics.MetricPhaseDelete, func(kind string, phase string) (struct{}, error) {
 		err := c.portClient.DeleteStaleEntities(ctx, c.stateKey, goutils.MergeMaps(currentEntitiesSet...))
 		if err != nil {
 			logger.Errorf("error deleting stale entities: %s", err.Error())
 		}
+		return struct{}{}, nil
 	})
 }
 
