@@ -297,7 +297,9 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 			continue
 		}
 		entities := make([]port.EntityRequest, 0)
+		entityIdToKind := make(map[string]string)
 		for _, entityWithKind := range entitiesWithKind {
+			entityIdToKind[fmt.Sprintf("%v", entityWithKind.Entity.Identifier)] = entityWithKind.Kind
 			entities = append(entities, entityWithKind.Entity)
 		}
 		logger.Infow("Processing entities for blueprint", "blueprint", blueprint, "entityCount", len(entities))
@@ -319,16 +321,17 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 				}
 				successCount := 0
 				for _, result := range bulkResponse.Entities {
-					if result.Created {
-						successCount++
-						logger.Infow("Successfully upserted entity", "blueprint", blueprint, "identifier", result.Identifier)
-					}
+					successCountWithKind[entityIdToKind[result.Identifier]]++
+					successCount++
+					logger.Infow("Successfully upserted entity", "blueprint", blueprint, "identifier", result.Identifier)
 					mockEntity := &port.Entity{
 						Identifier: result.Identifier,
 						Blueprint:  blueprint,
 					}
 					entitiesSet[controller.portClient.GetEntityIdentifierKey(mockEntity)] = nil
 				}
+
+				// Handle partial failures - retry failed entities individually
 				if len(bulkResponse.Errors) > 0 {
 					logger.Warnw("Bulk upsert had failures", "blueprint", blueprint, "failedCount", len(bulkResponse.Errors), "totalCount", len(batchEntities))
 					failedIdentifiers := make(map[string]bool)
@@ -662,7 +665,7 @@ func isPassSelector(obj interface{}, selector port.Selector) (bool, error) {
 }
 
 func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, mappings []port.EntityMapping, itemsToParse string, kindIndex int) ([]port.EntityRequest, []interface{}, error) {
-	a, err := metrics.MeasureDuration(metrics.GetKindLabel(c.Resource.Kind, &kindIndex), metrics.MetricPhaseTransform, func(kind string, phase string) (*TransformResult, error) {
+	transformResult, err := metrics.MeasureDuration(metrics.GetKindLabel(c.Resource.Kind, &kindIndex), metrics.MetricPhaseTransform, func(kind string, phase string) (*TransformResult, error) {
 		var result TransformResult
 		unstructuredObj, ok := obj.(*unstructured.Unstructured)
 		if !ok {
@@ -734,7 +737,7 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 			RawDataExamples: rawDataExamples,
 		}, nil
 	})
-	return a.Entities, a.RawDataExamples, err
+	return transformResult.Entities, transformResult.RawDataExamples, err
 }
 
 func (c *Controller) entityHandler(portEntity port.EntityRequest, action EventActionType, eventSource port.EventSource) (*port.Entity, error) {
