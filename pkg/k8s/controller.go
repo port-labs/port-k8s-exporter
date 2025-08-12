@@ -301,7 +301,7 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 			entities = append(entities, entityWithKind.Entity)
 		}
 		logger.Infow("Processing entities for blueprint", "blueprint", blueprint, "entityCount", len(entities))
-		metrics.MeasureDuration2(controller.Resource.Kind, metrics.MetricPhaseLoad, func(kind string, phase string) {
+		metrics.MeasureDuration2(metrics.GetKindLabel(controller.Resource.Kind, nil), metrics.MetricPhaseLoad, func(kind string, phase string) {
 			optimalBatchSize := calculateBulkSize(entities, maxEntitiesPerBlueprintBatch, maxPayloadBytes)
 			logger.Infow("Calculated optimal batch size for blueprint", "blueprint", blueprint, "optimalBatchSize", optimalBatchSize)
 			for i := 0; i < len(entities); i += optimalBatchSize {
@@ -354,18 +354,18 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 	bc.entitiesByBlueprint = make(map[string][]EntityWithKind)
 	bc.lastFlush = time.Now()
 
-	go func () {
+	go func() {
 		for kindLabel, count := range successCountWithKind {
 			metrics.AddObjectCount(kindLabel, metrics.MetricLoadedResult, metrics.MetricPhaseLoad, float64(count))
 		}
 	}()
 
-	go func () {
+	go func() {
 		for kindLabel, count := range failedUpsertsCountWithKind {
 			metrics.AddObjectCount(kindLabel, metrics.MetricFailedResult, metrics.MetricPhaseLoad, float64(count))
 		}
 	}()
-	 
+
 	return &SyncResult{
 		EntitiesSet:               entitiesSet,
 		RawDataExamples:           make([]interface{}, 0),
@@ -459,7 +459,7 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 
 		rawDataExamples := make([]interface{}, 0)
 		for kindIndex, kindConfig := range c.Resource.KindConfigs {
-			kindLabel := fmt.Sprintf("%s-%d", c.Resource.Kind, kindIndex)
+			kindLabel := metrics.GetKindLabel(c.Resource.Kind, &kindIndex)
 			portEntities, rawDataExamplesForObj, err := c.getObjectEntities(k8sObj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, kindIndex)
 			if err != nil {
 				logger.Errorw(fmt.Sprintf("Error getting entities for object %s. Error: %s", item.Key, err.Error()), "key", item.Key, "controller", c.Resource.Kind, "error", err, "eventSource", item.EventSource)
@@ -662,7 +662,7 @@ func isPassSelector(obj interface{}, selector port.Selector) (bool, error) {
 }
 
 func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, mappings []port.EntityMapping, itemsToParse string, kindIndex int) ([]port.EntityRequest, []interface{}, error) {
-	a, err := metrics.MeasureDuration(fmt.Sprintf("%s-%d", c.Resource.Kind, kindIndex), metrics.MetricPhaseTransform, func(kind string, phase string) (*TransformResult, error) {
+	a, err := metrics.MeasureDuration(metrics.GetKindLabel(c.Resource.Kind, &kindIndex), metrics.MetricPhaseTransform, func(kind string, phase string) (*TransformResult, error) {
 		var result TransformResult
 		unstructuredObj, ok := obj.(*unstructured.Unstructured)
 		if !ok {

@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
@@ -114,6 +115,24 @@ func StartMetricsServer(logger *zap.SugaredLogger, port int) {
 		http.Handle("/metrics", promhttp.Handler())
 		_ = http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
 	}()
+}
+
+func InitializeMetricsForController(aggregatedResources *port.AggregatedResource) {
+	for kindIndex, _ := range aggregatedResources.KindConfigs {
+		kindLabel := GetKindLabel(aggregatedResources.Kind, &kindIndex)
+		AddObjectCount(kindLabel, MetricTransformResult, MetricPhaseTransform, 0)
+		AddObjectCount(kindLabel, MetricFilteredOutResult, MetricPhaseTransform, 0)
+		AddObjectCount(kindLabel, MetricFailedResult, MetricPhaseTransform, 0)
+		AddObjectCount(kindLabel, MetricLoadedResult, MetricPhaseLoad, 0)
+		AddObjectCount(kindLabel, MetricFailedResult, MetricPhaseLoad, 0)
+	}
+}
+
+func GetKindLabel(kind string, kindIndex *int) string {
+	if kindIndex == nil {
+		return kind
+	}
+	return fmt.Sprintf("%s-%d", kind, *kindIndex)
 }
 
 func MeasureResync[T any](resyncFn func() (T, error)) (T, error) {
