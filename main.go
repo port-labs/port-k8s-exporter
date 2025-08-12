@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -13,46 +12,10 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/k8s"
 	"github.com/port-labs/port-k8s-exporter/pkg/logger"
 	"github.com/port-labs/port-k8s-exporter/pkg/metrics"
-	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
-	"github.com/port-labs/port-k8s-exporter/pkg/port/integration"
-)
-
-type ResyncType string
-
-const (
-	INITIAL_RESYNC   ResyncType = "initial resync"
-	SCHEDULED_RESYNC ResyncType = "scheduled resync"
-	MAPPING_CHANGED  ResyncType = "mapping changed"
 )
 
 var registerOnce sync.Once
-var controllerHandler *handlers.ControllersHandler
-
-func runResync(exporterConfig *port.Config, k8sClient *k8s.Client, portClient *cli.PortClient, resyncType ResyncType) error {
-	if controllerHandler != (*handlers.ControllersHandler)(nil) {
-		controllerHandler.Stop()
-	}
-
-	newController, resyncErr := metrics.MeasureResync(func() (*handlers.ControllersHandler, error) {
-		i, err := integration.GetIntegration(portClient, exporterConfig.StateKey)
-		if err != nil {
-			metrics.SetSuccess(metrics.MetricKindResync, metrics.MetricPhaseResync, 0)
-			return nil, fmt.Errorf("error getting Port integration: %v", err)
-		}
-		if i.Config == nil {
-			metrics.SetSuccess(metrics.MetricKindResync, metrics.MetricPhaseResync, 0)
-			return nil, errors.New("integration config is nil")
-		}
-
-		newHandler := handlers.NewControllersHandler(exporterConfig, i.Config, k8sClient, portClient)
-		newHandler.Handle(string(resyncType))
-		return newHandler, nil
-	})
-	controllerHandler = newController
-
-	return resyncErr
-}
 
 func main() {
 	// Ensure logs are flushed before application exits
@@ -92,7 +55,7 @@ func main() {
 			for {
 				select {
 				case <-ticker.C:
-					runResync(applicationConfig, k8sClient, portClient, SCHEDULED_RESYNC)
+					handlers.RunResync(applicationConfig, k8sClient, portClient, handlers.SCHEDULED_RESYNC)
 				}
 			}
 		}()
@@ -100,11 +63,11 @@ func main() {
 
 	logger.Info("Starting controllers handler")
 	err = event_handler.Start(eventListener, func() error {
-		resyncType := MAPPING_CHANGED
+		resyncType := handlers.MAPPING_CHANGED
 		registerOnce.Do(func() {
-			resyncType = INITIAL_RESYNC
+			resyncType = handlers.INITIAL_RESYNC
 		})
-		return runResync(applicationConfig, k8sClient, portClient, resyncType)
+		return handlers.RunResync(applicationConfig, k8sClient, portClient, resyncType)
 	})
 
 	if err != nil {

@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
@@ -33,6 +35,16 @@ type FullResyncResults struct {
 	EntitiesSets              []map[string]interface{}
 	ShouldDeleteStaleEntities bool
 }
+
+type ResyncType string
+
+const (
+	INITIAL_RESYNC   ResyncType = "initial resync"
+	SCHEDULED_RESYNC ResyncType = "scheduled resync"
+	MAPPING_CHANGED  ResyncType = "mapping changed"
+)
+
+var controllerHandler *ControllersHandler
 
 func NewControllersHandler(exporterConfig *port.Config, portConfig *port.IntegrationAppConfig, k8sClient *k8s.Client, portClient *cli.PortClient) *ControllersHandler {
 	informersFactory := dynamicinformer.NewDynamicSharedInformerFactory(k8sClient.DynamicClient, 0)
@@ -103,6 +115,31 @@ func (c *ControllersHandler) Handle(resyncType string) {
 		logger.Warning("Skipping delete of stale entities due to a failure in getting all current entities from k8s")
 		metrics.SetSuccess(metrics.MetricDeletedResult, metrics.MetricPhaseDelete, 0)
 	}
+}
+
+func RunResync(exporterConfig *port.Config, k8sClient *k8s.Client, portClient *cli.PortClient, resyncType ResyncType) error {
+	if controllerHandler != (*ControllersHandler)(nil) {
+		controllerHandler.Stop()
+	}
+
+	newController, resyncErr := metrics.MeasureResync(func() (*ControllersHandler, error) {
+		i, err := integration.GetIntegration(portClient, exporterConfig.StateKey)
+		if err != nil {
+			metrics.SetSuccess(metrics.MetricKindResync, metrics.MetricPhaseResync, 0)
+			return nil, fmt.Errorf("error getting Port integration: %v", err)
+		}
+		if i.Config == nil {
+			metrics.SetSuccess(metrics.MetricKindResync, metrics.MetricPhaseResync, 0)
+			return nil, errors.New("integration config is nil")
+		}
+
+		newHandler := NewControllersHandler(exporterConfig, i.Config, k8sClient, portClient)
+		newHandler.Handle(string(resyncType))
+		return newHandler, nil
+	})
+	controllerHandler = newController
+
+	return resyncErr
 }
 
 func syncAllControllers(c *ControllersHandler) (*FullResyncResults, error) {
