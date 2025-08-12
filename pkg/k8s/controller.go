@@ -205,6 +205,8 @@ func (c *Controller) RunInitialSync() *SyncResult {
 	}
 
 	if batchCollector.HasErrors() {
+		logger.Debug("Batch Collector has errors setting the delete flag to false")
+		shouldDeleteStaleEntities = false
 		hasError = true
 	}
 
