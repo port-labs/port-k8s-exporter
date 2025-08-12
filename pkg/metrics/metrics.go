@@ -67,7 +67,7 @@ var (
 			Name: MetricSuccessName,
 			Help: "success description",
 		},
-		[]string{"kind", "phase", "is_aborted"},
+		[]string{"kind", "phase"},
 	)
 
 	aggregatedMetricsInstance *AggregatedMetrics
@@ -76,7 +76,7 @@ var (
 type AggregatedMetrics struct {
 	DurationSeconds map[[2]string]float64 // [kind, phase] -> duration
 	ObjectCount     map[[3]string]float64 // [kind, object_count_type, phase] -> count
-	Success         map[[3]string]float64 // [kind, phase, is_aborted] -> success (0 or 1)
+	Success         map[[2]string]float64 // [kind, phase] -> success (0 or 1)
 	mu              sync.Mutex
 }
 
@@ -84,7 +84,7 @@ func newAggregatedMetrics() *AggregatedMetrics {
 	aggregatedMetricsInstance = &AggregatedMetrics{
 		DurationSeconds: make(map[[2]string]float64),
 		ObjectCount:     make(map[[3]string]float64),
-		Success:         make(map[[3]string]float64),
+		Success:         make(map[[2]string]float64),
 	}
 	return aggregatedMetricsInstance
 }
@@ -99,7 +99,7 @@ func flushMetrics(am *AggregatedMetrics) {
 		objectCount.WithLabelValues(key[0], key[1], key[2]).Set(value)
 	}
 	for key, value := range am.Success {
-		success.WithLabelValues(key[0], key[1], key[2]).Set(value)
+		success.WithLabelValues(key[0], key[1]).Set(value)
 	}
 	aggregatedMetricsInstance = nil
 }
@@ -164,12 +164,12 @@ func AddObjectCount(kind string, objectCountType string, phase string, count flo
 	aggregatedMetricsInstance.ObjectCount[[3]string{kind, objectCountType, phase}] += count
 }
 
-func SetSuccess(kind string, phase string, isAborted bool, successVal float64) {
+func SetSuccess(kind string, phase string, successVal float64) {
 	if aggregatedMetricsInstance == nil {
 		return
 	}
 
 	aggregatedMetricsInstance.mu.Lock()
 	defer aggregatedMetricsInstance.mu.Unlock()
-	aggregatedMetricsInstance.Success[[3]string{kind, phase, fmt.Sprintf("%v", isAborted)}] = successVal
+	aggregatedMetricsInstance.Success[[2]string{kind, phase}] = successVal
 }

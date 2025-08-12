@@ -37,11 +37,11 @@ func runResync(exporterConfig *port.Config, k8sClient *k8s.Client, portClient *c
 	newController, resyncErr := metrics.MeasureResync(func() (*handlers.ControllersHandler, error) {
 		i, err := integration.GetIntegration(portClient, exporterConfig.StateKey)
 		if err != nil {
-			metrics.SetSuccess(metrics.MetricKindResync, metrics.MetricPhaseResync, false, 0)
+			metrics.SetSuccess(metrics.MetricKindResync, metrics.MetricPhaseResync, 0)
 			return nil, fmt.Errorf("error getting Port integration: %v", err)
 		}
 		if i.Config == nil {
-			metrics.SetSuccess(metrics.MetricKindResync, metrics.MetricPhaseResync, false, 0)
+			metrics.SetSuccess(metrics.MetricKindResync, metrics.MetricPhaseResync, 0)
 			return nil, errors.New("integration config is nil")
 		}
 

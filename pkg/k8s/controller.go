@@ -206,9 +206,9 @@ func (c *Controller) RunInitialSync() *SyncResult {
 	}
 
 	if !shouldDeleteStaleEntities {
-		metrics.SetSuccess(c.Resource.Kind, metrics.MetricPhaseResync, false, 0)
+		metrics.SetSuccess(c.Resource.Kind, metrics.MetricPhaseResync, 0)
 	} else {
-		metrics.SetSuccess(c.Resource.Kind, metrics.MetricPhaseResync, false, 1)
+		metrics.SetSuccess(c.Resource.Kind, metrics.MetricPhaseResync, 1)
 	}
 
 	return &SyncResult{

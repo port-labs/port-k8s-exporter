@@ -91,7 +91,6 @@ func (c *ControllersHandler) Handle(resyncType string) {
 	defer cancelCtx()
 	go func() {
 		<-c.stopCh
-		metrics.SetSuccess(metrics.MetricKindResync, metrics.MetricPhaseResync, true, 0)
 		cancelCtx()
 	}()
 
@@ -99,10 +98,10 @@ func (c *ControllersHandler) Handle(resyncType string) {
 		logger.Info("Deleting stale entities")
 		c.runDeleteStaleEntities(ctx, resyncResults.EntitiesSets)
 		logger.Info("Done deleting stale entities")
-		metrics.SetSuccess(metrics.MetricDeletedResult, metrics.MetricPhaseDelete, false, 1)
+		metrics.SetSuccess(metrics.MetricDeletedResult, metrics.MetricPhaseDelete, 1)
 	} else {
 		logger.Warning("Skipping delete of stale entities due to a failure in getting all current entities from k8s")
-		metrics.SetSuccess(metrics.MetricDeletedResult, metrics.MetricPhaseDelete, false, 0)
+		metrics.SetSuccess(metrics.MetricDeletedResult, metrics.MetricPhaseDelete, 0)
 	}
 }
 
@@ -117,9 +116,6 @@ func syncAllControllers(c *ControllersHandler) (*FullResyncResults, error) {
 				<-c.stopCh
 				logger.Info("Shutting down controllers")
 				controller.Shutdown()
-				// Flush any remaining logs before exit
-				logger.Info("Exporter exiting")
-				logger.Shutdown()
 			}()
 
 			metrics.MeasureDuration(metrics.GetKindLabel(controller.Resource.Kind, nil), metrics.MetricPhaseExtract, func(kind string, phase string) (struct{}, error) {
@@ -150,7 +146,7 @@ func syncAllControllers(c *ControllersHandler) (*FullResyncResults, error) {
 		if !shouldDeleteStaleEntities {
 			success = 0
 		}
-		metrics.SetSuccess(kind, phase, false, float64(success))
+		metrics.SetSuccess(kind, phase, float64(success))
 
 		return &FullResyncResults{
 			EntitiesSets:              currentEntitiesSets,
