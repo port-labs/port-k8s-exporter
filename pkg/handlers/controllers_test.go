@@ -603,3 +603,22 @@ func TestControllersHandler_Stop(t *testing.T) {
 	assert.True(t, f.controllersHandler.isStopped)
 	assert.Panics(t, func() { close(f.controllersHandler.stopCh) })
 }
+
+func TestControllersHandler_RunResyncNotOverlaps(t *testing.T) {
+	stateKey := guuid.NewString()
+	resources := []port.Resource{getBaseResource(stateKey, deploymentKind)}
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resources: resources, existingObjects: []runtime.Object{}})
+	defer tearDownFixture(t, f)
+
+	RunResync(&port.Config{StateKey: stateKey}, f.k8sClient, f.portClient, SCHEDULED_RESYNC)
+	firstControllersHandler := controllerHandler
+
+	RunResync(&port.Config{StateKey: stateKey}, f.k8sClient, f.portClient, SCHEDULED_RESYNC)
+	secondControllersHandler := controllerHandler
+
+	assert.NotNil(t, firstControllersHandler)
+	assert.NotNil(t, secondControllersHandler)
+	assert.NotEqual(t, firstControllersHandler, secondControllersHandler)
+	assert.True(t, firstControllersHandler.isStopped)
+	assert.False(t, secondControllersHandler.isStopped)
+}
