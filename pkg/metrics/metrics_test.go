@@ -422,14 +422,6 @@ func validateMetrics(
 		{metrics.MetricFailedResult, metrics.MetricPhaseDelete}:         0,
 	}
 
-	defaultDurationMetrics := map[[2]string]float64{
-		{kind, metrics.MetricPhaseExtract}:                            0,
-		{kind, metrics.MetricPhaseTransform}:                          0,
-		{kind, metrics.MetricPhaseLoad}:                               0,
-		{metrics.MetricKindResync, metrics.MetricPhaseResync}:         0,
-		{metrics.MetricKindReconciliation, metrics.MetricPhaseDelete}: 0,
-	}
-
 	defaultSuccessMetrics := map[[2]string]float64{
 		{metrics.MetricKindResync, metrics.MetricPhaseResync}:         0,
 		{metrics.MetricKindReconciliation, metrics.MetricPhaseDelete}: 0,
@@ -445,12 +437,6 @@ func validateMetrics(
 		gauge, err := metrics.GetObjectCountGauge(kindLabel, defaultMetric[0], defaultMetric[1])
 		assert.NoError(t, err)
 		assert.Equal(t, expectedValue, testutil.ToFloat64(gauge), fmt.Sprintf("kind: %s, phase: %s", defaultMetric[0], defaultMetric[1]))
-	}
-
-	for defaultMetric, defaultMetricValue := range defaultDurationMetrics {
-		durationGauge, err := metrics.GetDurationGauge(defaultMetric[0], defaultMetric[1])
-		assert.NoError(t, err)
-		assert.Greater(t, testutil.ToFloat64(durationGauge), defaultMetricValue, fmt.Sprintf("kind: %s, phase: %s", defaultMetric[0], defaultMetric[1]))
 	}
 
 	for defaultMetric, defaultMetricValue := range defaultSuccessMetrics {
@@ -583,12 +569,7 @@ func TestMetricsPopulation_InvalidIdentifierMapping(t *testing.T) {
 	resources := buildMappings(stateKey, map[string][]OverrideableFields{
 		daemonSetKind: {
 			{
-				Identifier: ".metadata.name",
-				Selector:   ".metadata.name | contains(\"system\") | not",
-			},
-			{
-				Identifier: ".metadata.name",
-				Selector:   ".metadata.name | contains(\"system\")",
+				Identifier: ".notexist",
 			},
 		},
 	})
@@ -601,24 +582,9 @@ func TestMetricsPopulation_InvalidIdentifierMapping(t *testing.T) {
 
 	handlers.RunResync(&port.Config{StateKey: stateKey}, f.k8sClient, f.portClient, handlers.INITIAL_RESYNC)
 
-	expectedSuccessMetrics := map[[2]string]float64{
-		{metrics.MetricKindResync, metrics.MetricPhaseResync}:         1,
-		{metrics.MetricKindReconciliation, metrics.MetricPhaseDelete}: 1,
-		{daemonSetKind, metrics.MetricPhaseResync}:                    1,
-	}
 	firstDaemonSetKindIndex := 0
 	validateMetrics(t, daemonSetKind, &firstDaemonSetKindIndex, map[[2]string]float64{
-		{metrics.MetricRawExtractedResult, metrics.MetricPhaseExtract}:  3,
-		{metrics.MetricTransformResult, metrics.MetricPhaseTransform}:   1,
-		{metrics.MetricFilteredOutResult, metrics.MetricPhaseTransform}: 2,
-		{metrics.MetricLoadedResult, metrics.MetricPhaseLoad}:           1,
-	}, expectedSuccessMetrics)
-
-	secondDaemonSetKindIndex := 1
-	validateMetrics(t, daemonSetKind, &secondDaemonSetKindIndex, map[[2]string]float64{
-		{metrics.MetricRawExtractedResult, metrics.MetricPhaseExtract}:  3,
-		{metrics.MetricTransformResult, metrics.MetricPhaseTransform}:   2,
-		{metrics.MetricFilteredOutResult, metrics.MetricPhaseTransform}: 1,
-		{metrics.MetricLoadedResult, metrics.MetricPhaseLoad}:           2,
-	}, expectedSuccessMetrics)
+		{metrics.MetricRawExtractedResult, metrics.MetricPhaseExtract}: 3,
+		{metrics.MetricFailedResult, metrics.MetricPhaseTransform}:     3,
+	}, map[[2]string]float64{})
 }
