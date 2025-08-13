@@ -1,7 +1,6 @@
 package metrics_test
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -62,6 +61,12 @@ type fixtureConfig struct {
 	stateKey         string
 	resources        []port.Resource
 	existingObjects  []runtime.Object
+}
+
+type OverrideableFields struct {
+	Identifier string
+	Blueprint  string
+	Selector   string
 }
 
 func tearDownFixture(
@@ -134,7 +139,7 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 		ResyncInterval:                  config.ApplicationConfig.ResyncInterval,
 		PortBaseURL:                     config.ApplicationConfig.PortBaseURL,
 		EventListenerType:               config.ApplicationConfig.EventListenerType,
-		CreateDefaultResources:          config.ApplicationConfig.CreateDefaultResources,
+		CreateDefaultResources:          false,
 		OverwriteConfigurationOnRestart: config.ApplicationConfig.OverwriteConfigurationOnRestart,
 		Resources:                       integrationConfig.Resources,
 		DeleteDependents:                integrationConfig.DeleteDependents,
@@ -270,21 +275,7 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 	}
 }
 
-func newResource(selectorQuery string, mappings []port.EntityMapping, kind string) port.Resource {
-	return port.Resource{
-		Kind: kind,
-		Selector: port.Selector{
-			Query: selectorQuery,
-		},
-		Port: port.Port{
-			Entity: port.EntityMappings{
-				Mappings: mappings,
-			},
-		},
-	}
-}
-
-func newDeployment(stateKey string) *appsv1.Deployment {
+func newDeployment(stateKey string, name string) *appsv1.Deployment {
 	blueprintId := getBlueprintId(stateKey)
 	labels := map[string]string{
 		"app": blueprintId,
@@ -295,7 +286,7 @@ func newDeployment(stateKey string) *appsv1.Deployment {
 			APIVersion: "apps/v1",
 		},
 		ObjectMeta: v1.ObjectMeta{
-			Name:      blueprintId,
+			Name:      name,
 			Namespace: blueprintId,
 		},
 		Spec: appsv1.DeploymentSpec{
@@ -319,7 +310,7 @@ func newDeployment(stateKey string) *appsv1.Deployment {
 	}
 }
 
-func newDaemonSet(stateKey string) *appsv1.DaemonSet {
+func newDaemonSet(stateKey string, name string) *appsv1.DaemonSet {
 	blueprintId := getBlueprintId(stateKey)
 	labels := map[string]string{
 		"app": blueprintId,
@@ -330,7 +321,7 @@ func newDaemonSet(stateKey string) *appsv1.DaemonSet {
 			APIVersion: "apps/v1",
 		},
 		ObjectMeta: v1.ObjectMeta{
-			Name:      fmt.Sprintf("%s-ds", blueprintId),
+			Name:      name,
 			Namespace: blueprintId,
 		},
 		Spec: appsv1.DaemonSetSpec{
@@ -374,37 +365,42 @@ func getGvr(kind string) schema.GroupVersionResource {
 	return schema.GroupVersionResource{Group: s[0], Version: s[1], Resource: s[2]}
 }
 
-func getResource(stateKey string, kind string) port.Resource {
+func buildMappings(stateKey string, overrideFields map[string][]OverrideableFields) []port.Resource {
 	blueprintId := getBlueprintId(stateKey)
-
-	res := newResource("", []port.EntityMapping{
-		{
-			Identifier: ".metadata.name",
-			Blueprint:  fmt.Sprintf("\"%s\"", blueprintId),
-			Icon:       "\"Microservice\"",
-			Properties: map[string]string{
-				"text": "\"pod\"",
-				"num":  "1",
-				"bool": "true",
-				"obj":  ".spec.selector",
-				"arr":  ".spec.template.spec.containers",
-			},
-		},
-	}, kind)
-
-	return res
-}
-
-func (f *fixture) createObjects(objects []*unstructured.Unstructured, kind string) {
-	if objects != nil {
-		for _, d := range objects {
-			gvr := getGvr(kind)
-			_, err := f.k8sClient.DynamicClient.Resource(gvr).Namespace(d.GetNamespace()).Create(context.TODO(), d, metav1.CreateOptions{})
-			if err != nil {
-				f.t.Errorf("error creating object %s: %v", d.GetName(), err)
+	resources := make([]port.Resource, 0)
+	for kind, overrideFields := range overrideFields {
+		for _, overrideField := range overrideFields {
+			selectorQuery := "true"
+			if overrideField.Selector != "" {
+				selectorQuery = overrideField.Selector
 			}
+			blueprint := fmt.Sprintf("\"%s\"", blueprintId)
+			if overrideField.Blueprint != "" {
+				blueprint = overrideField.Blueprint
+			}
+			identifier := overrideField.Identifier
+			if identifier == "" {
+				identifier = ".metadata.name"
+			}
+			resources = append(resources, port.Resource{
+				Kind: kind,
+				Selector: port.Selector{
+					Query: selectorQuery,
+				},
+				Port: port.Port{
+					Entity: port.EntityMappings{
+						Mappings: []port.EntityMapping{
+							{
+								Identifier: identifier,
+								Blueprint:  blueprint,
+							},
+						},
+					},
+				},
+			})
 		}
 	}
+	return resources
 }
 
 func validateMetrics(
@@ -448,14 +444,13 @@ func validateMetrics(
 		}
 		gauge, err := metrics.GetObjectCountGauge(kindLabel, defaultMetric[0], defaultMetric[1])
 		assert.NoError(t, err)
-		gever := testutil.ToFloat64(gauge)
-		assert.Equal(t, expectedValue, gever)
+		assert.Equal(t, expectedValue, testutil.ToFloat64(gauge), fmt.Sprintf("kind: %s, phase: %s", defaultMetric[0], defaultMetric[1]))
 	}
 
 	for defaultMetric, defaultMetricValue := range defaultDurationMetrics {
 		durationGauge, err := metrics.GetDurationGauge(defaultMetric[0], defaultMetric[1])
 		assert.NoError(t, err)
-		assert.Greater(t, testutil.ToFloat64(durationGauge), defaultMetricValue)
+		assert.Greater(t, testutil.ToFloat64(durationGauge), defaultMetricValue, fmt.Sprintf("kind: %s, phase: %s", defaultMetric[0], defaultMetric[1]))
 	}
 
 	for defaultMetric, defaultMetricValue := range defaultSuccessMetrics {
@@ -465,20 +460,24 @@ func validateMetrics(
 		}
 		successGauge, err := metrics.GetSuccessGauge(defaultMetric[0], defaultMetric[1])
 		assert.NoError(t, err)
-		assert.Equal(t, expectedValue, testutil.ToFloat64(successGauge))
+		assert.Equal(t, expectedValue, testutil.ToFloat64(successGauge), fmt.Sprintf("kind: %s, phase: %s", defaultMetric[0], defaultMetric[1]))
 	}
 }
 
 func TestMetricsPopulation_SuccessfullResync(t *testing.T) {
 	stateKey := guuid.NewString()
-	firstDeploymentResource := getResource(stateKey, deploymentKind)
-	firstDeploymentResource.Port.Entity.Mappings[0].Properties["identifier"] = ".metadata.name + \"first\""
-	secondDeploymentResource := getResource(stateKey, deploymentKind)
-	resources := []port.Resource{firstDeploymentResource, secondDeploymentResource}
-	d1 := newDeployment(stateKey)
-	d1.Name = guuid.NewString()
-	d2 := newDeployment(stateKey)
-	d2.Name = guuid.NewString()
+	resources := buildMappings(stateKey, map[string][]OverrideableFields{
+		deploymentKind: {
+			{
+				Identifier: ".metadata.name + \"first\"",
+			},
+			{
+				Identifier: ".metadata.name + \"second\"",
+			},
+		},
+	})
+	d1 := newDeployment(stateKey, guuid.NewString())
+	d2 := newDeployment(stateKey, guuid.NewString())
 
 	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resources: resources, existingObjects: []runtime.Object{newUnstructured(d1), newUnstructured(d2)}})
 	defer tearDownFixture(t, f)
@@ -495,34 +494,52 @@ func TestMetricsPopulation_SuccessfullResync(t *testing.T) {
 		{metrics.MetricKindReconciliation, metrics.MetricPhaseDelete}: 1,
 		{deploymentKind, metrics.MetricPhaseResync}:                   1,
 	}
-	for i := 1; i < 2; i++ {
+	for i := 0; i < 2; i++ {
 		validateMetrics(t, deploymentKind, &i, expectedObjectCountMetrics, expectedSuccessMetrics)
 	}
 }
 
-func TestMetricsPopulation_JQError(t *testing.T) {
+func TestMetricsPopulation_Selector(t *testing.T) {
 	stateKey := guuid.NewString()
-	resources := []port.Resource{getResource(stateKey, deploymentKind)}
-	d1 := newDeployment(stateKey)
-	d1.Name = guuid.NewString()
-	d2 := newDeployment(stateKey)
-	d2.Name = guuid.NewString()
+	resources := buildMappings(stateKey, map[string][]OverrideableFields{
+		daemonSetKind: {
+			{
+				Identifier: ".metadata.name",
+				Selector:   ".metadata.name | contains(\"system\") | not",
+			},
+			{
+				Identifier: ".metadata.name",
+				Selector:   ".metadata.name | contains(\"system\")",
+			},
+		},
+	})
+	ds1 := newDaemonSet(stateKey, "system-ds")
+	ds2 := newDaemonSet(stateKey, "system-ds2")
+	ds3 := newDaemonSet(stateKey, guuid.NewString())
 
-	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resources: resources, existingObjects: []runtime.Object{newUnstructured(d1), newUnstructured(d2)}})
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resources: resources, existingObjects: []runtime.Object{newUnstructured(ds1), newUnstructured(ds2), newUnstructured(ds3)}})
 	defer tearDownFixture(t, f)
 
 	handlers.RunResync(&port.Config{StateKey: stateKey}, f.k8sClient, f.portClient, handlers.INITIAL_RESYNC)
 
-	expectedObjectCountMetrics := map[[2]string]float64{
-		{metrics.MetricRawExtractedResult, metrics.MetricPhaseExtract}: 2,
-		{metrics.MetricTransformResult, metrics.MetricPhaseTransform}:  2,
-		{metrics.MetricLoadedResult, metrics.MetricPhaseLoad}:          2,
-	}
 	expectedSuccessMetrics := map[[2]string]float64{
 		{metrics.MetricKindResync, metrics.MetricPhaseResync}:         1,
 		{metrics.MetricKindReconciliation, metrics.MetricPhaseDelete}: 1,
-		{deploymentKind, metrics.MetricPhaseResync}:                   1,
+		{daemonSetKind, metrics.MetricPhaseResync}:                   1,
 	}
-	deploymentKindIndex := 0
-	validateMetrics(t, deploymentKind, &deploymentKindIndex, expectedObjectCountMetrics, expectedSuccessMetrics)
+	firstDaemonSetKindIndex := 0
+	validateMetrics(t, daemonSetKind, &firstDaemonSetKindIndex, map[[2]string]float64{
+		{metrics.MetricRawExtractedResult, metrics.MetricPhaseExtract}:  3,
+		{metrics.MetricTransformResult, metrics.MetricPhaseTransform}:   1,
+		{metrics.MetricFilteredOutResult, metrics.MetricPhaseTransform}: 2,
+		{metrics.MetricLoadedResult, metrics.MetricPhaseLoad}:           1,
+	}, expectedSuccessMetrics)
+
+	secondDaemonSetKindIndex := 1
+	validateMetrics(t, daemonSetKind, &secondDaemonSetKindIndex, map[[2]string]float64{
+		{metrics.MetricRawExtractedResult, metrics.MetricPhaseExtract}:  3,
+		{metrics.MetricTransformResult, metrics.MetricPhaseTransform}:   2,
+		{metrics.MetricFilteredOutResult, metrics.MetricPhaseTransform}: 1,
+		{metrics.MetricLoadedResult, metrics.MetricPhaseLoad}:           2,
+	}, expectedSuccessMetrics)
 }
