@@ -409,7 +409,6 @@ func (f *fixture) createObjects(objects []*unstructured.Unstructured, kind strin
 
 func validateMetrics(
 	t *testing.T,
-	f *fixture,
 	kind string,
 	kindIndex *int,
 	expectedObjectCountMetrics map[[2]string]float64,
@@ -449,7 +448,8 @@ func validateMetrics(
 		}
 		gauge, err := metrics.GetObjectCountGauge(kindLabel, defaultMetric[0], defaultMetric[1])
 		assert.NoError(t, err)
-		assert.Equal(t, expectedValue, testutil.ToFloat64(gauge))
+		gever := testutil.ToFloat64(gauge)
+		assert.Equal(t, expectedValue, gever)
 	}
 
 	for defaultMetric, defaultMetricValue := range defaultDurationMetrics {
@@ -495,8 +495,8 @@ func TestMetricsPopulation_SuccessfullResync(t *testing.T) {
 		{metrics.MetricKindReconciliation, metrics.MetricPhaseDelete}: 1,
 		{deploymentKind, metrics.MetricPhaseResync}:                   1,
 	}
-	for i := 0; i < 1; i++ {
-		validateMetrics(t, f, deploymentKind, &i, expectedObjectCountMetrics, expectedSuccessMetrics)
+	for i := 1; i < 2; i++ {
+		validateMetrics(t, deploymentKind, &i, expectedObjectCountMetrics, expectedSuccessMetrics)
 	}
 }
 
@@ -524,5 +524,5 @@ func TestMetricsPopulation_JQError(t *testing.T) {
 		{deploymentKind, metrics.MetricPhaseResync}:                   1,
 	}
 	deploymentKindIndex := 0
-	validateMetrics(t, f, deploymentKind, &deploymentKindIndex, expectedObjectCountMetrics, expectedSuccessMetrics)
+	validateMetrics(t, deploymentKind, &deploymentKindIndex, expectedObjectCountMetrics, expectedSuccessMetrics)
 }

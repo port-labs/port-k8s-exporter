@@ -143,7 +143,7 @@ func RunResync(exporterConfig *port.Config, k8sClient *k8s.Client, portClient *c
 }
 
 func syncAllControllers(c *ControllersHandler) (*FullResyncResults, error) {
-	return metrics.MeasureDuration[*FullResyncResults](metrics.MetricKindResync, metrics.MetricPhaseResync, func(phase string) (*FullResyncResults, error) {
+	return metrics.MeasureDuration(metrics.MetricKindResync, metrics.MetricPhaseResync, func(phase string) (*FullResyncResults, error) {
 		currentEntitiesSets := make([]map[string]interface{}, 0)
 		shouldDeleteStaleEntities := true
 		var syncWg sync.WaitGroup

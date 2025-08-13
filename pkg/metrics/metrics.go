@@ -92,12 +92,19 @@ func newAggregatedMetrics() *AggregatedMetrics {
 func flushMetrics(am *AggregatedMetrics) {
 	am.mu.Lock()
 	defer am.mu.Unlock()
+
+	// Reset gauges before repopulating to avoid stale metrics for non existing kinds
+	durationSeconds.Reset()
+	objectCount.Reset()
+	success.Reset()
 	for key, value := range am.DurationSeconds {
 		durationSeconds.WithLabelValues(key[0], key[1]).Set(value)
 	}
+
 	for key, value := range am.ObjectCount {
 		objectCount.WithLabelValues(key[0], key[1], key[2]).Set(value)
 	}
+
 	for key, value := range am.Success {
 		success.WithLabelValues(key[0], key[1]).Set(value)
 	}
