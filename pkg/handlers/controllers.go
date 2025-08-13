@@ -160,10 +160,10 @@ func syncAllControllers(c *ControllersHandler) (*FullResyncResults, error) {
 				if err := controller.WaitForCacheSync(c.stopCh); err != nil {
 					logger.Fatalf("Error while waiting for informer cache sync: %s", err.Error())
 				}
-				// For compatibility to other object kind metrics, we add 
+				// For compatibility to other object kind metrics, we add
 				// this metric per kind and not once per resource
 				for kindIndex := range controller.Resource.KindConfigs {
-					metrics.AddObjectCount(metrics.GetKindLabel(controller.Resource.Kind, &kindIndex), metrics.MetricRawExtractedResult, phase, float64(controller.WorkqueueLen()))
+					metrics.AddObjectCount(metrics.GetKindLabel(controller.Resource.Kind, &kindIndex), metrics.MetricRawExtractedResult, phase, float64(controller.WorkqueueLen()/len(controller.Resource.KindConfigs)))
 				}
 				return struct{}{}, nil
 			})

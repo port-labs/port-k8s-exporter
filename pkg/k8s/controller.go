@@ -38,6 +38,7 @@ const (
 
 type EventItem struct {
 	Key         string
+	KindIndex   int
 	ActionType  EventActionType
 	EventSource port.EventSource
 }
@@ -105,7 +106,11 @@ func NewController(resource port.AggregatedResource, informer informers.GenericI
 			} else {
 				item.EventSource = port.ResyncSource
 				logger.Debugw("sending the item to resync queue for processing", "item", item.Key)
-				controller.initialSyncWorkqueue.Add(item)
+				for kindIndex := range controller.Resource.KindConfigs {
+					itemWithKind := item
+					itemWithKind.KindIndex = kindIndex
+					controller.initialSyncWorkqueue.Add(itemWithKind)
+				}
 			}
 		},
 		UpdateFunc: func(old interface{}, new interface{}) {
@@ -462,41 +467,40 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 		}
 
 		rawDataExamples := make([]interface{}, 0)
-		for kindIndex, kindConfig := range c.Resource.KindConfigs {
-			kindLabel := metrics.GetKindLabel(c.Resource.Kind, &kindIndex)
-			portEntities, rawDataExamplesForObj, err := c.getObjectEntities(k8sObj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, kindIndex)
-			if err != nil {
-				logger.Errorw(fmt.Sprintf("Error getting entities for object %s. Error: %s", item.Key, err.Error()), "key", item.Key, "controller", c.Resource.Kind, "error", err, "eventSource", item.EventSource)
-				logger.Debugw("Marking batch collector as having errors", "controller", c.Resource.Kind)
-				batchCollector.MarkError()
+		kindConfig := c.Resource.KindConfigs[item.KindIndex]
+		kindLabel := metrics.GetKindLabel(c.Resource.Kind, &item.KindIndex)
+		portEntities, rawDataExamplesForObj, err := c.getObjectEntities(k8sObj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, item.KindIndex)
+		if err != nil {
+			logger.Errorw(fmt.Sprintf("Error getting entities for object %s. Error: %s", item.Key, err.Error()), "key", item.Key, "controller", c.Resource.Kind, "error", err, "eventSource", item.EventSource)
+			logger.Debugw("Marking batch collector as having errors", "controller", c.Resource.Kind)
+			batchCollector.MarkError()
 
-				if numRequeues >= MaxNumRequeues {
-					logger.Debugw("Removing object from workqueue because it's been requeued too many times", "error", err.Error(), "key", item.Key, "controller", c.Resource.Kind, "eventSource", item.EventSource)
-					workqueue.Forget(obj)
-					metrics.AddObjectCount(kindLabel, metrics.MetricFailedResult, metrics.MetricPhaseTransform, 1)
-					return nil, requeueCounterDiff, fmt.Errorf("error getting entities for object '%s'. Out of retries - object will not be processed", item.Key)
-				}
-
-				if numRequeues == 0 {
-					requeueCounterDiff = 1
-				} else {
-					requeueCounterDiff = 0
-				}
-				logger.Debugw("Requeuing object with rate limiting", "error", err.Error(), "key", item.Key, "controller", c.Resource.Kind, "eventSource", item.EventSource)
-				workqueue.AddRateLimited(obj)
-				return nil, requeueCounterDiff, fmt.Errorf("error getting entities for object '%s'. Requeuing", item.Key)
+			if numRequeues >= MaxNumRequeues {
+				logger.Debugw("Removing object from workqueue because it's been requeued too many times", "error", err.Error(), "key", item.Key, "controller", c.Resource.Kind, "eventSource", item.EventSource)
+				workqueue.Forget(obj)
+				metrics.AddObjectCount(kindLabel, metrics.MetricFailedResult, metrics.MetricPhaseTransform, 1)
+				return nil, requeueCounterDiff, fmt.Errorf("error getting entities for object '%s'. Out of retries - object will not be processed", item.Key)
 			}
 
-			if len(rawDataExamples) < MaxRawDataExamplesToSend {
-				logger.Debugw("Adding raw data examples to batch collector", "numRawDataExamples", len(rawDataExamples), "maxRawDataExamplesToSend", MaxRawDataExamplesToSend)
-				amountToAdd := min(len(rawDataExamplesForObj), MaxRawDataExamplesToSend-len(rawDataExamples))
-				rawDataExamples = append(rawDataExamples, rawDataExamplesForObj[:amountToAdd]...)
+			if numRequeues == 0 {
+				requeueCounterDiff = 1
+			} else {
+				requeueCounterDiff = 0
 			}
+			logger.Debugw("Requeuing object with rate limiting", "error", err.Error(), "key", item.Key, "controller", c.Resource.Kind, "eventSource", item.EventSource)
+			workqueue.AddRateLimited(obj)
+			return nil, requeueCounterDiff, fmt.Errorf("error getting entities for object '%s'. Requeuing", item.Key)
+		}
 
-			for _, portEntity := range portEntities {
-				logger.Debugw("Adding entity to batch collector", "identifier", portEntity.Identifier, "blueprint", portEntity.Blueprint)
-				batchCollector.AddEntity(portEntity, kindLabel)
-			}
+		if len(rawDataExamples) < MaxRawDataExamplesToSend {
+			logger.Debugw("Adding raw data examples to batch collector", "numRawDataExamples", len(rawDataExamples), "maxRawDataExamplesToSend", MaxRawDataExamplesToSend)
+			amountToAdd := min(len(rawDataExamplesForObj), MaxRawDataExamplesToSend-len(rawDataExamples))
+			rawDataExamples = append(rawDataExamples, rawDataExamplesForObj[:amountToAdd]...)
+		}
+
+		for _, portEntity := range portEntities {
+			logger.Debugw("Adding entity to batch collector", "identifier", portEntity.Identifier, "blueprint", portEntity.Blueprint)
+			batchCollector.AddEntity(portEntity, kindLabel)
 		}
 
 		logger.Debugw("Removing object from workqueue", "key", item.Key, "controller", c.Resource.Kind, "eventSource", item.EventSource)

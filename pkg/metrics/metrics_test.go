@@ -504,6 +504,85 @@ func TestMetricsPopulation_Selector(t *testing.T) {
 	resources := buildMappings(stateKey, map[string][]OverrideableFields{
 		daemonSetKind: {
 			{
+				Selector: ".metadata.name | contains(\"system\") | not",
+			},
+			{
+				Selector: ".metadata.name | contains(\"system\")",
+			},
+		},
+	})
+	ds1 := newDaemonSet(stateKey, "system-ds")
+	ds2 := newDaemonSet(stateKey, "system-ds2")
+	ds3 := newDaemonSet(stateKey, guuid.NewString())
+
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resources: resources, existingObjects: []runtime.Object{newUnstructured(ds1), newUnstructured(ds2), newUnstructured(ds3)}})
+	defer tearDownFixture(t, f)
+
+	handlers.RunResync(&port.Config{StateKey: stateKey}, f.k8sClient, f.portClient, handlers.INITIAL_RESYNC)
+
+	expectedSuccessMetrics := map[[2]string]float64{
+		{metrics.MetricKindResync, metrics.MetricPhaseResync}:         1,
+		{metrics.MetricKindReconciliation, metrics.MetricPhaseDelete}: 1,
+		{daemonSetKind, metrics.MetricPhaseResync}:                    1,
+	}
+	firstDaemonSetKindIndex := 0
+	validateMetrics(t, daemonSetKind, &firstDaemonSetKindIndex, map[[2]string]float64{
+		{metrics.MetricRawExtractedResult, metrics.MetricPhaseExtract}:  3,
+		{metrics.MetricTransformResult, metrics.MetricPhaseTransform}:   1,
+		{metrics.MetricFilteredOutResult, metrics.MetricPhaseTransform}: 2,
+		{metrics.MetricLoadedResult, metrics.MetricPhaseLoad}:           1,
+	}, expectedSuccessMetrics)
+
+	secondDaemonSetKindIndex := 1
+	validateMetrics(t, daemonSetKind, &secondDaemonSetKindIndex, map[[2]string]float64{
+		{metrics.MetricRawExtractedResult, metrics.MetricPhaseExtract}:  3,
+		{metrics.MetricTransformResult, metrics.MetricPhaseTransform}:   2,
+		{metrics.MetricFilteredOutResult, metrics.MetricPhaseTransform}: 1,
+		{metrics.MetricLoadedResult, metrics.MetricPhaseLoad}:           2,
+	}, expectedSuccessMetrics)
+}
+
+func TestMetricsPopulation_InvalidSelectorMapping(t *testing.T) {
+	stateKey := guuid.NewString()
+	resources := buildMappings(stateKey, map[string][]OverrideableFields{
+		daemonSetKind: {
+			{
+				Selector: ".notexist",
+			},
+			{
+				Selector: ".metadata.name | contains(\"system\")",
+			},
+		},
+	})
+	ds1 := newDaemonSet(stateKey, "system-ds")
+	ds2 := newDaemonSet(stateKey, "system-ds2")
+	ds3 := newDaemonSet(stateKey, guuid.NewString())
+
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resources: resources, existingObjects: []runtime.Object{newUnstructured(ds1), newUnstructured(ds2), newUnstructured(ds3)}})
+	defer tearDownFixture(t, f)
+
+	handlers.RunResync(&port.Config{StateKey: stateKey}, f.k8sClient, f.portClient, handlers.INITIAL_RESYNC)
+
+	firstDaemonSetKindIndex := 0
+	validateMetrics(t, daemonSetKind, &firstDaemonSetKindIndex, map[[2]string]float64{
+		{metrics.MetricRawExtractedResult, metrics.MetricPhaseExtract}: 3,
+		{metrics.MetricFailedResult, metrics.MetricPhaseTransform}:     3,
+	}, map[[2]string]float64{})
+
+	secondDaemonSetKindIndex := 1
+	validateMetrics(t, daemonSetKind, &secondDaemonSetKindIndex, map[[2]string]float64{
+		{metrics.MetricRawExtractedResult, metrics.MetricPhaseExtract}:  3,
+		{metrics.MetricTransformResult, metrics.MetricPhaseTransform}:   2,
+		{metrics.MetricFilteredOutResult, metrics.MetricPhaseTransform}: 1,
+		{metrics.MetricLoadedResult, metrics.MetricPhaseLoad}:           2,
+	}, map[[2]string]float64{})
+}
+
+func TestMetricsPopulation_InvalidIdentifierMapping(t *testing.T) {
+	stateKey := guuid.NewString()
+	resources := buildMappings(stateKey, map[string][]OverrideableFields{
+		daemonSetKind: {
+			{
 				Identifier: ".metadata.name",
 				Selector:   ".metadata.name | contains(\"system\") | not",
 			},
@@ -525,7 +604,7 @@ func TestMetricsPopulation_Selector(t *testing.T) {
 	expectedSuccessMetrics := map[[2]string]float64{
 		{metrics.MetricKindResync, metrics.MetricPhaseResync}:         1,
 		{metrics.MetricKindReconciliation, metrics.MetricPhaseDelete}: 1,
-		{daemonSetKind, metrics.MetricPhaseResync}:                   1,
+		{daemonSetKind, metrics.MetricPhaseResync}:                    1,
 	}
 	firstDaemonSetKindIndex := 0
 	validateMetrics(t, daemonSetKind, &firstDaemonSetKindIndex, map[[2]string]float64{
