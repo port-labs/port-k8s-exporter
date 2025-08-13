@@ -588,3 +588,29 @@ func TestMetricsPopulation_InvalidIdentifierMapping(t *testing.T) {
 		{metrics.MetricFailedResult, metrics.MetricPhaseTransform}:     3,
 	}, map[[2]string]float64{})
 }
+
+func TestMetricsPopulation_NonExistBlueprintMapping(t *testing.T) {
+	stateKey := guuid.NewString()
+	resources := buildMappings(stateKey, map[string][]OverrideableFields{
+		daemonSetKind: {
+			{
+				Blueprint: "\"non-exist\"",
+			},
+		},
+	})
+	ds1 := newDaemonSet(stateKey, "system-ds")
+	ds2 := newDaemonSet(stateKey, "system-ds2")
+	ds3 := newDaemonSet(stateKey, guuid.NewString())
+
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resources: resources, existingObjects: []runtime.Object{newUnstructured(ds1), newUnstructured(ds2), newUnstructured(ds3)}})
+	defer tearDownFixture(t, f)
+
+	handlers.RunResync(&port.Config{StateKey: stateKey}, f.k8sClient, f.portClient, handlers.INITIAL_RESYNC)
+
+	firstDaemonSetKindIndex := 0
+	validateMetrics(t, daemonSetKind, &firstDaemonSetKindIndex, map[[2]string]float64{
+		{metrics.MetricRawExtractedResult, metrics.MetricPhaseExtract}: 3,
+		{metrics.MetricTransformResult, metrics.MetricPhaseTransform}: 3,
+		{metrics.MetricFailedResult, metrics.MetricPhaseLoad}:     3,
+	}, map[[2]string]float64{})
+}
