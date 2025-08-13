@@ -110,10 +110,10 @@ func (c *ControllersHandler) Handle(resyncType string) {
 		logger.Info("Deleting stale entities")
 		c.runDeleteStaleEntities(ctx, resyncResults.EntitiesSets)
 		logger.Info("Done deleting stale entities")
-		metrics.SetSuccess(metrics.MetricDeletedResult, metrics.MetricPhaseDelete, 1)
+		metrics.SetSuccess(metrics.MetricKindReconciliation, metrics.MetricPhaseDelete, 1)
 	} else {
 		logger.Warning("Skipping delete of stale entities due to a failure in getting all current entities from k8s")
-		metrics.SetSuccess(metrics.MetricDeletedResult, metrics.MetricPhaseDelete, 0)
+		metrics.SetSuccess(metrics.MetricKindReconciliation, metrics.MetricPhaseDelete, 0)
 	}
 }
 
@@ -160,7 +160,11 @@ func syncAllControllers(c *ControllersHandler) (*FullResyncResults, error) {
 				if err := controller.WaitForCacheSync(c.stopCh); err != nil {
 					logger.Fatalf("Error while waiting for informer cache sync: %s", err.Error())
 				}
-				metrics.AddObjectCount(metrics.GetKindLabel(controller.Resource.Kind, nil), metrics.MetricRawExtractedResult, phase, float64(controller.WorkqueueLen()))
+				// For compatibility to other object kind metrics, we add 
+				// this metric per kind and not once per resource
+				for kindIndex := range controller.Resource.KindConfigs {
+					metrics.AddObjectCount(metrics.GetKindLabel(controller.Resource.Kind, &kindIndex), metrics.MetricRawExtractedResult, phase, float64(controller.WorkqueueLen()))
+				}
 				return struct{}{}, nil
 			})
 

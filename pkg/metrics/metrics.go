@@ -118,7 +118,7 @@ func StartMetricsServer(logger *zap.SugaredLogger, port int) {
 }
 
 func InitializeMetricsForController(aggregatedResources *port.AggregatedResource) {
-	for kindIndex, _ := range aggregatedResources.KindConfigs {
+	for kindIndex := range aggregatedResources.KindConfigs {
 		kindLabel := GetKindLabel(aggregatedResources.Kind, &kindIndex)
 		AddObjectCount(kindLabel, MetricTransformResult, MetricPhaseTransform, 0)
 		AddObjectCount(kindLabel, MetricFilteredOutResult, MetricPhaseTransform, 0)
@@ -172,4 +172,20 @@ func SetSuccess(kind string, phase string, successVal float64) {
 	aggregatedMetricsInstance.mu.Lock()
 	defer aggregatedMetricsInstance.mu.Unlock()
 	aggregatedMetricsInstance.Success[[2]string{kind, phase}] = successVal
+}
+
+// The following helpers are exported to allow tests in external packages
+// (e.g., metrics_test) to read current gauge values without importing
+// unexported variables and creating import cycles.
+
+func GetDurationGauge(kind string, phase string) (prometheus.Gauge, error) {
+	return durationSeconds.GetMetricWithLabelValues(kind, phase)
+}
+
+func GetObjectCountGauge(kind string, objectCountType string, phase string) (prometheus.Gauge, error) {
+	return objectCount.GetMetricWithLabelValues(kind, objectCountType, phase)
+}
+
+func GetSuccessGauge(kind string, phase string) (prometheus.Gauge, error) {
+	return success.GetMetricWithLabelValues(kind, phase)
 }
