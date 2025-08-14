@@ -412,15 +412,15 @@ func validateMetrics(
 ) {
 	kindLabel := metrics.GetKindLabel(kind, kindIndex)
 	defaultObjectCountMetrics := map[[3]string]float64{
-		{kindLabel, metrics.MetricRawExtractedResult, metrics.MetricPhaseExtract}:  0,
-		{kindLabel, metrics.MetricFailedResult, metrics.MetricPhaseExtract}:        0,
-		{kindLabel, metrics.MetricTransformResult, metrics.MetricPhaseTransform}:   0,
-		{kindLabel, metrics.MetricFilteredOutResult, metrics.MetricPhaseTransform}: 0,
-		{kindLabel, metrics.MetricFailedResult, metrics.MetricPhaseTransform}:      0,
-		{kindLabel, metrics.MetricLoadedResult, metrics.MetricPhaseLoad}:           0,
-		{kindLabel, metrics.MetricFailedResult, metrics.MetricPhaseLoad}:           0,
+		{kindLabel, metrics.MetricRawExtractedResult, metrics.MetricPhaseExtract}:                  0,
+		{kindLabel, metrics.MetricFailedResult, metrics.MetricPhaseExtract}:                        0,
+		{kindLabel, metrics.MetricTransformResult, metrics.MetricPhaseTransform}:                   0,
+		{kindLabel, metrics.MetricFilteredOutResult, metrics.MetricPhaseTransform}:                 0,
+		{kindLabel, metrics.MetricFailedResult, metrics.MetricPhaseTransform}:                      0,
+		{kindLabel, metrics.MetricLoadedResult, metrics.MetricPhaseLoad}:                           0,
+		{kindLabel, metrics.MetricFailedResult, metrics.MetricPhaseLoad}:                           0,
 		{metrics.MetricKindReconciliation, metrics.MetricDeletedResult, metrics.MetricPhaseDelete}: 0,
-		{metrics.MetricKindReconciliation, metrics.MetricFailedResult, metrics.MetricPhaseDelete}: 0,
+		{metrics.MetricKindReconciliation, metrics.MetricFailedResult, metrics.MetricPhaseDelete}:  0,
 	}
 
 	defaultSuccessMetrics := map[[2]string]float64{
@@ -431,7 +431,7 @@ func validateMetrics(
 
 	for defaultMetric, defaultMetricValue := range defaultObjectCountMetrics {
 		expectedValue := defaultMetricValue
-		if val, ok := expectedObjectCountMetrics[defaultMetric[1], defaultMetric[2]]; ok {
+		if val, ok := expectedObjectCountMetrics[[2]string{defaultMetric[1], defaultMetric[2]}]; ok {
 			expectedValue = val
 		}
 		gauge, err := metrics.GetObjectCountGauge(defaultMetric[0], defaultMetric[1], defaultMetric[2])
@@ -571,7 +571,7 @@ func TestMetricsPopulation_Delete(t *testing.T) {
 		{metrics.MetricTransformResult, metrics.MetricPhaseTransform}:   2,
 		{metrics.MetricFilteredOutResult, metrics.MetricPhaseTransform}: 1,
 		{metrics.MetricLoadedResult, metrics.MetricPhaseLoad}:           2,
-		{metrics.MetricDeletedResult, metrics.MetricPhaseDelete}: 1,
+		{metrics.MetricDeletedResult, metrics.MetricPhaseDelete}:        1,
 	}, expectedSuccessMetrics)
 }
 
