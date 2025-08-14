@@ -64,9 +64,10 @@ type fixtureConfig struct {
 }
 
 type OverrideableFields struct {
-	Identifier string
-	Blueprint  string
-	Selector   string
+	Identifier   string
+	ItemsToParse string
+	Blueprint    string
+	Selector     string
 }
 
 func tearDownFixture(
@@ -303,6 +304,14 @@ func newDeployment(stateKey string, name string) *appsv1.Deployment {
 							Name:  blueprintId,
 							Image: fmt.Sprintf("%s:latest", blueprintId),
 						},
+						{
+							Name:  "second-container",
+							Image: "second-image:latest",
+						},
+						{
+							Name:  "third-container",
+							Image: "third-image:latest",
+						},
 					},
 				},
 			},
@@ -382,7 +391,7 @@ func buildMappings(stateKey string, overrideFields map[string][]OverrideableFiel
 			if identifier == "" {
 				identifier = ".metadata.name"
 			}
-			resources = append(resources, port.Resource{
+			newResource := port.Resource{
 				Kind: kind,
 				Selector: port.Selector{
 					Query: selectorQuery,
@@ -397,7 +406,11 @@ func buildMappings(stateKey string, overrideFields map[string][]OverrideableFiel
 						},
 					},
 				},
-			})
+			}
+			if overrideField.ItemsToParse != "" {
+				newResource.Port.ItemsToParse = overrideField.ItemsToParse
+			}
+			resources = append(resources, newResource)
 		}
 	}
 	return resources
@@ -525,6 +538,38 @@ func TestMetricsPopulation_Selector(t *testing.T) {
 		{metrics.MetricTransformResult, metrics.MetricPhaseTransform}:   2,
 		{metrics.MetricFilteredOutResult, metrics.MetricPhaseTransform}: 1,
 		{metrics.MetricLoadedResult, metrics.MetricPhaseLoad}:           2,
+	}, expectedSuccessMetrics)
+}
+
+func TestMetricsPopulation_ItemsToParse(t *testing.T) {
+	stateKey := guuid.NewString()
+	resources := buildMappings(stateKey, map[string][]OverrideableFields{
+		deploymentKind: {
+			{
+				Identifier:   ".item.name",
+				ItemsToParse: ".spec.template.spec.containers",
+			},
+		},
+	})
+	d1 := newDeployment(stateKey, guuid.NewString())
+	d2 := newDeployment(stateKey, guuid.NewString())
+	d3 := newDeployment(stateKey, guuid.NewString())
+
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resources: resources, existingObjects: []runtime.Object{newUnstructured(d1), newUnstructured(d2), newUnstructured(d3)}})
+	defer tearDownFixture(t, f)
+
+	handlers.RunResync(&port.Config{StateKey: stateKey}, f.k8sClient, f.portClient, handlers.INITIAL_RESYNC)
+
+	firstDaemonSetKindIndex := 0
+	expectedSuccessMetrics := map[[2]string]float64{
+		{metrics.MetricKindResync, metrics.MetricPhaseResync}:         1,
+		{metrics.MetricKindReconciliation, metrics.MetricPhaseDelete}: 1,
+		{deploymentKind, metrics.MetricPhaseResync}:                   1,
+	}
+	validateMetrics(t, deploymentKind, &firstDaemonSetKindIndex, map[[2]string]float64{
+		{metrics.MetricRawExtractedResult, metrics.MetricPhaseExtract}: 3,
+		{metrics.MetricTransformResult, metrics.MetricPhaseTransform}:  9,
+		{metrics.MetricLoadedResult, metrics.MetricPhaseLoad}:          9,
 	}, expectedSuccessMetrics)
 }
 

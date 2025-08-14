@@ -489,7 +489,7 @@ func (f *fixture) assertObjectsHandled(objects []struct{ kind, name string }) {
 }
 
 func (f *fixture) runControllersHandle() {
-	f.controllersHandler.Handle("test")
+	f.controllersHandler.Handle(INITIAL_RESYNC)
 }
 
 func TestSuccessfulControllersHandle(t *testing.T) {

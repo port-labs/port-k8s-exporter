@@ -12,6 +12,8 @@ import (
 	"go.uber.org/zap"
 )
 
+type PhaseSuccessStatus float64
+
 const (
 	// Metric names
 	MetricDurationName    = "port_k8s_exporter_duration_seconds"
@@ -43,7 +45,9 @@ const (
 	MetricDeletedResult = "deleted"
 
 	// Metric generic results
-	MetricFailedResult = "failed"
+	MetricFailedResult                    = "failed"
+	PhaseSucceeded     PhaseSuccessStatus = 1.0
+	PhaseFailed        PhaseSuccessStatus = 0.0
 )
 
 var (
@@ -90,9 +94,6 @@ func newAggregatedMetrics() *AggregatedMetrics {
 }
 
 func flushMetrics(am *AggregatedMetrics) {
-	am.mu.Lock()
-	defer am.mu.Unlock()
-
 	// Reset gauges before repopulating to avoid stale metrics for non existing kinds
 	durationSeconds.Reset()
 	objectCount.Reset()
@@ -171,14 +172,22 @@ func AddObjectCount(kind string, objectCountType string, phase string, count flo
 	aggregatedMetricsInstance.ObjectCount[[3]string{kind, objectCountType, phase}] += count
 }
 
-func SetSuccess(kind string, phase string, successVal float64) {
+func SetSuccessStatusConditionally(kind string, phase string, succeeded bool) {
+	successVal := PhaseSucceeded
+	if !succeeded {
+		successVal = PhaseFailed
+	}
+	SetSuccessStatus(kind, phase, successVal)
+}
+
+func SetSuccessStatus(kind string, phase string, successVal PhaseSuccessStatus) {
 	if aggregatedMetricsInstance == nil {
 		return
 	}
 
 	aggregatedMetricsInstance.mu.Lock()
 	defer aggregatedMetricsInstance.mu.Unlock()
-	aggregatedMetricsInstance.Success[[2]string{kind, phase}] = successVal
+	aggregatedMetricsInstance.Success[[2]string{kind, phase}] = float64(successVal)
 }
 
 // The following helpers are exported to allow tests in external packages

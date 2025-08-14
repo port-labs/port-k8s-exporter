@@ -87,14 +87,14 @@ func NewControllersHandler(exporterConfig *port.Config, portConfig *port.Integra
 	return controllersHandler
 }
 
-func (c *ControllersHandler) Handle(resyncType string) {
-	logger.Infof("Starting resync due to %s", resyncType)
+func (c *ControllersHandler) Handle(resyncType ResyncType) {
+	logger.Infow(fmt.Sprintf("Starting resync due to %s", resyncType), "stateKey", c.stateKey)
 	logger.Info("Starting informers")
 	c.informersFactory.Start(c.stopCh)
 
 	resyncResults, err := syncAllControllers(c)
 	if err != nil {
-		logger.Errorf("Error syncing controllers: %s", err.Error())
+		logger.Errorw("Error syncing controllers", "resyncType", resyncType, "error", err.Error())
 		return
 	}
 
@@ -109,11 +109,10 @@ func (c *ControllersHandler) Handle(resyncType string) {
 		logger.Info("Deleting stale entities")
 		c.runDeleteStaleEntities(ctx, resyncResults.EntitiesSets)
 		logger.Info("Done deleting stale entities")
-		metrics.SetSuccess(metrics.MetricKindReconciliation, metrics.MetricPhaseDelete, 1)
 	} else {
 		logger.Warning("Skipping delete of stale entities due to a failure in getting all current entities from k8s")
-		metrics.SetSuccess(metrics.MetricKindReconciliation, metrics.MetricPhaseDelete, 0)
 	}
+	metrics.SetSuccessStatusConditionally(metrics.MetricKindReconciliation, metrics.MetricPhaseDelete, resyncResults.ShouldDeleteStaleEntities)
 }
 
 func RunResync(exporterConfig *port.Config, k8sClient *k8s.Client, portClient *cli.PortClient, resyncType ResyncType) error {
@@ -121,22 +120,22 @@ func RunResync(exporterConfig *port.Config, k8sClient *k8s.Client, portClient *c
 		controllerHandler.Stop()
 	}
 
-	newController, resyncErr := metrics.MeasureResync(func() (*ControllersHandler, error) {
+	newControllersHandler, resyncErr := metrics.MeasureResync(func() (*ControllersHandler, error) {
 		i, err := integration.GetIntegration(portClient, exporterConfig.StateKey)
 		if err != nil {
-			metrics.SetSuccess(metrics.MetricKindResync, metrics.MetricPhaseResync, 0)
+			metrics.SetSuccessStatus(metrics.MetricKindResync, metrics.MetricPhaseResync, metrics.PhaseFailed)
 			return nil, fmt.Errorf("error getting Port integration: %v", err)
 		}
 		if i.Config == nil {
-			metrics.SetSuccess(metrics.MetricKindResync, metrics.MetricPhaseResync, 0)
+			metrics.SetSuccessStatus(metrics.MetricKindResync, metrics.MetricPhaseResync, metrics.PhaseFailed)
 			return nil, errors.New("integration config is nil")
 		}
 
 		newHandler := NewControllersHandler(exporterConfig, i.Config, k8sClient, portClient)
-		newHandler.Handle(string(resyncType))
+		newHandler.Handle(resyncType)
 		return newHandler, nil
 	})
-	controllerHandler = newController
+	controllerHandler = newControllersHandler
 
 	return resyncErr
 }
@@ -157,12 +156,12 @@ func syncAllControllers(c *ControllersHandler) (*FullResyncResults, error) {
 			metrics.MeasureDuration(metrics.GetKindLabel(controller.Resource.Kind, nil), metrics.MetricPhaseExtract, func(phase string) (struct{}, error) {
 				logger.Infof("Waiting for informer cache to sync for resource '%s'", controller.Resource.Kind)
 				if err := controller.WaitForCacheSync(c.stopCh); err != nil {
-					logger.Fatalf("Error while waiting for informer cache sync: %s", err.Error())
+					logger.Errorw("Error while waiting for informer cache sync", "error", err.Error())
 				}
 				// For compatibility to other object kind metrics, we add
 				// this metric per kind and not once per resource
 				for kindIndex := range controller.Resource.KindConfigs {
-					metrics.AddObjectCount(metrics.GetKindLabel(controller.Resource.Kind, &kindIndex), metrics.MetricRawExtractedResult, phase, float64(controller.WorkqueueLen()/len(controller.Resource.KindConfigs)))
+					metrics.AddObjectCount(metrics.GetKindLabel(controller.Resource.Kind, &kindIndex), metrics.MetricRawExtractedResult, phase, float64(controller.InitialSyncWorkqueueLen()/len(controller.Resource.KindConfigs)))
 				}
 				return struct{}{}, nil
 			})
@@ -182,11 +181,7 @@ func syncAllControllers(c *ControllersHandler) (*FullResyncResults, error) {
 			shouldDeleteStaleEntities = shouldDeleteStaleEntities && controllerShouldDeleteStaleEntities
 		}
 		syncWg.Wait()
-		success := 1
-		if !shouldDeleteStaleEntities {
-			success = 0
-		}
-		metrics.SetSuccess(metrics.MetricKindResync, phase, float64(success))
+		metrics.SetSuccessStatusConditionally(metrics.MetricKindResync, phase, shouldDeleteStaleEntities)
 
 		return &FullResyncResults{
 			EntitiesSets:              currentEntitiesSets,
@@ -218,7 +213,7 @@ func (c *ControllersHandler) runDeleteStaleEntities(ctx context.Context, current
 	metrics.MeasureDuration(metrics.MetricKindReconciliation, metrics.MetricPhaseDelete, func(phase string) (struct{}, error) {
 		err := c.portClient.DeleteStaleEntities(ctx, c.stateKey, goutils.MergeMaps(currentEntitiesSet...))
 		if err != nil {
-			logger.Errorf("error deleting stale entities: %s", err.Error())
+			logger.Errorw("error deleting stale entities", "error", err.Error())
 		}
 		return struct{}{}, nil
 	})

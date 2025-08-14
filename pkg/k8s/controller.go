@@ -210,12 +210,7 @@ func (c *Controller) RunInitialSync() *SyncResult {
 		shouldDeleteStaleEntities = false
 	}
 
-	if !shouldDeleteStaleEntities {
-		metrics.SetSuccess(c.Resource.Kind, metrics.MetricPhaseResync, 0)
-	} else {
-		metrics.SetSuccess(c.Resource.Kind, metrics.MetricPhaseResync, 1)
-	}
-
+	metrics.SetSuccessStatusConditionally(c.Resource.Kind, metrics.MetricPhaseResync, shouldDeleteStaleEntities)
 	return &SyncResult{
 		EntitiesSet:               entitiesSet,
 		RawDataExamples:           rawDataExamples,
@@ -844,7 +839,6 @@ func calculateBulkSize(entities []port.EntityRequest, maxLength int, maxSizeInBy
 	return int(math.Max(1, float64(maxObjectsPerBatch)))
 }
 
-// WorkqueueLen returns the number of items in the initial sync workqueue.
-func (c *Controller) WorkqueueLen() int {
+func (c *Controller) InitialSyncWorkqueueLen() int {
 	return c.initialSyncWorkqueue.Len()
 }
