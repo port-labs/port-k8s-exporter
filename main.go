@@ -1,8 +1,9 @@
 package main
 
 import (
-	"errors"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/defaults"
@@ -10,31 +11,17 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/handlers"
 	"github.com/port-labs/port-k8s-exporter/pkg/k8s"
 	"github.com/port-labs/port-k8s-exporter/pkg/logger"
-	"github.com/port-labs/port-k8s-exporter/pkg/port"
+	"github.com/port-labs/port-k8s-exporter/pkg/metrics"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
-	"github.com/port-labs/port-k8s-exporter/pkg/port/integration"
 )
 
-func initiateHandler(exporterConfig *port.Config, k8sClient *k8s.Client, portClient *cli.PortClient) (*handlers.ControllersHandler, error) {
-	i, err := integration.GetIntegration(portClient, exporterConfig.StateKey)
-	if err != nil {
-		return nil, fmt.Errorf("error getting Port integration: %v", err)
-	}
-	if i.Config == nil {
-		return nil, errors.New("integration config is nil")
-
-	}
-
-	newHandler := handlers.NewControllersHandler(exporterConfig, i.Config, k8sClient, portClient)
-	newHandler.Handle()
-
-	return newHandler, nil
-}
+var registerOnce sync.Once
 
 func main() {
 	// Ensure logs are flushed before application exits
 	defer logger.Shutdown()
 	logger.Infow("Starting Port K8s Exporter", "version", Version)
+
 	k8sConfig := k8s.NewKubeConfig()
 	applicationConfig, err := config.NewConfiguration()
 	if err != nil {
@@ -61,9 +48,26 @@ func main() {
 		logger.Fatalf("Error creating event listener: %s", err.Error())
 	}
 
+	if config.ApplicationConfig.ResyncInterval > 0 {
+		go func() {
+			ticker := time.NewTicker(time.Minute * time.Duration(config.ApplicationConfig.ResyncInterval))
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					handlers.RunResync(applicationConfig, k8sClient, portClient, handlers.SCHEDULED_RESYNC)
+				}
+			}
+		}()
+	}
+
 	logger.Info("Starting controllers handler")
-	err = event_handler.Start(eventListener, func() (event_handler.IStoppableRsync, error) {
-		return initiateHandler(applicationConfig, k8sClient, portClient)
+	err = event_handler.Start(eventListener, func() error {
+		resyncType := handlers.MAPPING_CHANGED
+		registerOnce.Do(func() {
+			resyncType = handlers.INITIAL_RESYNC
+		})
+		return handlers.RunResync(applicationConfig, k8sClient, portClient, resyncType)
 	})
 
 	if err != nil {
@@ -73,7 +77,15 @@ func main() {
 
 func init() {
 	config.Init()
+	initLogger()
 
+	// Initialize metrics server if enabled
+	if config.ApplicationConfig.MetricsEnabled {
+		metrics.StartMetricsServer(logger.GetLogger(), config.ApplicationConfig.MetricsPort)
+	}
+}
+
+func initLogger() {
 	// Initialize logger with HTTP support if enabled
 	if config.ApplicationConfig.HTTPLoggingEnabled {
 		initHTTPLogger()

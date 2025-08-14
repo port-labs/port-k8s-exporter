@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/logger"
+	"github.com/port-labs/port-k8s-exporter/pkg/metrics"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 )
 
@@ -121,18 +122,24 @@ func (c *PortClient) DeleteStaleEntities(ctx context.Context, stateKey string, e
 		return fmt.Errorf("error searching Port entities: %v", err)
 	}
 
+	successCount := 0
+	failedCount := 0
 	for _, portEntity := range portEntities {
 		_, ok := existingEntitiesSet[c.GetEntityIdentifierKey(&portEntity)]
 		if !ok {
 			err := c.DeleteEntity(ctx, portEntity.Identifier, portEntity.Blueprint, c.DeleteDependents)
 			if err != nil {
 				logger.Errorf("error deleting Port entity '%s' of blueprint '%s': %v", portEntity.Identifier, portEntity.Blueprint, err)
+				failedCount++
 				continue
 			}
+			successCount++
 			logger.Infof("Successfully deleted entity '%s' of blueprint '%s'", portEntity.Identifier, portEntity.Blueprint)
 		}
 	}
 
+	metrics.AddObjectCount(metrics.MetricKindReconciliation, metrics.MetricDeletedResult, metrics.MetricPhaseDelete, float64(successCount))
+	metrics.AddObjectCount(metrics.MetricKindReconciliation, metrics.MetricFailedResult, metrics.MetricPhaseDelete, float64(failedCount))
 	return nil
 }
 
