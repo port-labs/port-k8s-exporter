@@ -28,7 +28,6 @@ type ControllersHandler struct {
 	stopCh           chan struct{}
 	isStopped        bool
 	portConfig       *port.IntegrationAppConfig
-	resyncMutex      sync.Mutex
 }
 
 type FullResyncResults struct {
