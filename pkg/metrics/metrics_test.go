@@ -410,16 +410,17 @@ func validateMetrics(
 	expectedObjectCountMetrics map[[2]string]float64,
 	expectedSuccessMetrics map[[2]string]float64,
 ) {
-	defaultObjectCountMetrics := map[[2]string]float64{
-		{metrics.MetricRawExtractedResult, metrics.MetricPhaseExtract}:  0,
-		{metrics.MetricFailedResult, metrics.MetricPhaseExtract}:        0,
-		{metrics.MetricTransformResult, metrics.MetricPhaseTransform}:   0,
-		{metrics.MetricFilteredOutResult, metrics.MetricPhaseTransform}: 0,
-		{metrics.MetricFailedResult, metrics.MetricPhaseTransform}:      0,
-		{metrics.MetricLoadedResult, metrics.MetricPhaseLoad}:           0,
-		{metrics.MetricFailedResult, metrics.MetricPhaseLoad}:           0,
-		{metrics.MetricDeletedResult, metrics.MetricPhaseDelete}:        0,
-		{metrics.MetricFailedResult, metrics.MetricPhaseDelete}:         0,
+	kindLabel := metrics.GetKindLabel(kind, kindIndex)
+	defaultObjectCountMetrics := map[[3]string]float64{
+		{kindLabel, metrics.MetricRawExtractedResult, metrics.MetricPhaseExtract}:  0,
+		{kindLabel, metrics.MetricFailedResult, metrics.MetricPhaseExtract}:        0,
+		{kindLabel, metrics.MetricTransformResult, metrics.MetricPhaseTransform}:   0,
+		{kindLabel, metrics.MetricFilteredOutResult, metrics.MetricPhaseTransform}: 0,
+		{kindLabel, metrics.MetricFailedResult, metrics.MetricPhaseTransform}:      0,
+		{kindLabel, metrics.MetricLoadedResult, metrics.MetricPhaseLoad}:           0,
+		{kindLabel, metrics.MetricFailedResult, metrics.MetricPhaseLoad}:           0,
+		{metrics.MetricKindReconciliation, metrics.MetricDeletedResult, metrics.MetricPhaseDelete}: 0,
+		{metrics.MetricKindReconciliation, metrics.MetricFailedResult, metrics.MetricPhaseDelete}: 0,
 	}
 
 	defaultSuccessMetrics := map[[2]string]float64{
@@ -428,13 +429,12 @@ func validateMetrics(
 		{kind, metrics.MetricPhaseResync}:                             0,
 	}
 
-	kindLabel := metrics.GetKindLabel(kind, kindIndex)
 	for defaultMetric, defaultMetricValue := range defaultObjectCountMetrics {
 		expectedValue := defaultMetricValue
-		if val, ok := expectedObjectCountMetrics[defaultMetric]; ok {
+		if val, ok := expectedObjectCountMetrics[defaultMetric[1], defaultMetric[2]]; ok {
 			expectedValue = val
 		}
-		gauge, err := metrics.GetObjectCountGauge(kindLabel, defaultMetric[0], defaultMetric[1])
+		gauge, err := metrics.GetObjectCountGauge(defaultMetric[0], defaultMetric[1], defaultMetric[2])
 		assert.NoError(t, err)
 		assert.Equal(t, expectedValue, testutil.ToFloat64(gauge), fmt.Sprintf("kind: %s, phase: %s", defaultMetric[0], defaultMetric[1]))
 	}
@@ -528,6 +528,53 @@ func TestMetricsPopulation_Selector(t *testing.T) {
 	}, expectedSuccessMetrics)
 }
 
+func TestMetricsPopulation_Delete(t *testing.T) {
+	stateKey := guuid.NewString()
+	resources := buildMappings(stateKey, map[string][]OverrideableFields{
+		daemonSetKind: {
+			{
+				Selector: ".metadata.name | contains(\"system\") | not",
+			},
+		},
+	})
+	ds1 := newDaemonSet(stateKey, "system-ds")
+	ds2 := newDaemonSet(stateKey, "system-ds2")
+	ds3 := newDaemonSet(stateKey, guuid.NewString())
+
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resources: resources, existingObjects: []runtime.Object{newUnstructured(ds1), newUnstructured(ds2), newUnstructured(ds3)}})
+	defer tearDownFixture(t, f)
+
+	handlers.RunResync(&port.Config{StateKey: stateKey}, f.k8sClient, f.portClient, handlers.INITIAL_RESYNC)
+
+	existingIntegration, err := integration.GetIntegration(f.portClient, f.stateKey)
+	if err != nil {
+		t.Errorf("error getting integration: %v", err)
+	}
+	existingIntegration.Config.Resources = buildMappings(stateKey, map[string][]OverrideableFields{
+		daemonSetKind: {
+			{
+				Selector: ".metadata.name | contains(\"system\")",
+			},
+		},
+	})
+	integration.PatchIntegration(f.portClient, stateKey, existingIntegration)
+	handlers.RunResync(&port.Config{StateKey: stateKey}, f.k8sClient, f.portClient, handlers.MAPPING_CHANGED)
+
+	expectedSuccessMetrics := map[[2]string]float64{
+		{metrics.MetricKindResync, metrics.MetricPhaseResync}:         1,
+		{metrics.MetricKindReconciliation, metrics.MetricPhaseDelete}: 1,
+		{daemonSetKind, metrics.MetricPhaseResync}:                    1,
+	}
+	firstDaemonSetKindIndex := 0
+	validateMetrics(t, daemonSetKind, &firstDaemonSetKindIndex, map[[2]string]float64{
+		{metrics.MetricRawExtractedResult, metrics.MetricPhaseExtract}:  3,
+		{metrics.MetricTransformResult, metrics.MetricPhaseTransform}:   2,
+		{metrics.MetricFilteredOutResult, metrics.MetricPhaseTransform}: 1,
+		{metrics.MetricLoadedResult, metrics.MetricPhaseLoad}:           2,
+		{metrics.MetricDeletedResult, metrics.MetricPhaseDelete}: 1,
+	}, expectedSuccessMetrics)
+}
+
 func TestMetricsPopulation_InvalidSelectorMapping(t *testing.T) {
 	stateKey := guuid.NewString()
 	resources := buildMappings(stateKey, map[string][]OverrideableFields{
@@ -610,7 +657,7 @@ func TestMetricsPopulation_NonExistBlueprintMapping(t *testing.T) {
 	firstDaemonSetKindIndex := 0
 	validateMetrics(t, daemonSetKind, &firstDaemonSetKindIndex, map[[2]string]float64{
 		{metrics.MetricRawExtractedResult, metrics.MetricPhaseExtract}: 3,
-		{metrics.MetricTransformResult, metrics.MetricPhaseTransform}: 3,
-		{metrics.MetricFailedResult, metrics.MetricPhaseLoad}:     3,
+		{metrics.MetricTransformResult, metrics.MetricPhaseTransform}:  3,
+		{metrics.MetricFailedResult, metrics.MetricPhaseLoad}:          3,
 	}, map[[2]string]float64{})
 }
