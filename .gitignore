@@ -30,3 +30,6 @@ deployments/k8s
 
 # debug file
 __debug_bin*
+
+# binary files
+port-k8s-exporter
