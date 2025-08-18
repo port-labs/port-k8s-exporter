@@ -272,6 +272,7 @@ func (c *Controller) calculateTotalBatchSize() int {
 
 func (bc *BatchCollector) ProcessBatch(controller *Controller) *SyncResult {
 	if len(bc.entitiesByBlueprint) == 0 {
+		bc.lastFlush = time.Now()
 		logger.Debugw("Batch collector has no entities to process", "hasErrors", bc.hasErrors, "controller", controller.Resource.Kind)
 		return &SyncResult{
 			EntitiesSet:               make(map[string]interface{}),
