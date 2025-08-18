@@ -1,5 +1,9 @@
 package handlers
 
+import (
+	"github.com/port-labs/port-k8s-exporter/pkg/port"
+)
+
 // SyncResult represents the result of a sync operation
 type SyncResult struct {
 	EntitiesSet               map[string]interface{}
@@ -18,3 +22,9 @@ const (
 	// DeleteAction represents a delete event
 	DeleteAction EventActionType = "delete"
 )
+
+// EntityWithKind represents an entity with its associated kind
+type EntityWithKind struct {
+	Entity port.EntityRequest
+	Kind   string
+}

@@ -119,8 +119,9 @@ func TestMultipleResyncsInQuickSuccession(t *testing.T) {
 		if i > 0 && len(handlers) > 1 {
 			prevState := handlers[i-1]
 			if !prevState.Stopped.Load() {
-				now := time.Now()
-				prevState.StopTime = &now
+				// Set stop time to be before the current handler's start time
+				stopTime := state.StartTime.Add(-1 * time.Millisecond)
+				prevState.StopTime = &stopTime
 				prevState.Stopped.Store(true)
 			}
 		}

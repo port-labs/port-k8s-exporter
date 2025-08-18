@@ -71,8 +71,15 @@ func (m *ScheduledResyncManager) Stop() {
 	}
 
 	logger.Info("Stopping scheduled resync manager")
-	close(m.stopCh)
 	m.isRunning = false
+
+	// Use select to safely close the channel only if it's not already closed
+	select {
+	case <-m.stopCh:
+		// Channel is already closed, do nothing
+	default:
+		close(m.stopCh)
+	}
 }
 
 // GetLastResyncTime returns the last resync time
