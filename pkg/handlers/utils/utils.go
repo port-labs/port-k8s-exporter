@@ -1,4 +1,4 @@
-package handlers
+package utils
 
 import (
 	"encoding/json"
@@ -7,8 +7,8 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 )
 
-// calculateBulkSize determines the optimal batch size based on entity size estimation
-func calculateBulkSize(entities []port.EntityRequest, maxLength int, maxSizeInBytes int) int {
+// CalculateBulkSize determines the optimal batch size based on entity size estimation
+func CalculateBulkSize(entities []port.EntityRequest, maxLength int, maxSizeInBytes int) int {
 	if len(entities) == 0 {
 		return 1
 	}
