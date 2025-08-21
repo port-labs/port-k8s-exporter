@@ -119,14 +119,18 @@ func flushMetrics(am *AggregatedMetrics) {
 	aggregatedMetricsInstance = nil
 }
 
+func RegisterMetrics() {
+	registerOnce.Do(func() {
+		prometheus.MustRegister(durationSeconds)
+		prometheus.MustRegister(objectCount)
+		prometheus.MustRegister(success)
+	})
+}
+
 func StartMetricsServer(logger *zap.SugaredLogger, port int) {
 	go func() {
 		logger.Infof("Starting metrics server on port %d", port)
-		registerOnce.Do(func() {
-			prometheus.MustRegister(durationSeconds)
-			prometheus.MustRegister(objectCount)
-			prometheus.MustRegister(success)
-		})
+		RegisterMetrics()	
 		http.Handle("/metrics", promhttp.Handler())
 		_ = http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
 	}()

@@ -20,7 +20,6 @@ import (
 	_ "github.com/port-labs/port-k8s-exporter/test_utils"
 	testUtils "github.com/port-labs/port-k8s-exporter/test_utils"
 	"github.com/stretchr/testify/assert"
-	"go.uber.org/zap"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/typed/apiextensions/v1"
@@ -268,7 +267,7 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 		t.Errorf("error initializing integration: %v", err)
 	}
 
-	metrics.StartMetricsServer(zap.NewNop().Sugar(), applicationConfig.MetricsPort)
+	metrics.RegisterMetrics()
 	return &fixture{
 		t:          t,
 		k8sClient:  k8sClient,
