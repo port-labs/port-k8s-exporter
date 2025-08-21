@@ -153,6 +153,7 @@ func syncAllControllers(c *ControllersHandler) (*FullResyncResults, error) {
 				controller.Shutdown()
 			}()
 
+			metrics.InitializeMetricsForController(&controller.Resource)
 			metrics.MeasureDuration(metrics.GetKindLabel(controller.Resource.Kind, nil), metrics.MetricPhaseExtract, func(phase string) (struct{}, error) {
 				logger.Infof("Waiting for informer cache to sync for resource '%s'", controller.Resource.Kind)
 				if err := controller.WaitForCacheSync(c.stopCh); err != nil {
@@ -192,7 +193,6 @@ func syncAllControllers(c *ControllersHandler) (*FullResyncResults, error) {
 
 func syncController(controller *k8s.Controller, c *ControllersHandler) (map[string]interface{}, bool) {
 	logger.Infof("Starting full initial resync for resource '%s'", controller.Resource.Kind)
-	metrics.InitializeMetricsForController(&controller.Resource)
 	initialSyncResult := controller.RunInitialSync()
 	logger.Infof("Done full initial resync, starting live events sync for resource '%s'", controller.Resource.Kind)
 	controller.RunEventsSync(1, c.stopCh)

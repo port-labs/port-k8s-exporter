@@ -19,8 +19,8 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/port/integration"
 	_ "github.com/port-labs/port-k8s-exporter/test_utils"
 	testUtils "github.com/port-labs/port-k8s-exporter/test_utils"
-	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/zap"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/typed/apiextensions/v1"
@@ -268,6 +268,7 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 		t.Errorf("error initializing integration: %v", err)
 	}
 
+	metrics.StartMetricsServer(zap.NewNop().Sugar(), applicationConfig.MetricsPort)
 	return &fixture{
 		t:          t,
 		k8sClient:  k8sClient,
@@ -447,9 +448,13 @@ func validateMetrics(
 		if val, ok := expectedObjectCountMetrics[[2]string{defaultMetric[1], defaultMetric[2]}]; ok {
 			expectedValue = val
 		}
-		gauge, err := metrics.GetObjectCountGauge(defaultMetric[0], defaultMetric[1], defaultMetric[2])
+		val, err := metrics.GetMetricValue(metrics.MetricObjectCountName, map[metrics.PortMetricLabel]string{
+			metrics.MetricLabelKind:            defaultMetric[0],
+			metrics.MetricLabelObjectCountType: defaultMetric[1],
+			metrics.MetricLabelPhase:           defaultMetric[2],
+		})
 		assert.NoError(t, err)
-		assert.Equal(t, expectedValue, testutil.ToFloat64(gauge), fmt.Sprintf("kind: %s, phase: %s", defaultMetric[0], defaultMetric[1]))
+		assert.Equal(t, expectedValue, val, fmt.Sprintf("metric: %s, kind: %s, object_count_type: %s, phase: %s", metrics.MetricObjectCountName, defaultMetric[0], defaultMetric[1], defaultMetric[2]))
 	}
 
 	for defaultMetric, defaultMetricValue := range defaultSuccessMetrics {
@@ -457,9 +462,12 @@ func validateMetrics(
 		if val, ok := expectedSuccessMetrics[defaultMetric]; ok {
 			expectedValue = val
 		}
-		successGauge, err := metrics.GetSuccessGauge(defaultMetric[0], defaultMetric[1])
+		val, err := metrics.GetMetricValue(metrics.MetricSuccessName, map[metrics.PortMetricLabel]string{
+			metrics.MetricLabelKind:  defaultMetric[0],
+			metrics.MetricLabelPhase: defaultMetric[1],
+		})
 		assert.NoError(t, err)
-		assert.Equal(t, expectedValue, testutil.ToFloat64(successGauge), fmt.Sprintf("kind: %s, phase: %s", defaultMetric[0], defaultMetric[1]))
+		assert.Equal(t, expectedValue, val, fmt.Sprintf("metric: %s, kind: %s, phase: %s", metrics.MetricSuccessName, defaultMetric[0], defaultMetric[1]))
 	}
 }
 
