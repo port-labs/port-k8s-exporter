@@ -128,6 +128,7 @@ func NewController(resource port.AggregatedResource, informer informers.GenericI
 			if controller.shouldSendUpdateEvent(old, new, integrationConfig.UpdateEntityOnlyOnDiff == nil || *(integrationConfig.UpdateEntityOnlyOnDiff)) {
 				logger.Debugw("sending the update event to queue for processing", "item", item.Key)
 				controller.eventsWorkqueue.Add(item)
+				return
 			}
 			logger.Debugw("decided not to update. Ignoring.", "item", item.Key)
 
