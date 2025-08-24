@@ -107,12 +107,16 @@ func (c *ControllersHandler) Handle(resyncType ResyncType) {
 
 	if resyncResults.ShouldDeleteStaleEntities {
 		logger.Info("Deleting stale entities")
-		c.runDeleteStaleEntities(ctx, resyncResults.EntitiesSets)
+		err := c.runDeleteStaleEntities(ctx, resyncResults.EntitiesSets)
+		if err != nil {
+			logger.Errorw("Error deleting stale entities", "error", err.Error())
+		}
 		logger.Info("Done deleting stale entities")
-	} else {
-		logger.Warning("Skipping delete of stale entities due to a failure in getting all current entities from k8s")
+		metrics.SetSuccessStatusConditionally(metrics.MetricKindReconciliation, metrics.MetricPhaseDelete, err == nil)
+		return
 	}
-	metrics.SetSuccessStatusConditionally(metrics.MetricKindReconciliation, metrics.MetricPhaseDelete, resyncResults.ShouldDeleteStaleEntities)
+
+	logger.Warning("Skipping delete of stale entities due to a failure in getting all current entities from k8s")
 }
 
 func RunResync(exporterConfig *port.Config, k8sClient *k8s.Client, portClient *cli.PortClient, resyncType ResyncType) error {
@@ -209,14 +213,16 @@ func syncController(controller *k8s.Controller, c *ControllersHandler) (map[stri
 	return map[string]interface{}{}, initialSyncResult.ShouldDeleteStaleEntities
 }
 
-func (c *ControllersHandler) runDeleteStaleEntities(ctx context.Context, currentEntitiesSet []map[string]interface{}) {
-	metrics.MeasureDuration(metrics.MetricKindReconciliation, metrics.MetricPhaseDelete, func(phase string) (struct{}, error) {
+func (c *ControllersHandler) runDeleteStaleEntities(ctx context.Context, currentEntitiesSet []map[string]interface{}) error {
+	_, err := metrics.MeasureDuration(metrics.MetricKindReconciliation, metrics.MetricPhaseDelete, func(phase string) (struct{}, error) {
 		err := c.portClient.DeleteStaleEntities(ctx, c.stateKey, goutils.MergeMaps(currentEntitiesSet...))
 		if err != nil {
 			logger.Errorw("error deleting stale entities", "error", err.Error())
+			return struct{}{}, err
 		}
 		return struct{}{}, nil
 	})
+	return err
 }
 
 func (c *ControllersHandler) Stop() {
