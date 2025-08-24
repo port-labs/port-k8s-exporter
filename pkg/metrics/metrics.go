@@ -55,6 +55,7 @@ const (
 	MetricFailedResult                    = "failed"
 	PhaseSucceeded     PhaseSuccessStatus = 1.0
 	PhaseFailed        PhaseSuccessStatus = 0.0
+	PhaseSkipped       PhaseSuccessStatus = -1.0
 )
 
 var (
@@ -130,13 +131,14 @@ func RegisterMetrics() {
 func StartMetricsServer(logger *zap.SugaredLogger, port int) {
 	go func() {
 		logger.Infof("Starting metrics server on port %d", port)
-		RegisterMetrics()	
+		RegisterMetrics()
 		http.Handle("/metrics", promhttp.Handler())
 		_ = http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
 	}()
 }
 
 func InitializeMetricsForController(aggregatedResources *port.AggregatedResource) {
+	// Initialize object count metric for each kind
 	for kindIndex := range aggregatedResources.KindConfigs {
 		kindLabel := GetKindLabel(aggregatedResources.Kind, &kindIndex)
 		AddObjectCount(kindLabel, MetricFailedResult, MetricPhaseExtract, 0)
@@ -145,12 +147,20 @@ func InitializeMetricsForController(aggregatedResources *port.AggregatedResource
 		AddObjectCount(kindLabel, MetricFailedResult, MetricPhaseTransform, 0)
 		AddObjectCount(kindLabel, MetricLoadedResult, MetricPhaseLoad, 0)
 		AddObjectCount(kindLabel, MetricFailedResult, MetricPhaseLoad, 0)
+		AddObjectCount(MetricKindReconciliation, MetricDeletedResult, MetricPhaseDelete, 0)
+		AddObjectCount(MetricKindReconciliation, MetricFailedResult, MetricPhaseDelete, 0)
 	}
 
 	kindLabel := GetKindLabel(aggregatedResources.Kind, nil)
-	SetSuccessStatus(kindLabel, MetricPhaseExtract, PhaseFailed)
-	SetSuccessStatus(kindLabel, MetricPhaseTransform, PhaseFailed)
-	SetSuccessStatus(kindLabel, MetricPhaseLoad, PhaseFailed)
+
+	// Initialize success status metric for each phase
+	addDuration(kindLabel, MetricPhaseExtract, 0)
+	addDuration(kindLabel, MetricPhaseTransform, 0)
+	addDuration(kindLabel, MetricPhaseLoad, 0)
+	addDuration(MetricKindReconciliation, MetricPhaseDelete, 0)
+
+	// Initialize success status metric for each phase
+	SetSuccessStatus(MetricKindReconciliation, MetricPhaseDelete, PhaseSkipped)
 }
 
 func GetKindLabel(kind string, kindIndex *int) string {
@@ -167,14 +177,20 @@ func MeasureResync[T any](resyncFn func() (T, error)) (T, error) {
 	return res, err
 }
 
+func addDuration(kind string, phase string, duration float64) {
+	if aggregatedMetricsInstance == nil {
+		return
+	}
+
+	aggregatedMetricsInstance.mu.Lock()
+	defer aggregatedMetricsInstance.mu.Unlock()
+	aggregatedMetricsInstance.DurationSeconds[[2]string{kind, phase}] += duration
+}
+
 func MeasureDuration[T any](kind string, phase string, fn func(phase string) (T, error)) (T, error) {
 	start := time.Now()
 	result, err := fn(phase)
-	if aggregatedMetricsInstance != nil {
-		aggregatedMetricsInstance.mu.Lock()
-		defer aggregatedMetricsInstance.mu.Unlock()
-		aggregatedMetricsInstance.DurationSeconds[[2]string{kind, phase}] += time.Since(start).Seconds()
-	}
+	addDuration(kind, phase, time.Since(start).Seconds())
 
 	return result, err
 }
