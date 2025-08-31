@@ -315,8 +315,9 @@ type EntityMappings struct {
 }
 
 type Port struct {
-	Entity       EntityMappings `json:"entity" yaml:"entity"`
-	ItemsToParse string         `json:"itemsToParse,omitempty" yaml:"itemsToParse"`
+	Entity           EntityMappings `json:"entity" yaml:"entity"`
+	ItemsToParse     string         `json:"itemsToParse,omitempty" yaml:"itemsToParse"`
+	ItemsToParseName string         `json:"itemsToParseName,omitempty" yaml:"itemsToParseName"`
 }
 
 type Selector struct {

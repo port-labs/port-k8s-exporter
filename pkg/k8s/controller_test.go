@@ -53,6 +53,7 @@ type fixtureConfig struct {
 	sendRawDataExamples *bool
 	resource            port.Resource
 	existingObjects     []runtime.Object
+	blueprint           *port.Blueprint
 }
 
 func tearDownFixture(
@@ -125,31 +126,36 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 	kubeClient := k8sfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), newGvrToListKind(), fixtureConfig.existingObjects...)
 	controller := newController(t, fixtureConfig.resource, kubeClient, interationConfig, newConfig)
 
-	blueprintRaw := port.Blueprint{
-		Identifier: blueprintIdentifier,
-		Title:      blueprintIdentifier,
-		Ownership: &port.Ownership{
-			Type: "Direct",
-		},
-		Schema: port.BlueprintSchema{
-			Properties: map[string]port.Property{
-				"bool": {
-					Type: "boolean",
-				},
-				"text": {
-					Type: "string",
-				},
-				"num": {
-					Type: "number",
-				},
-				"obj": {
-					Type: "object",
-				},
-				"arr": {
-					Type: "array",
+	var blueprintRaw port.Blueprint
+	if fixtureConfig.blueprint != nil {
+		blueprintRaw = *fixtureConfig.blueprint
+	} else {
+		blueprintRaw = port.Blueprint{
+			Identifier: blueprintIdentifier,
+			Title:      blueprintIdentifier,
+			Ownership: &port.Ownership{
+				Type: "Direct",
+			},
+			Schema: port.BlueprintSchema{
+				Properties: map[string]port.Property{
+					"bool": {
+						Type: "boolean",
+					},
+					"text": {
+						Type: "string",
+					},
+					"num": {
+						Type: "number",
+					},
+					"obj": {
+						Type: "object",
+					},
+					"arr": {
+						Type: "array",
+					},
 				},
 			},
-		},
+		}
 	}
 
 	t.Logf("creating blueprint %s", blueprintIdentifier)
@@ -837,6 +843,105 @@ func TestCreateDeploymentWithSearchRelation(t *testing.T) {
 	defer tearDownFixture(t, f)
 	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprintId, d.Name): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
 } */
+
+func newBlueprintWithContainerName(blueprintId string) port.Blueprint {
+	return port.Blueprint{
+		Identifier: blueprintId,
+		Title:      blueprintId,
+		Ownership: &port.Ownership{
+			Type: "Direct",
+		},
+		Schema: port.BlueprintSchema{
+			Properties: map[string]port.Property{
+				"bool": {
+					Type: "boolean",
+				},
+				"text": {
+					Type: "string",
+				},
+				"num": {
+					Type: "number",
+				},
+				"obj": {
+					Type: "object",
+				},
+				"arr": {
+					Type: "array",
+				},
+				"containerName": {
+					Type: "string",
+				},
+			},
+		},
+	}
+}
+
+func TestItemsToParseName(t *testing.T) {
+	stateKey := guuid.NewString()
+	blueprintId := getBlueprintId(stateKey)
+	d := newDeployment(stateKey)
+	ud := newUnstructured(d)
+
+	resource := getBaseDeploymentResource(stateKey)
+	resource.Port.ItemsToParse = ".spec.template.spec.containers"
+	resource.Port.Entity.Mappings[0].Properties["containerName"] = ".item.name"
+
+	blueprint := newBlueprintWithContainerName(blueprintId)
+	f := newFixture(t, &fixtureConfig{
+		stateKey:        stateKey,
+		resource:        resource,
+		existingObjects: []runtime.Object{ud},
+		blueprint:       &blueprint,
+	})
+	defer tearDownFixture(t, f)
+
+	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
+	_, err := f.controller.syncHandler(item)
+	if err != nil {
+		t.Errorf("error syncing item: %v", err)
+	}
+
+	// Verify the container name was correctly extracted using default "item"
+	entity, err := f.controller.portClient.ReadEntity(context.Background(), d.Name, blueprintId)
+	if err != nil {
+		t.Errorf("error reading entity: %v", err)
+	}
+	assert.Equal(t, d.Name, entity.Properties["containerName"])
+}
+
+func TestItemsToParseNameCustom(t *testing.T) {
+	stateKey := guuid.NewString()
+	blueprintId := getBlueprintId(stateKey)
+	d := newDeployment(stateKey)
+	ud := newUnstructured(d)
+
+	resource := getBaseDeploymentResource(stateKey)
+	resource.Port.ItemsToParse = ".spec.template.spec.containers"
+	resource.Port.ItemsToParseName = "container"
+	resource.Port.Entity.Mappings[0].Properties["containerName"] = ".container.name"
+
+	blueprint := newBlueprintWithContainerName(blueprintId)
+	f := newFixture(t, &fixtureConfig{
+		stateKey:        stateKey,
+		resource:        resource,
+		existingObjects: []runtime.Object{ud},
+		blueprint:       &blueprint,
+	})
+	defer tearDownFixture(t, f)
+
+	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
+	_, err := f.controller.syncHandler(item)
+	if err != nil {
+		t.Errorf("error syncing item: %v", err)
+	}
+
+	// Verify the container name was correctly extracted using custom "container"
+	entity, err := f.controller.portClient.ReadEntity(context.Background(), d.Name, blueprintId)
+	if err != nil {
+		t.Errorf("error reading entity: %v", err)
+	}
+	assert.Equal(t, d.Name, entity.Properties["containerName"])
+}
 
 func TestCreateDeploymentWithTeamString(t *testing.T) {
 	stateKey := guuid.NewString()

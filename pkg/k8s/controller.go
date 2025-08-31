@@ -466,7 +466,7 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 		rawDataExamples := make([]interface{}, 0)
 		kindConfig := c.Resource.KindConfigs[item.KindIndex]
 		kindLabel := metrics.GetKindLabel(c.Resource.Kind, &item.KindIndex)
-		portEntities, rawDataExamplesForObj, err := c.getObjectEntities(k8sObj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, item.KindIndex)
+		portEntities, rawDataExamplesForObj, err := c.getObjectEntities(k8sObj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, kindConfig.Port.ItemsToParseName, item.KindIndex)
 		if err != nil {
 			logger.Errorw(fmt.Sprintf("Error getting entities for object %s. Error: %s", item.Key, err.Error()), "key", item.Key, "controller", c.Resource.Kind, "error", err, "eventSource", item.EventSource)
 			logger.Debugw("Marking batch collector as having errors", "controller", c.Resource.Kind)
@@ -612,7 +612,7 @@ func (c *Controller) objectHandler(obj interface{}, item EventItem) (*SyncResult
 
 	for kindIndex, kindConfig := range c.Resource.KindConfigs {
 		logger.Debugw("Getting entities for object", "key", item.Key, "resource", c.Resource.Kind, "eventSource", item.EventSource)
-		portEntities, rawDataExamples, err := c.getObjectEntities(obj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, kindIndex)
+		portEntities, rawDataExamples, err := c.getObjectEntities(obj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, kindConfig.Port.ItemsToParseName, kindIndex)
 		if err != nil {
 			logger.Errorw(fmt.Sprintf("error getting entities. Error: %s", err.Error()), "key", item.Key, "resource", c.Resource.Kind, "error", err, "eventSource", item.EventSource)
 			entitiesSet = nil
@@ -667,7 +667,12 @@ func isPassSelector(obj interface{}, selector port.Selector) (bool, error) {
 	return selectorResult, err
 }
 
-func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, mappings []port.EntityMapping, itemsToParse string, kindIndex int) ([]port.EntityRequest, []interface{}, error) {
+func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, mappings []port.EntityMapping, itemsToParse string, itemsToParseName string, kindIndex int) ([]port.EntityRequest, []interface{}, error) {
+	// Set default value for itemsToParseName if empty
+	if itemsToParseName == "" {
+		itemsToParseName = "item"
+	}
+
 	transformResult, err := metrics.MeasureDuration(metrics.GetKindLabel(c.Resource.Kind, nil), metrics.MetricPhaseTransform, func(phase string) (*TransformResult, error) {
 		kindLabel := metrics.GetKindLabel(c.Resource.Kind, &kindIndex)
 		var result TransformResult
@@ -703,7 +708,7 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 				for key, value := range mappedObject {
 					copiedObject[key] = value
 				}
-				copiedObject["item"] = item
+				copiedObject[itemsToParseName] = item
 				objectsToMap = append(objectsToMap, copiedObject)
 			}
 		}
@@ -782,12 +787,12 @@ func (c *Controller) shouldSendUpdateEvent(old interface{}, new interface{}, upd
 		return true
 	}
 	for kindIndex, kindConfig := range c.Resource.KindConfigs {
-		oldEntities, _, err := c.getObjectEntities(old, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, kindIndex)
+		oldEntities, _, err := c.getObjectEntities(old, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, kindConfig.Port.ItemsToParseName, kindIndex)
 		if err != nil {
 			logger.Errorf("Error getting old entities: %v", err)
 			return true
 		}
-		newEntities, _, err := c.getObjectEntities(new, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, kindIndex)
+		newEntities, _, err := c.getObjectEntities(new, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, kindConfig.Port.ItemsToParseName, kindIndex)
 		if err != nil {
 			logger.Errorf("Error getting new entities: %v", err)
 			return true
