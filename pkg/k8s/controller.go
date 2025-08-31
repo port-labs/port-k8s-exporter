@@ -668,6 +668,11 @@ func isPassSelector(obj interface{}, selector port.Selector) (bool, error) {
 }
 
 func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, mappings []port.EntityMapping, itemsToParse string, itemsToParseName string, kindIndex int) ([]port.EntityRequest, []interface{}, error) {
+	// Set default value for itemsToParseName if empty
+	if itemsToParseName == "" {
+		itemsToParseName = "item"
+	}
+
 	transformResult, err := metrics.MeasureDuration(metrics.GetKindLabel(c.Resource.Kind, nil), metrics.MetricPhaseTransform, func(phase string) (*TransformResult, error) {
 		kindLabel := metrics.GetKindLabel(c.Resource.Kind, &kindIndex)
 		var result TransformResult

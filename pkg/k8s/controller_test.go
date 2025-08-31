@@ -882,7 +882,6 @@ func TestItemsToParseName(t *testing.T) {
 	d := newDeployment(stateKey)
 	ud := newUnstructured(d)
 
-	// Without itemsToParseName (should default to "item")
 	resource := getBaseDeploymentResource(stateKey)
 	resource.Port.ItemsToParse = ".spec.template.spec.containers"
 	resource.Port.Entity.Mappings[0].Properties["containerName"] = ".item.name"
@@ -916,7 +915,6 @@ func TestItemsToParseNameCustom(t *testing.T) {
 	d := newDeployment(stateKey)
 	ud := newUnstructured(d)
 
-	// With custom itemsToParseName
 	resource := getBaseDeploymentResource(stateKey)
 	resource.Port.ItemsToParse = ".spec.template.spec.containers"
 	resource.Port.ItemsToParseName = "container"
