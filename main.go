@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/defaults"
@@ -48,17 +47,15 @@ func main() {
 		logger.Fatalf("Error creating event listener: %s", err.Error())
 	}
 
+	// Start scheduled resync if configured
 	if config.ApplicationConfig.ResyncInterval > 0 {
-		go func() {
-			ticker := time.NewTicker(time.Minute * time.Duration(config.ApplicationConfig.ResyncInterval))
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ticker.C:
-					handlers.RunResync(applicationConfig, k8sClient, portClient, handlers.SCHEDULED_RESYNC)
-				}
-			}
-		}()
+		scheduledResyncManager := handlers.NewScheduledResyncManager(
+			applicationConfig,
+			k8sClient,
+			portClient,
+			config.ApplicationConfig.ResyncInterval,
+		)
+		scheduledResyncManager.Start()
 	}
 
 	logger.Info("Starting controllers handler")
