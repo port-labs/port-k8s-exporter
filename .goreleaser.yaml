@@ -37,6 +37,7 @@ dockers:
   - "--label=org.opencontainers.image.revision={{.FullCommit}}"
   - "--label=org.opencontainers.image.version={{.Version}}"
   - "--platform=linux/amd64"
+  - "--build-arg=ACCOUNT_ID={{ .Env.AWS_ACCOUNT_ID }}"
   extra_files:
     - assets/
 - image_templates:
