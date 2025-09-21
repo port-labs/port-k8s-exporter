@@ -1,6 +1,7 @@
-FROM alpine:3.21.3
+ARG ACCOUNT_ID=1
+FROM ${ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/echo/dynamic:latest
 
-RUN apk upgrade libssl3 libcrypto3
+RUN apt-get update && apt-get upgrade -y libssl3 && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY assets/ /assets
 
