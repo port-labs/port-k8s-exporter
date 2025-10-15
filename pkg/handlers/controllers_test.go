@@ -146,6 +146,8 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 		Resources:                       integrationConfig.Resources,
 		DeleteDependents:                integrationConfig.DeleteDependents,
 		CreateMissingRelatedEntities:    integrationConfig.CreateMissingRelatedEntities,
+		AllowEnvironmentVariablesInJQ:   config.ApplicationConfig.AllowEnvironmentVariablesInJQ,
+		AllowedEnvironmentVariablesInJQ: config.ApplicationConfig.AllowedEnvironmentVariablesInJQ,
 		UpdateEntityOnlyOnDiff:          config.ApplicationConfig.UpdateEntityOnlyOnDiff,
 		PortClientId:                    config.ApplicationConfig.PortClientId,
 		PortClientSecret:                config.ApplicationConfig.PortClientSecret,
@@ -168,6 +170,8 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 		Resources:                       applicationConfig.Resources,
 		DeleteDependents:                applicationConfig.DeleteDependents,
 		CreateMissingRelatedEntities:    applicationConfig.CreateMissingRelatedEntities,
+		AllowEnvironmentVariablesInJQ:   applicationConfig.AllowEnvironmentVariablesInJQ,
+		AllowedEnvironmentVariablesInJQ: applicationConfig.AllowedEnvironmentVariablesInJQ,
 	}
 
 	groups := make([]metav1.APIGroup, 0)

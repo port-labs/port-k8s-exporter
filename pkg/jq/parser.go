@@ -1,17 +1,25 @@
 package jq
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"reflect"
 	"strings"
 
 	"github.com/itchyny/gojq"
+	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
 	"github.com/port-labs/port-k8s-exporter/pkg/logger"
 )
 
 func runJQQuery(jqQuery string, obj interface{}) (interface{}, error) {
+	allowEnvVars := config.ApplicationConfig.AllowEnvironmentVariablesInJQ
+	if !allowEnvVars {
+		allowedEnvVars := getAllowedEnvironmentVariables()
+		jqQuery = "def env: " + allowedEnvVars + "; {} as $ENV | " + jqQuery
+	}
+
 	query, err := gojq.Parse(jqQuery)
 	if err != nil {
 		logger.Warningf("failed to parse jq query: %s", jqQuery)
@@ -163,4 +171,51 @@ func ParseMapRecursively(jqQueries map[string]interface{}, obj interface{}) (map
 	}
 
 	return mapInterface, nil
+}
+
+func getAllowedEnvironmentVariables() string {
+	allowedVars := config.ApplicationConfig.AllowedEnvironmentVariablesInJQ
+	if len(allowedVars) == 0 {
+		return "{}"
+	}
+
+	filteredEnv := make(map[string]string)
+	allEnv := os.Environ()
+
+	for _, envVar := range allEnv {
+		parts := strings.SplitN(envVar, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := parts[0]
+		value := parts[1]
+
+		if isEnvironmentVariableAllowed(key, allowedVars) {
+			filteredEnv[key] = value
+		}
+	}
+
+	jsonBytes, err := json.Marshal(filteredEnv)
+	if err != nil {
+		logger.Warningf("failed to marshal filtered environment: %v", err)
+		return "{}"
+	}
+
+	return string(jsonBytes)
+}
+
+func isEnvironmentVariableAllowed(key string, allowedVars []string) bool {
+	for _, allowedVar := range allowedVars {
+		if key == allowedVar {
+			return true
+		}
+
+		if strings.HasSuffix(allowedVar, "*") {
+			prefix := strings.TrimSuffix(allowedVar, "*")
+			if strings.HasPrefix(key, prefix) {
+				return true
+			}
+		}
+	}
+	return false
 }

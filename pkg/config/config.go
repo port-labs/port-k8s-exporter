@@ -63,6 +63,10 @@ func Init() {
 	NewBool(&ApplicationConfig.MetricsEnabled, "metrics-enabled", true, "Enable metrics. Optional.")
 	NewInt(&ApplicationConfig.MetricsPort, "metrics-port", 9090, "Metrics port. Optional.")
 
+	// JQ Configuration
+	NewBool(&ApplicationConfig.AllowEnvironmentVariablesInJQ, "allow-environment-variables-in-jq", false, "Allow environment variables access in jq queries. Optional.")
+	NewStringSlice(&ApplicationConfig.AllowedEnvironmentVariablesInJQ, "allowed-environment-variables-in-jq", []string{"PORT_*","CLUSTER_NAME"}, "Comma-separated list of environment variables that are allowed in jq queries when allow-environment-variables-in-jq is false. Optional.")
+
 	flag.Parse()
 }
 
@@ -76,6 +80,8 @@ func NewConfiguration() (*port.Config, error) {
 		OverwriteConfigurationOnRestart: ApplicationConfig.OverwriteConfigurationOnRestart,
 		CreateMissingRelatedEntities:    ApplicationConfig.CreateMissingRelatedEntities,
 		DeleteDependents:                ApplicationConfig.DeleteDependents,
+		AllowEnvironmentVariablesInJQ:   ApplicationConfig.AllowEnvironmentVariablesInJQ,
+		AllowedEnvironmentVariablesInJQ:     ApplicationConfig.AllowedEnvironmentVariablesInJQ,
 	}
 
 	v, err := os.ReadFile(ApplicationConfig.ConfigFilePath)
