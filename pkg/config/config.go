@@ -64,7 +64,7 @@ func Init() {
 	NewInt(&ApplicationConfig.MetricsPort, "metrics-port", 9090, "Metrics port. Optional.")
 
 	// JQ Configuration
-	NewBool(&ApplicationConfig.AllowAllEnvironmentVariablesInJQ, "allow-all-environment-variables-in-jq", false, "Allow environment variables access in jq queries. Optional.")
+	NewBool(&ApplicationConfig.AllowAllEnvironmentVariablesInJQ, "allow-all-environment-variables-in-jq", true, "Allow access to all environment variables in jq queries. Optional.")
 	NewStringSlice(&ApplicationConfig.AllowedEnvironmentVariablesInJQ, "allowed-environment-variables-in-jq", []string{"PORT_*", "CLUSTER_NAME"}, "Comma-separated list of environment variables that are allowed in jq queries when allow-all-environment-variables-in-jq is false. Optional.")
 
 	flag.Parse()
