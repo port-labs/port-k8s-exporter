@@ -124,20 +124,20 @@ func TestJqEnvironmentVariablesRestriction(t *testing.T) {
 
 	// Test object
 	testObj := map[string]interface{}{
-		"name": "test",
+		"name":  "test",
 		"value": "test_value",
 	}
 
 	// Test with environment variables allowed (explicitly enabled)
-	originalConfig := config.ApplicationConfig.AllowEnvironmentVariablesInJQ
-	config.ApplicationConfig.AllowEnvironmentVariablesInJQ = true
+	originalConfig := config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ
+	config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = true
 	result, err := ParseString("env.TEST_ENV_VAR", testObj)
 	assert.NoError(t, err)
 	assert.Equal(t, "test_value", result)
 
 	// Test with environment variables restricted (default behavior)
 	// When restricted, env function returns empty object, so env.VAR returns null
-	config.ApplicationConfig.AllowEnvironmentVariablesInJQ = false
+	config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = false
 	result, err = ParseString("env.TEST_ENV_VAR", testObj)
 	assert.Error(t, err) // Should error because ParseString expects a string but gets null
 	assert.Contains(t, err.Error(), "failed to parse string with jq")
@@ -148,18 +148,18 @@ func TestJqEnvironmentVariablesRestriction(t *testing.T) {
 	assert.Equal(t, "test", result)
 
 	// Test ParseInterface with environment variables
-	config.ApplicationConfig.AllowEnvironmentVariablesInJQ = true
+	config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = true
 	resultInterface, err := ParseInterface("env.TEST_ENV_VAR", testObj)
 	assert.NoError(t, err)
 	assert.Equal(t, "test_value", resultInterface)
 
-	config.ApplicationConfig.AllowEnvironmentVariablesInJQ = false
+	config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = false
 	resultInterface, err = ParseInterface("env.TEST_ENV_VAR", testObj)
-	assert.NoError(t, err) // Should not error, but return null
+	assert.NoError(t, err)         // Should not error, but return null
 	assert.Nil(t, resultInterface) // null because env.TEST_ENV_VAR returns null
 
 	// Restore original config
-	config.ApplicationConfig.AllowEnvironmentVariablesInJQ = originalConfig
+	config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = originalConfig
 }
 
 func TestEnvironmentVariableRestrictionWhenAllowed(t *testing.T) {
@@ -168,17 +168,17 @@ func TestEnvironmentVariableRestrictionWhenAllowed(t *testing.T) {
 	defer os.Unsetenv("TEST_ENV_VAR")
 
 	testObj := map[string]interface{}{
-		"name": "test",
+		"name":  "test",
 		"value": "test_value",
 	}
 
-	originalConfig := config.ApplicationConfig.AllowEnvironmentVariablesInJQ
+	originalConfig := config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ
 	defer func() {
-		config.ApplicationConfig.AllowEnvironmentVariablesInJQ = originalConfig
+		config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = originalConfig
 	}()
 
 	// Test all parser functions with environment variables allowed
-	config.ApplicationConfig.AllowEnvironmentVariablesInJQ = true
+	config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = true
 
 	// Test ParseString
 	result, err := ParseString("env.TEST_ENV_VAR", testObj)
@@ -213,7 +213,7 @@ func TestEnvironmentVariableRestrictionWhenAllowed(t *testing.T) {
 
 func TestRegularJqQueriesWorkWhenEnvVarsRestricted(t *testing.T) {
 	testObj := map[string]interface{}{
-		"name": "test",
+		"name":  "test",
 		"value": "test_value",
 		"items": []interface{}{"item1", "item2"},
 		"nested": map[string]interface{}{
@@ -221,13 +221,13 @@ func TestRegularJqQueriesWorkWhenEnvVarsRestricted(t *testing.T) {
 		},
 	}
 
-	originalConfig := config.ApplicationConfig.AllowEnvironmentVariablesInJQ
+	originalConfig := config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ
 	defer func() {
-		config.ApplicationConfig.AllowEnvironmentVariablesInJQ = originalConfig
+		config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = originalConfig
 	}()
 
 	// Test with environment variables restricted
-	config.ApplicationConfig.AllowEnvironmentVariablesInJQ = false
+	config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = false
 
 	// Test ParseString with regular object access
 	result, err := ParseString(".name", testObj)
@@ -251,12 +251,12 @@ func TestRegularJqQueriesWorkWhenEnvVarsRestricted(t *testing.T) {
 
 	// Test ParseMapInterface with regular object access
 	resultMap, err := ParseMapInterface(map[string]string{
-		"name": ".name",
+		"name":  ".name",
 		"value": ".value",
 	}, testObj)
 	assert.NoError(t, err)
 	assert.Equal(t, map[string]interface{}{
-		"name": "test",
+		"name":  "test",
 		"value": "test_value",
 	}, resultMap)
 
@@ -280,17 +280,17 @@ func TestEnvironmentVariableRestrictionComplexQueries(t *testing.T) {
 	defer os.Unsetenv("TEST_ENV_VAR")
 
 	testObj := map[string]interface{}{
-		"name": "test",
+		"name":  "test",
 		"items": []interface{}{"item1", "item2"},
 	}
 
-	originalConfig := config.ApplicationConfig.AllowEnvironmentVariablesInJQ
+	originalConfig := config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ
 	defer func() {
-		config.ApplicationConfig.AllowEnvironmentVariablesInJQ = originalConfig
+		config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = originalConfig
 	}()
 
 	// Test with environment variables restricted
-	config.ApplicationConfig.AllowEnvironmentVariablesInJQ = false
+	config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = false
 
 	// Test complex queries with env vars that should work but return null
 	queries := []struct {
@@ -321,7 +321,7 @@ func TestEnvironmentVariableRestrictionComplexQueries(t *testing.T) {
 	}
 
 	// Test with environment variables allowed
-	config.ApplicationConfig.AllowEnvironmentVariablesInJQ = true
+	config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = true
 
 	// Test the same queries but with actual env var values
 	queriesWithEnv := []struct {
@@ -359,15 +359,15 @@ func TestEnvironmentVariableWhitelist(t *testing.T) {
 		"name": "test",
 	}
 
-	originalConfig := config.ApplicationConfig.AllowEnvironmentVariablesInJQ
+	originalConfig := config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ
 	originalAllowedVars := config.ApplicationConfig.AllowedEnvironmentVariablesInJQ
 	defer func() {
-		config.ApplicationConfig.AllowEnvironmentVariablesInJQ = originalConfig
+		config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = originalConfig
 		config.ApplicationConfig.AllowedEnvironmentVariablesInJQ = originalAllowedVars
 	}()
 
 	// Test with environment variables restricted but with whitelist
-	config.ApplicationConfig.AllowEnvironmentVariablesInJQ = false
+	config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = false
 	config.ApplicationConfig.AllowedEnvironmentVariablesInJQ = []string{"ALLOWED_VAR1", "ALLOWED_VAR2"}
 
 	// Test that allowed variables are accessible
@@ -410,15 +410,15 @@ func TestEnvironmentVariableWhitelistEmpty(t *testing.T) {
 		"name": "test",
 	}
 
-	originalConfig := config.ApplicationConfig.AllowEnvironmentVariablesInJQ
+	originalConfig := config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ
 	originalAllowedVars := config.ApplicationConfig.AllowedEnvironmentVariablesInJQ
 	defer func() {
-		config.ApplicationConfig.AllowEnvironmentVariablesInJQ = originalConfig
+		config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = originalConfig
 		config.ApplicationConfig.AllowedEnvironmentVariablesInJQ = originalAllowedVars
 	}()
 
 	// Test with environment variables restricted and empty whitelist
-	config.ApplicationConfig.AllowEnvironmentVariablesInJQ = false
+	config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = false
 	config.ApplicationConfig.AllowedEnvironmentVariablesInJQ = []string{}
 
 	// Test that no environment variables are accessible
@@ -444,19 +444,19 @@ func TestEnvironmentVariableWhitelistComplexQueries(t *testing.T) {
 	defer os.Unsetenv("SECRET_VAR")
 
 	testObj := map[string]interface{}{
-		"name": "test-app",
+		"name":      "test-app",
 		"namespace": "default",
 	}
 
-	originalConfig := config.ApplicationConfig.AllowEnvironmentVariablesInJQ
+	originalConfig := config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ
 	originalAllowedVars := config.ApplicationConfig.AllowedEnvironmentVariablesInJQ
 	defer func() {
-		config.ApplicationConfig.AllowEnvironmentVariablesInJQ = originalConfig
+		config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = originalConfig
 		config.ApplicationConfig.AllowedEnvironmentVariablesInJQ = originalAllowedVars
 	}()
 
 	// Test with environment variables restricted but with whitelist
-	config.ApplicationConfig.AllowEnvironmentVariablesInJQ = false
+	config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = false
 	config.ApplicationConfig.AllowedEnvironmentVariablesInJQ = []string{"CLUSTER_NAME", "ENVIRONMENT"}
 
 	// Test complex queries with allowed variables
@@ -503,15 +503,15 @@ func TestEnvironmentVariablePrefixWhitelist(t *testing.T) {
 		"name": "test",
 	}
 
-	originalConfig := config.ApplicationConfig.AllowEnvironmentVariablesInJQ
+	originalConfig := config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ
 	originalAllowedVars := config.ApplicationConfig.AllowedEnvironmentVariablesInJQ
 	defer func() {
-		config.ApplicationConfig.AllowEnvironmentVariablesInJQ = originalConfig
+		config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = originalConfig
 		config.ApplicationConfig.AllowedEnvironmentVariablesInJQ = originalAllowedVars
 	}()
 
 	// Test with environment variables restricted but with prefix whitelist
-	config.ApplicationConfig.AllowEnvironmentVariablesInJQ = false
+	config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = false
 	config.ApplicationConfig.AllowedEnvironmentVariablesInJQ = []string{"PORT_*", "KUBE_*"}
 
 	// Test that PORT_* variables are accessible
@@ -550,20 +550,20 @@ func TestEnvironmentVariablePrefixWhitelist(t *testing.T) {
 	assert.NoError(t, err)
 	envMap, ok := result.(map[string]interface{})
 	assert.True(t, ok)
-	
+
 	// Should contain PORT_* variables
 	assert.Contains(t, envMap, "PORT_CLIENT_ID")
 	assert.Contains(t, envMap, "PORT_BASE_URL")
 	assert.Contains(t, envMap, "PORT_STATE_KEY")
-	
+
 	// Should contain KUBE_* variables
 	assert.Contains(t, envMap, "KUBE_NAMESPACE")
 	assert.Contains(t, envMap, "KUBE_CLUSTER")
-	
+
 	// Should NOT contain non-prefixed variables
 	assert.NotContains(t, envMap, "SECRET_KEY")
 	assert.NotContains(t, envMap, "DATABASE_URL")
-	
+
 	// Verify values
 	assert.Equal(t, "client123", envMap["PORT_CLIENT_ID"])
 	assert.Equal(t, "https://api.getport.io", envMap["PORT_BASE_URL"])
@@ -591,15 +591,15 @@ func TestEnvironmentVariableMixedWhitelist(t *testing.T) {
 		"name": "test",
 	}
 
-	originalConfig := config.ApplicationConfig.AllowEnvironmentVariablesInJQ
+	originalConfig := config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ
 	originalAllowedVars := config.ApplicationConfig.AllowedEnvironmentVariablesInJQ
 	defer func() {
-		config.ApplicationConfig.AllowEnvironmentVariablesInJQ = originalConfig
+		config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = originalConfig
 		config.ApplicationConfig.AllowedEnvironmentVariablesInJQ = originalAllowedVars
 	}()
 
 	// Test with mixed exact matches and prefixes
-	config.ApplicationConfig.AllowEnvironmentVariablesInJQ = false
+	config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = false
 	config.ApplicationConfig.AllowedEnvironmentVariablesInJQ = []string{"PORT_*", "CLUSTER_NAME", "ENVIRONMENT"}
 
 	// Test that PORT_* variables are accessible
@@ -634,15 +634,15 @@ func TestEnvironmentVariableMixedWhitelist(t *testing.T) {
 	assert.NoError(t, err)
 	envMap, ok := result.(map[string]interface{})
 	assert.True(t, ok)
-	
+
 	// Should contain PORT_* variables
 	assert.Contains(t, envMap, "PORT_CLIENT_ID")
 	assert.Contains(t, envMap, "PORT_BASE_URL")
-	
+
 	// Should contain exact match variables
 	assert.Contains(t, envMap, "CLUSTER_NAME")
 	assert.Contains(t, envMap, "ENVIRONMENT")
-	
+
 	// Should NOT contain non-allowed variables
 	assert.NotContains(t, envMap, "SECRET_KEY")
 	assert.NotContains(t, envMap, "DATABASE_URL")
@@ -667,15 +667,15 @@ func TestEnvironmentVariablePrefixEdgeCases(t *testing.T) {
 		"name": "test",
 	}
 
-	originalConfig := config.ApplicationConfig.AllowEnvironmentVariablesInJQ
+	originalConfig := config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ
 	originalAllowedVars := config.ApplicationConfig.AllowedEnvironmentVariablesInJQ
 	defer func() {
-		config.ApplicationConfig.AllowEnvironmentVariablesInJQ = originalConfig
+		config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = originalConfig
 		config.ApplicationConfig.AllowedEnvironmentVariablesInJQ = originalAllowedVars
 	}()
 
 	// Test with PORT_* prefix
-	config.ApplicationConfig.AllowEnvironmentVariablesInJQ = false
+	config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = false
 	config.ApplicationConfig.AllowedEnvironmentVariablesInJQ = []string{"PORT_*"}
 
 	// Test exact prefix match (PORT_)
@@ -710,13 +710,13 @@ func TestEnvironmentVariablePrefixEdgeCases(t *testing.T) {
 	assert.NoError(t, err)
 	envMap, ok := result.(map[string]interface{})
 	assert.True(t, ok)
-	
+
 	// Should contain variables that start with PORT_
 	assert.Contains(t, envMap, "PORT_")
 	assert.Contains(t, envMap, "PORT_CLIENT_ID")
 	assert.Contains(t, envMap, "PORT_CLIENT_SECRET")
 	assert.Contains(t, envMap, "PORT_NOT") // PORT_NOT starts with PORT_
-	
+
 	// Should NOT contain variables that don't start with PORT_
 	assert.NotContains(t, envMap, "PORT")
 	assert.NotContains(t, envMap, "NOT_PORT")

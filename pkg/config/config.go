@@ -64,24 +64,24 @@ func Init() {
 	NewInt(&ApplicationConfig.MetricsPort, "metrics-port", 9090, "Metrics port. Optional.")
 
 	// JQ Configuration
-	NewBool(&ApplicationConfig.AllowEnvironmentVariablesInJQ, "allow-environment-variables-in-jq", false, "Allow environment variables access in jq queries. Optional.")
-	NewStringSlice(&ApplicationConfig.AllowedEnvironmentVariablesInJQ, "allowed-environment-variables-in-jq", []string{"PORT_*","CLUSTER_NAME"}, "Comma-separated list of environment variables that are allowed in jq queries when allow-environment-variables-in-jq is false. Optional.")
+	NewBool(&ApplicationConfig.AllowAllEnvironmentVariablesInJQ, "allow-all-environment-variables-in-jq", false, "Allow environment variables access in jq queries. Optional.")
+	NewStringSlice(&ApplicationConfig.AllowedEnvironmentVariablesInJQ, "allowed-environment-variables-in-jq", []string{"PORT_*", "CLUSTER_NAME"}, "Comma-separated list of environment variables that are allowed in jq queries when allow-all-environment-variables-in-jq is false. Optional.")
 
 	flag.Parse()
 }
 
 func NewConfiguration() (*port.Config, error) {
 	config := &port.Config{
-		StateKey:                        ApplicationConfig.StateKey,
-		EventListenerType:               ApplicationConfig.EventListenerType,
-		CreateDefaultResources:          ApplicationConfig.CreateDefaultResources,
-		CreatePortResourcesOrigin:       ApplicationConfig.CreatePortResourcesOrigin,
-		ResyncInterval:                  ApplicationConfig.ResyncInterval,
-		OverwriteConfigurationOnRestart: ApplicationConfig.OverwriteConfigurationOnRestart,
-		CreateMissingRelatedEntities:    ApplicationConfig.CreateMissingRelatedEntities,
-		DeleteDependents:                ApplicationConfig.DeleteDependents,
-		AllowEnvironmentVariablesInJQ:   ApplicationConfig.AllowEnvironmentVariablesInJQ,
-		AllowedEnvironmentVariablesInJQ:     ApplicationConfig.AllowedEnvironmentVariablesInJQ,
+		StateKey:                         ApplicationConfig.StateKey,
+		EventListenerType:                ApplicationConfig.EventListenerType,
+		CreateDefaultResources:           ApplicationConfig.CreateDefaultResources,
+		CreatePortResourcesOrigin:        ApplicationConfig.CreatePortResourcesOrigin,
+		ResyncInterval:                   ApplicationConfig.ResyncInterval,
+		OverwriteConfigurationOnRestart:  ApplicationConfig.OverwriteConfigurationOnRestart,
+		CreateMissingRelatedEntities:     ApplicationConfig.CreateMissingRelatedEntities,
+		DeleteDependents:                 ApplicationConfig.DeleteDependents,
+		AllowAllEnvironmentVariablesInJQ: ApplicationConfig.AllowAllEnvironmentVariablesInJQ,
+		AllowedEnvironmentVariablesInJQ:  ApplicationConfig.AllowedEnvironmentVariablesInJQ,
 	}
 
 	v, err := os.ReadFile(ApplicationConfig.ConfigFilePath)

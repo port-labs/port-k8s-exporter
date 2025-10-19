@@ -345,15 +345,15 @@ type AggregatedResource struct {
 }
 
 type IntegrationAppConfig struct {
-	DeleteDependents                bool       `json:"deleteDependents,omitempty" yaml:"deleteDependents,omitempty"`
-	CreateMissingRelatedEntities    bool       `json:"createMissingRelatedEntities,omitempty" yaml:"createMissingRelatedEntities,omitempty"`
-	Resources                       []Resource `json:"resources,omitempty" yaml:"resources,omitempty"`
-	CRDSToDiscover                  string     `json:"crdsToDiscover,omitempty"`
-	OverwriteCRDsActions            bool       `json:"overwriteCrdsActions,omitempty"`
-	UpdateEntityOnlyOnDiff          *bool      `json:"updateEntityOnlyOnDiff,omitempty"`
-	SendRawDataExamples             *bool      `json:"sendRawDataExamples,omitempty"`
-	AllowEnvironmentVariablesInJQ   bool       `json:"allowEnvironmentVariablesInJQ,omitempty" yaml:"allowEnvironmentVariablesInJQ,omitempty"`
-	AllowedEnvironmentVariablesInJQ []string   `json:"allowedEnvironmentVariablesInJQ,omitempty" yaml:"allowedEnvironmentVariablesInJQ,omitempty"`
+	DeleteDependents                 bool       `json:"deleteDependents,omitempty" yaml:"deleteDependents,omitempty"`
+	CreateMissingRelatedEntities     bool       `json:"createMissingRelatedEntities,omitempty" yaml:"createMissingRelatedEntities,omitempty"`
+	Resources                        []Resource `json:"resources,omitempty" yaml:"resources,omitempty"`
+	CRDSToDiscover                   string     `json:"crdsToDiscover,omitempty"`
+	OverwriteCRDsActions             bool       `json:"overwriteCrdsActions,omitempty"`
+	UpdateEntityOnlyOnDiff           *bool      `json:"updateEntityOnlyOnDiff,omitempty"`
+	SendRawDataExamples              *bool      `json:"sendRawDataExamples,omitempty"`
+	AllowAllEnvironmentVariablesInJQ bool       `json:"AllowAllEnvironmentVariablesInJQ,omitempty" yaml:"AllowAllEnvironmentVariablesInJQ,omitempty"`
+	AllowedEnvironmentVariablesInJQ  []string   `json:"allowedEnvironmentVariablesInJQ,omitempty" yaml:"allowedEnvironmentVariablesInJQ,omitempty"`
 }
 
 const (
@@ -375,13 +375,13 @@ type Config struct {
 	CreatePortResourcesOrigin       CreatePortResourcesOrigin `yaml:"createPortResourcesOrigin,omitempty"`
 	OverwriteConfigurationOnRestart bool                      `yaml:"overwriteConfigurationOnRestart,omitempty"`
 	// These Configurations are used only for setting up the Integration on installation or when using OverwriteConfigurationOnRestart flag.
-	Resources                       []Resource `yaml:"resources,omitempty"`
-	CRDSToDiscover                  string     `yaml:"crdsToDiscover,omitempty"`
-	OverwriteCRDsActions            bool       `yaml:"overwriteCrdsActions,omitempty"`
-	DeleteDependents                bool       `yaml:"deleteDependents,omitempty"`
-	CreateMissingRelatedEntities    bool       `yaml:"createMissingRelatedEntities,omitempty"`
-	AllowEnvironmentVariablesInJQ   bool       `yaml:"allowEnvironmentVariablesInJQ,omitempty"`
-	AllowedEnvironmentVariablesInJQ []string   `yaml:"allowedEnvironmentVariablesInJQ,omitempty"`
+	Resources                        []Resource `yaml:"resources,omitempty"`
+	CRDSToDiscover                   string     `yaml:"crdsToDiscover,omitempty"`
+	OverwriteCRDsActions             bool       `yaml:"overwriteCrdsActions,omitempty"`
+	DeleteDependents                 bool       `yaml:"deleteDependents,omitempty"`
+	CreateMissingRelatedEntities     bool       `yaml:"createMissingRelatedEntities,omitempty"`
+	AllowAllEnvironmentVariablesInJQ bool       `yaml:"AllowAllEnvironmentVariablesInJQ,omitempty"`
+	AllowedEnvironmentVariablesInJQ  []string   `yaml:"allowedEnvironmentVariablesInJQ,omitempty"`
 }
 
 type Team struct {

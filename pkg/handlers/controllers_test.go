@@ -137,21 +137,21 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 	}
 
 	applicationConfig := &config.ApplicationConfiguration{
-		ConfigFilePath:                  config.ApplicationConfig.ConfigFilePath,
-		ResyncInterval:                  config.ApplicationConfig.ResyncInterval,
-		PortBaseURL:                     config.ApplicationConfig.PortBaseURL,
-		EventListenerType:               config.ApplicationConfig.EventListenerType,
-		CreateDefaultResources:          config.ApplicationConfig.CreateDefaultResources,
-		OverwriteConfigurationOnRestart: config.ApplicationConfig.OverwriteConfigurationOnRestart,
-		Resources:                       integrationConfig.Resources,
-		DeleteDependents:                integrationConfig.DeleteDependents,
-		CreateMissingRelatedEntities:    integrationConfig.CreateMissingRelatedEntities,
-		AllowEnvironmentVariablesInJQ:   config.ApplicationConfig.AllowEnvironmentVariablesInJQ,
-		AllowedEnvironmentVariablesInJQ: config.ApplicationConfig.AllowedEnvironmentVariablesInJQ,
-		UpdateEntityOnlyOnDiff:          config.ApplicationConfig.UpdateEntityOnlyOnDiff,
-		PortClientId:                    config.ApplicationConfig.PortClientId,
-		PortClientSecret:                config.ApplicationConfig.PortClientSecret,
-		StateKey:                        config.ApplicationConfig.StateKey,
+		ConfigFilePath:                   config.ApplicationConfig.ConfigFilePath,
+		ResyncInterval:                   config.ApplicationConfig.ResyncInterval,
+		PortBaseURL:                      config.ApplicationConfig.PortBaseURL,
+		EventListenerType:                config.ApplicationConfig.EventListenerType,
+		CreateDefaultResources:           config.ApplicationConfig.CreateDefaultResources,
+		OverwriteConfigurationOnRestart:  config.ApplicationConfig.OverwriteConfigurationOnRestart,
+		Resources:                        integrationConfig.Resources,
+		DeleteDependents:                 integrationConfig.DeleteDependents,
+		CreateMissingRelatedEntities:     integrationConfig.CreateMissingRelatedEntities,
+		AllowAllEnvironmentVariablesInJQ: config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ,
+		AllowedEnvironmentVariablesInJQ:  config.ApplicationConfig.AllowedEnvironmentVariablesInJQ,
+		UpdateEntityOnlyOnDiff:           config.ApplicationConfig.UpdateEntityOnlyOnDiff,
+		PortClientId:                     config.ApplicationConfig.PortClientId,
+		PortClientSecret:                 config.ApplicationConfig.PortClientSecret,
+		StateKey:                         config.ApplicationConfig.StateKey,
 	}
 
 	if fixtureConfig.portClientId != "" {
@@ -162,16 +162,16 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 	}
 
 	exporterConfig := &port.Config{
-		StateKey:                        applicationConfig.StateKey,
-		EventListenerType:               applicationConfig.EventListenerType,
-		CreateDefaultResources:          applicationConfig.CreateDefaultResources,
-		ResyncInterval:                  applicationConfig.ResyncInterval,
-		OverwriteConfigurationOnRestart: applicationConfig.OverwriteConfigurationOnRestart,
-		Resources:                       applicationConfig.Resources,
-		DeleteDependents:                applicationConfig.DeleteDependents,
-		CreateMissingRelatedEntities:    applicationConfig.CreateMissingRelatedEntities,
-		AllowEnvironmentVariablesInJQ:   applicationConfig.AllowEnvironmentVariablesInJQ,
-		AllowedEnvironmentVariablesInJQ: applicationConfig.AllowedEnvironmentVariablesInJQ,
+		StateKey:                         applicationConfig.StateKey,
+		EventListenerType:                applicationConfig.EventListenerType,
+		CreateDefaultResources:           applicationConfig.CreateDefaultResources,
+		ResyncInterval:                   applicationConfig.ResyncInterval,
+		OverwriteConfigurationOnRestart:  applicationConfig.OverwriteConfigurationOnRestart,
+		Resources:                        applicationConfig.Resources,
+		DeleteDependents:                 applicationConfig.DeleteDependents,
+		CreateMissingRelatedEntities:     applicationConfig.CreateMissingRelatedEntities,
+		AllowAllEnvironmentVariablesInJQ: applicationConfig.AllowAllEnvironmentVariablesInJQ,
+		AllowedEnvironmentVariablesInJQ:  applicationConfig.AllowedEnvironmentVariablesInJQ,
 	}
 
 	groups := make([]metav1.APIGroup, 0)

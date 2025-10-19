@@ -14,7 +14,7 @@ import (
 )
 
 func runJQQuery(jqQuery string, obj interface{}) (interface{}, error) {
-	allowEnvVars := config.ApplicationConfig.AllowEnvironmentVariablesInJQ
+	allowEnvVars := config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ
 	if !allowEnvVars {
 		allowedEnvVars := getAllowedEnvironmentVariables()
 		jqQuery = "def env: " + allowedEnvVars + "; {} as $ENV | " + jqQuery

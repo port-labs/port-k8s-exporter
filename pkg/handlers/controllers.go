@@ -134,8 +134,8 @@ func RunResync(exporterConfig *port.Config, k8sClient *k8s.Client, portClient *c
 			metrics.SetSuccessStatus(metrics.MetricKindResync, metrics.MetricPhaseResync, metrics.PhaseFailed)
 			return nil, errors.New("integration config is nil")
 		}
-		if i.Config.AllowEnvironmentVariablesInJQ {
-			config.ApplicationConfig.AllowEnvironmentVariablesInJQ = i.Config.AllowEnvironmentVariablesInJQ
+		if i.Config.AllowAllEnvironmentVariablesInJQ {
+			config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = i.Config.AllowAllEnvironmentVariablesInJQ
 		}
 		if i.Config.AllowedEnvironmentVariablesInJQ != nil {
 			config.ApplicationConfig.AllowedEnvironmentVariablesInJQ = i.Config.AllowedEnvironmentVariablesInJQ
