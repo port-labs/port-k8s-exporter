@@ -14,12 +14,6 @@ import (
 )
 
 func runJQQuery(jqQuery string, obj interface{}) (interface{}, error) {
-	allowEnvVars := config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ
-	if !allowEnvVars {
-		allowedEnvVars := getAllowedEnvironmentVariables()
-		jqQuery = "def env: " + allowedEnvVars + "; {} as $ENV | " + jqQuery
-	}
-
 	query, err := gojq.Parse(jqQuery)
 	if err != nil {
 		logger.Warningf("failed to parse jq query: %s", jqQuery)
@@ -28,6 +22,27 @@ func runJQQuery(jqQuery string, obj interface{}) (interface{}, error) {
 	code, err := gojq.Compile(
 		query,
 		gojq.WithEnvironLoader(func() []string {
+			envQuery := fmt.Sprintf("def modified_env: [%s | .[] | split(\"=\")] | map({\"key\": .[0], \"value\": .[1]}) | from_entries; def patterns: %s | map(\"(\" + . + \")\") | join(\"|\"); if %t then modified_env else if ((patterns | length) > 0) then modified_env | with_entries(select(.key | test(patterns))) else {} end end | to_entries | map([.key,.value]) | [ .[] | join(\"=\")]", getSerializedEnvironmentVariables(), getAllowedEnvironmentVariables(), config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ)
+			parsedEnvQuery, err := gojq.Parse(envQuery)
+			if err != nil {
+				logger.Warningf("failed to parse environment variables jq query: %s", err)
+				return os.Environ()
+			}
+			env, ok := parsedEnvQuery.Run(map[string]any{}).Next()
+			if !ok {
+				return os.Environ()
+			}
+			if err, ok := env.(error); ok {
+				logger.Warningf("failed to run environment variables jq query: %s", err)
+				return os.Environ()
+			}
+			if result, ok := env.([]interface{}); ok {
+				resultStrings := make([]string, len(result))
+				for i, v := range result {
+					resultStrings[i] = v.(string)
+				}
+				return resultStrings
+			}
 			return os.Environ()
 		}),
 	)
@@ -174,48 +189,19 @@ func ParseMapRecursively(jqQueries map[string]interface{}, obj interface{}) (map
 }
 
 func getAllowedEnvironmentVariables() string {
-	allowedVars := config.ApplicationConfig.AllowedEnvironmentVariablesInJQ
-	if len(allowedVars) == 0 {
-		return "{}"
-	}
+	return getSerializedVariablesArray(config.ApplicationConfig.AllowedEnvironmentVariablesInJQ, "failed to marshal allowed environment variables")
+}
 
-	filteredEnv := make(map[string]string)
-	allEnv := os.Environ()
+func getSerializedEnvironmentVariables() string {
+	return getSerializedVariablesArray(os.Environ(), "failed to marshal environment variables")
+}
 
-	for _, envVar := range allEnv {
-		parts := strings.SplitN(envVar, "=", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		key := parts[0]
-		value := parts[1]
-
-		if isEnvironmentVariableAllowed(key, allowedVars) {
-			filteredEnv[key] = value
-		}
-	}
-
-	jsonBytes, err := json.Marshal(filteredEnv)
+func getSerializedVariablesArray(input []string, errorMessage string) string {
+	jsonBytes, err := json.Marshal(input)
 	if err != nil {
-		logger.Warningf("failed to marshal filtered environment: %v", err)
-		return "{}"
+		logger.Warningf("%s: %v", errorMessage, err)
+		return "[]"
 	}
 
 	return string(jsonBytes)
-}
-
-func isEnvironmentVariableAllowed(key string, allowedVars []string) bool {
-	for _, allowedVar := range allowedVars {
-		if key == allowedVar {
-			return true
-		}
-
-		if strings.HasSuffix(allowedVar, "*") {
-			prefix := strings.TrimSuffix(allowedVar, "*")
-			if strings.HasPrefix(key, prefix) {
-				return true
-			}
-		}
-	}
-	return false
 }

@@ -676,7 +676,7 @@ func TestEnvironmentVariablePrefixEdgeCases(t *testing.T) {
 
 	// Test with PORT_* prefix
 	config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = false
-	config.ApplicationConfig.AllowedEnvironmentVariablesInJQ = []string{"PORT_*"}
+	config.ApplicationConfig.AllowedEnvironmentVariablesInJQ = []string{"^PORT_"}
 
 	// Test exact prefix match (PORT_)
 	result, err := ParseInterface("env.PORT_", testObj)
