@@ -352,7 +352,7 @@ type IntegrationAppConfig struct {
 	OverwriteCRDsActions             bool       `json:"overwriteCrdsActions,omitempty"`
 	UpdateEntityOnlyOnDiff           *bool      `json:"updateEntityOnlyOnDiff,omitempty"`
 	SendRawDataExamples              *bool      `json:"sendRawDataExamples,omitempty"`
-	AllowAllEnvironmentVariablesInJQ bool       `json:"AllowAllEnvironmentVariablesInJQ,omitempty" yaml:"AllowAllEnvironmentVariablesInJQ,omitempty"`
+	AllowAllEnvironmentVariablesInJQ bool       `json:"allowAllEnvironmentVariablesInJQ,omitempty" yaml:"allowAllEnvironmentVariablesInJQ,omitempty"`
 	AllowedEnvironmentVariablesInJQ  []string   `json:"allowedEnvironmentVariablesInJQ,omitempty" yaml:"allowedEnvironmentVariablesInJQ,omitempty"`
 }
 
@@ -380,7 +380,7 @@ type Config struct {
 	OverwriteCRDsActions             bool       `yaml:"overwriteCrdsActions,omitempty"`
 	DeleteDependents                 bool       `yaml:"deleteDependents,omitempty"`
 	CreateMissingRelatedEntities     bool       `yaml:"createMissingRelatedEntities,omitempty"`
-	AllowAllEnvironmentVariablesInJQ bool       `yaml:"AllowAllEnvironmentVariablesInJQ,omitempty"`
+	AllowAllEnvironmentVariablesInJQ bool       `yaml:"allowAllEnvironmentVariablesInJQ,omitempty"`
 	AllowedEnvironmentVariablesInJQ  []string   `yaml:"allowedEnvironmentVariablesInJQ,omitempty"`
 }
 

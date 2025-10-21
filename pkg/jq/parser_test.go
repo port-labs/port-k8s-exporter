@@ -512,9 +512,9 @@ func TestEnvironmentVariablePrefixWhitelist(t *testing.T) {
 
 	// Test with environment variables restricted but with prefix whitelist
 	config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = false
-	config.ApplicationConfig.AllowedEnvironmentVariablesInJQ = []string{"PORT_*", "KUBE_*"}
+	config.ApplicationConfig.AllowedEnvironmentVariablesInJQ = []string{"^PORT_", "^KUBE_"}
 
-	// Test that PORT_* variables are accessible
+	// Test that ^PORT_ variables are accessible
 	result, err := ParseInterface("env.PORT_CLIENT_ID", testObj)
 	assert.NoError(t, err)
 	assert.Equal(t, "client123", result)
@@ -527,7 +527,7 @@ func TestEnvironmentVariablePrefixWhitelist(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "my-state", result)
 
-	// Test that KUBE_* variables are accessible
+	// Test that ^KUBE_ variables are accessible
 	result, err = ParseInterface("env.KUBE_NAMESPACE", testObj)
 	assert.NoError(t, err)
 	assert.Equal(t, "default", result)
@@ -551,12 +551,12 @@ func TestEnvironmentVariablePrefixWhitelist(t *testing.T) {
 	envMap, ok := result.(map[string]interface{})
 	assert.True(t, ok)
 
-	// Should contain PORT_* variables
+	// Should contain ^PORT_ variables
 	assert.Contains(t, envMap, "PORT_CLIENT_ID")
 	assert.Contains(t, envMap, "PORT_BASE_URL")
 	assert.Contains(t, envMap, "PORT_STATE_KEY")
 
-	// Should contain KUBE_* variables
+	// Should contain ^KUBE_ variables
 	assert.Contains(t, envMap, "KUBE_NAMESPACE")
 	assert.Contains(t, envMap, "KUBE_CLUSTER")
 
@@ -600,9 +600,9 @@ func TestEnvironmentVariableMixedWhitelist(t *testing.T) {
 
 	// Test with mixed exact matches and prefixes
 	config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = false
-	config.ApplicationConfig.AllowedEnvironmentVariablesInJQ = []string{"PORT_*", "CLUSTER_NAME", "ENVIRONMENT"}
+	config.ApplicationConfig.AllowedEnvironmentVariablesInJQ = []string{"^PORT_", "CLUSTER_NAME", "ENVIRONMENT"}
 
-	// Test that PORT_* variables are accessible
+	// Test that ^PORT_ variables are accessible
 	result, err := ParseInterface("env.PORT_CLIENT_ID", testObj)
 	assert.NoError(t, err)
 	assert.Equal(t, "client123", result)
@@ -635,7 +635,7 @@ func TestEnvironmentVariableMixedWhitelist(t *testing.T) {
 	envMap, ok := result.(map[string]interface{})
 	assert.True(t, ok)
 
-	// Should contain PORT_* variables
+	// Should contain ^PORT_ variables
 	assert.Contains(t, envMap, "PORT_CLIENT_ID")
 	assert.Contains(t, envMap, "PORT_BASE_URL")
 
@@ -674,7 +674,7 @@ func TestEnvironmentVariablePrefixEdgeCases(t *testing.T) {
 		config.ApplicationConfig.AllowedEnvironmentVariablesInJQ = originalAllowedVars
 	}()
 
-	// Test with PORT_* prefix
+	// Test with ^PORT_ prefix
 	config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = false
 	config.ApplicationConfig.AllowedEnvironmentVariablesInJQ = []string{"^PORT_"}
 
