@@ -189,12 +189,7 @@ func ParseMapRecursively(jqQueries map[string]interface{}, obj interface{}) (map
 }
 
 func getAllowedEnvironmentVariables() string {
-	envs := getSerializedVariablesArray(config.ApplicationConfig.AllowedEnvironmentVariablesInJQ, "failed to marshal allowed environment variables")
-	if strings.Contains(envs, "\"") {
-		logger.Warningf("allowed environment variables contain quotes, which will be escaped")
-		envs = strings.ReplaceAll(envs, "\"", "\\\"")
-	}
-	return envs
+	return getSerializedVariablesArray(config.ApplicationConfig.AllowedEnvironmentVariablesInJQ, "failed to marshal allowed environment variables")
 }
 
 func getSerializedEnvironmentVariables() string {
