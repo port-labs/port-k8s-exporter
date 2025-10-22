@@ -197,7 +197,14 @@ func getSerializedEnvironmentVariables() string {
 }
 
 func getSerializedVariablesArray(input []string, errorMessage string) string {
-	jsonBytes, err := json.Marshal(input)
+	escapedInput := make([]string, len(input))
+	for i, v := range input {
+		// Escape backslashes first, then double quotes
+		escaped := strings.ReplaceAll(v, `\`, `\\`)
+		escaped = strings.ReplaceAll(escaped, `"`, `\"`)
+		escapedInput[i] = escaped
+	}
+	jsonBytes, err := json.Marshal(escapedInput)
 	if err != nil {
 		logger.Warningf("%s: %v", errorMessage, err)
 		return "[]"
