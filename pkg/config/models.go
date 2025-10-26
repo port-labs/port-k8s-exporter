@@ -41,4 +41,7 @@ type ApplicationConfiguration struct {
 	// Metrics Configuration
 	MetricsEnabled bool `json:"metricsEnabled,omitempty"`
 	MetricsPort    int  `json:"metricsPort,omitempty"`
+	// JQ Configuration
+	AllowAllEnvironmentVariablesInJQ bool     `json:"allowAllEnvironmentVariablesInJQ,omitempty"`
+	AllowedEnvironmentVariablesInJQ  []string `json:"allowedEnvironmentVariablesInJQ,omitempty"`
 }

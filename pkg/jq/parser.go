@@ -1,12 +1,14 @@
 package jq
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"reflect"
 	"strings"
 
 	"github.com/itchyny/gojq"
+	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
 	"github.com/port-labs/port-k8s-exporter/pkg/logger"
 )
@@ -20,6 +22,27 @@ func runJQQuery(jqQuery string, obj interface{}) (interface{}, error) {
 	code, err := gojq.Compile(
 		query,
 		gojq.WithEnvironLoader(func() []string {
+			envQuery := fmt.Sprintf("def modified_env: [%s | .[] | split(\"=\")] | map({\"key\": .[0], \"value\": .[1]}) | from_entries; def patterns: %s | map(\"(\" + . + \")\") | join(\"|\"); if %t then modified_env else if ((patterns | length) > 0) then modified_env | with_entries(select(.key | test(patterns))) else {} end end | to_entries | map([.key,.value]) | [ .[] | join(\"=\")]", getSerializedEnvironmentVariables(), getAllowedEnvironmentVariables(), config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ)
+			parsedEnvQuery, err := gojq.Parse(envQuery)
+			if err != nil {
+				logger.Warningf("failed to parse environment variables jq query: %s", err)
+				return os.Environ()
+			}
+			env, ok := parsedEnvQuery.Run(map[string]any{}).Next()
+			if !ok {
+				return os.Environ()
+			}
+			if err, ok := env.(error); ok {
+				logger.Warningf("failed to run environment variables jq query: %s", err)
+				return os.Environ()
+			}
+			if result, ok := env.([]interface{}); ok {
+				resultStrings := make([]string, len(result))
+				for i, v := range result {
+					resultStrings[i] = v.(string)
+				}
+				return resultStrings
+			}
 			return os.Environ()
 		}),
 	)
@@ -163,4 +186,29 @@ func ParseMapRecursively(jqQueries map[string]interface{}, obj interface{}) (map
 	}
 
 	return mapInterface, nil
+}
+
+func getAllowedEnvironmentVariables() string {
+	return getSerializedVariablesArray(config.ApplicationConfig.AllowedEnvironmentVariablesInJQ, "failed to marshal allowed environment variables")
+}
+
+func getSerializedEnvironmentVariables() string {
+	return getSerializedVariablesArray(os.Environ(), "failed to marshal environment variables")
+}
+
+func getSerializedVariablesArray(input []string, errorMessage string) string {
+	escapedInput := make([]string, len(input))
+	for i, v := range input {
+		// Escape backslashes first, then double quotes
+		escaped := strings.ReplaceAll(v, `\`, `\\`)
+		escaped = strings.ReplaceAll(escaped, `"`, `\"`)
+		escapedInput[i] = escaped
+	}
+	jsonBytes, err := json.Marshal(escapedInput)
+	if err != nil {
+		logger.Warningf("%s: %v", errorMessage, err)
+		return "[]"
+	}
+
+	return string(jsonBytes)
 }
