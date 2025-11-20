@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 )
@@ -38,7 +39,7 @@ func CreateIntegration(portClient *cli.PortClient, stateKey string, eventListene
 		Version: version,
 	}
 	queryParams := map[string]string{}
-	if createPortResourcesOriginInPort {
+	if createPortResourcesOriginInPort && config.ApplicationConfig.CreateDefaultResources {
 		queryParams = map[string]string{
 			createResourcesParamName: strings.Join(createResourcesParamValue, ","),
 		}
@@ -49,7 +50,7 @@ func CreateIntegration(portClient *cli.PortClient, stateKey string, eventListene
 		return nil, fmt.Errorf("error creating Port integration: %v", err)
 	}
 
-	if createPortResourcesOriginInPort {
+	if createPortResourcesOriginInPort && config.ApplicationConfig.CreateDefaultResources {
 		return PollIntegrationUntilDefaultProvisioningComplete(portClient, stateKey)
 	}
 
