@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-resty/resty/v2"
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
+	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 )
 
@@ -101,11 +102,17 @@ func New(applicationConfig *config.ApplicationConfiguration, opts ...Option) *Po
 			SetBaseURL(applicationConfig.PortBaseURL).
 			SetRetryCount(5).
 			SetRetryWaitTime(300).
-			// retry when create permission fails because scopes are created async-ly and sometimes (mainly in tests) the scope doesn't exist yet.
 			AddRetryCondition(func(r *resty.Response, err error) bool {
 				if err != nil {
 					return true
 				}
+				
+				// Retry on retryable HTTP status codes
+				if goutils.IsRetryableStatusCode(r.StatusCode()) {
+					return true
+				}
+
+				// Retry when create permission fails because scopes are created async-ly and sometimes (mainly in tests) the scope doesn't exist yet.
 				if !strings.Contains(r.Request.URL, "/permissions") {
 					return false
 				}
