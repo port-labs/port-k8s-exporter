@@ -200,9 +200,7 @@ func TestPortClient_DoesNotRetryOnNonRetryableStatusCodes(t *testing.T) {
 	var apiRequestCount int
 	var mu sync.Mutex
 
-	// Create a test server that returns non-retryable status code
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Handle auth token endpoint
 		if r.URL.Path == "/v1/auth/access_token" {
 			tokenResp := port.AccessTokenResponse{
 				AccessToken: "test-token",
@@ -213,20 +211,17 @@ func TestPortClient_DoesNotRetryOnNonRetryableStatusCodes(t *testing.T) {
 			return
 		}
 
-		// Only count entity endpoint requests
 		if strings.Contains(r.URL.Path, "/entities") {
 			mu.Lock()
 			apiRequestCount++
 			mu.Unlock()
 		}
 
-		// Return 404 (not retryable)
 		w.WriteHeader(404)
 		w.Write([]byte(`{"ok": false, "message": "not found"}`))
 	}))
 	defer server.Close()
 
-	// Create PortClient with test server URL
 	config := &config.ApplicationConfiguration{
 		PortBaseURL:      server.URL,
 		PortClientId:     "test-client-id",
@@ -236,10 +231,8 @@ func TestPortClient_DoesNotRetryOnNonRetryableStatusCodes(t *testing.T) {
 
 	client := New(config)
 
-	// Wait a bit for auth to complete
 	time.Sleep(100 * time.Millisecond)
 
-	// Make the actual API call
 	entityReq := &port.EntityRequest{
 		Identifier: "test-entity",
 		Blueprint:  "test-blueprint",
@@ -249,10 +242,8 @@ func TestPortClient_DoesNotRetryOnNonRetryableStatusCodes(t *testing.T) {
 	ctx := context.Background()
 	_, err := client.CreateEntity(ctx, entityReq, "", false)
 
-	// Verify the request failed
 	require.Error(t, err, "request should fail on non-retryable status code")
 
-	// Verify we did NOT retry (only 1 attempt)
 	mu.Lock()
 	count := apiRequestCount
 	mu.Unlock()

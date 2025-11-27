@@ -106,8 +106,6 @@ func New(applicationConfig *config.ApplicationConfiguration, opts ...Option) *Po
 				if err != nil {
 					return true
 				}
-				
-				// Retry on retryable HTTP status codes
 				if goutils.IsRetryableStatusCode(r.StatusCode()) {
 					return true
 				}
