@@ -101,7 +101,7 @@ func New(applicationConfig *config.ApplicationConfiguration, opts ...Option) *Po
 		Client: resty.New().
 			SetBaseURL(applicationConfig.PortBaseURL).
 			SetRetryCount(5).
-			SetRetryWaitTime(300).
+			SetRetryWaitTime(1000).
 			AddRetryCondition(func(r *resty.Response, err error) bool {
 				if err != nil {
 					return true
