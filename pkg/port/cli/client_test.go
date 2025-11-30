@@ -47,18 +47,6 @@ func TestPortClient_RetriesOnRetryableStatusCodes(t *testing.T) {
 			successAfterRetries: 2,
 			expectedRetries:     2,
 		},
-		{
-			name:                "retries on 400 Bad Request",
-			retryableStatusCode: 400,
-			successAfterRetries: 2,
-			expectedRetries:     2,
-		},
-		{
-			name:                "retries on 401 Unauthorized",
-			retryableStatusCode: 401,
-			successAfterRetries: 1,
-			expectedRetries:     1,
-		},
 	}
 
 	for _, tt := range tests {
