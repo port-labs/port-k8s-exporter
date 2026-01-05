@@ -23,8 +23,10 @@ jobs:
     steps:
       - name: Derive version from tag
         id: ver
+        env:
+          TAG: ${{ github.event.workflow_run.head_branch }}
         run: |
-          TAG="${{ github.event.workflow_run.head_branch }}"
+          TAG="${TAG}"
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "version=${TAG#v}" >> $GITHUB_OUTPUT
 
