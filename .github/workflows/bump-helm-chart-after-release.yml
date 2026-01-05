@@ -1,0 +1,68 @@
+name: Bump helm chart after release
+
+on:
+  workflow_run:
+    workflows: ["Release"]   # MUST match the workflow "name:" of your release workflow
+    types:
+      - completed
+
+permissions:
+  contents: read
+
+jobs:
+  bump_helm_chart_pr:
+    name: Create PR in port-labs/helm-charts
+    runs-on: ubuntu-latest
+
+    # Only run if Release workflow succeeded AND it was triggered by a v* tag
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      startsWith(github.event.workflow_run.head_branch, 'v')
+
+    steps:
+      - name: Derive version from tag
+        id: ver
+        run: |
+          TAG="${{ github.event.workflow_run.head_branch }}"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "version=${TAG#v}" >> $GITHUB_OUTPUT
+
+      - name: Checkout helm-charts
+        uses: actions/checkout@v4
+        with:
+          repository: port-labs/helm-charts
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: helm-charts
+
+      - name: Update Chart.yaml + values.yaml
+        uses: mikefarah/yq@v4.44.3
+        env:
+          EXPORTER_VERSION: ${{ steps.ver.outputs.version }}
+          CHART_FILE: helm-charts/charts/port-k8s-exporter/Chart.yaml
+        with:
+            cmd: |
+              yq -i '
+                .version = (
+                  .version
+                  | split("-") as $p
+                  | ($p[0] | split(".") | map(tonumber)) as $nums
+                  | ($nums | .[2] += 1 | map(tostring) | join("."))
+                    + (if $p[1] then "-" + $p[1] else "" end)
+                )
+                | .appVersion = strenv(EXPORTER_VERSION)
+              ' "$CHART_FILE"
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+            token: ${{ secrets.GITHUB_TOKEN }}
+            path: helm-charts
+            commit-message: "chore(port-k8s-exporter): bump to ${{ steps.ver.outputs.tag }}"
+            branch: "chore/bump-port-k8s-exporter-${{ steps.ver.outputs.tag }}"
+            title: "chore(port-k8s-exporter): bump chart to ${{ steps.ver.outputs.tag }}"
+            body: |
+              Automated bump after port-k8s-exporter release.
+              - Chart version: ${{ steps.ver.outputs.version }}
+              - App/image version: ${{ steps.ver.outputs.version }}
+            base: main
