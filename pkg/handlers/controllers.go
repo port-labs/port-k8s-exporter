@@ -236,6 +236,13 @@ func (c *ControllersHandler) Stop() {
 	}
 
 	logger.Info("Stopping controllers")
-	close(c.stopCh)
 	c.isStopped = true
+
+	// Use select to safely close the channel only if it's not already closed
+	select {
+	case <-c.stopCh:
+		// Channel is already closed, do nothing
+	default:
+		close(c.stopCh)
+	}
 }
