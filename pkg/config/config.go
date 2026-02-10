@@ -97,6 +97,7 @@ func NewConfiguration() (*port.Config, error) {
 	}
 
 	config.StateKey = strings.ToLower(config.StateKey)
+	logger.Debugw("Config loaded and normalized", "stateKey", config.StateKey, "resourceCount", len(config.Resources))
 
 	return config, nil
 }

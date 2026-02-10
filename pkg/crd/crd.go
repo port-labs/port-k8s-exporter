@@ -296,6 +296,7 @@ func convertToPortSchemas(crd v1.CustomResourceDefinition) ([]port.Action, *port
 
 func findMatchingCRDs(crds []v1.CustomResourceDefinition, pattern string) []v1.CustomResourceDefinition {
 	matchedCRDs := make([]v1.CustomResourceDefinition, 0)
+	logger.Debugw("Finding CRDs matching pattern", "pattern", pattern, "totalCRDs", len(crds))
 
 	for _, crd := range crds {
 		mapCrd, err := goutils.StructToMap(crd)
@@ -312,17 +313,21 @@ func findMatchingCRDs(crds []v1.CustomResourceDefinition, pattern string) []v1.C
 			continue
 		}
 		if match {
+			logger.Debugw("CRD matched pattern", "crdName", crd.Name, "kind", crd.Spec.Names.Kind)
 			matchedCRDs = append(matchedCRDs, crd)
 		}
 	}
+	logger.Debugw("CRD matching complete", "matchedCount", len(matchedCRDs))
 
 	return matchedCRDs
 }
 
 func handleCRD(crds []v1.CustomResourceDefinition, portConfig *port.IntegrationAppConfig, portClient *cli.PortClient) {
 	matchedCRDs := findMatchingCRDs(crds, portConfig.CRDSToDiscover)
+	logger.Debugw("Handling matched CRDs", "count", len(matchedCRDs))
 
 	for _, crd := range matchedCRDs {
+		logger.Debugw("Processing CRD", "name", crd.Name, "kind", crd.Spec.Names.Kind, "group", crd.Spec.Group)
 		portConfig.Resources = append(portConfig.Resources, createKindConfigFromCRD(crd))
 		actions, bp, err := convertToPortSchemas(crd)
 		if err != nil {
@@ -367,16 +372,20 @@ func handleCRD(crds []v1.CustomResourceDefinition, portConfig *port.IntegrationA
 func AutodiscoverCRDsToActions(portConfig *port.IntegrationAppConfig, apiExtensionsClient apiextensions.ApiextensionsV1Interface, portClient *cli.PortClient) {
 	if portConfig.CRDSToDiscover == "" {
 		logger.Info("Discovering CRDs is disabled")
+		logger.Debug("CRD autodiscover skipped: CRDSToDiscover is empty")
 		return
 	}
 
 	logger.Infof("Discovering CRDs/XRDs with pattern: %s", portConfig.CRDSToDiscover)
+	logger.Debugw("Listing CRDs from API server", "pattern", portConfig.CRDSToDiscover)
 	crds, err := apiExtensionsClient.CustomResourceDefinitions().List(context.Background(), metav1.ListOptions{})
 
 	if err != nil {
 		logger.Errorf("Error listing CRDs: %s", err.Error())
 		return
 	}
+	logger.Debugw("CRD list received", "totalCRDs", len(crds.Items))
 
 	handleCRD(crds.Items, portConfig, portClient)
+	logger.Debug("CRD autodiscover and handling complete")
 }

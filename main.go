@@ -27,6 +27,11 @@ func main() {
 	if err != nil {
 		logger.Fatalf("Error getting application config: %s", err.Error())
 	}
+	logger.Debugw("Application config loaded",
+		"stateKey", applicationConfig.StateKey,
+		"eventListenerType", applicationConfig.EventListenerType,
+		"resyncInterval", applicationConfig.ResyncInterval,
+		"createDefaultResources", applicationConfig.CreateDefaultResources)
 
 	clientConfig, err := k8sConfig.ClientConfig()
 	if err != nil {

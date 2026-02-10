@@ -46,9 +46,11 @@ const (
 var controllerHandler *ControllersHandler
 
 func NewControllersHandler(exporterConfig *port.Config, portConfig *port.IntegrationAppConfig, k8sClient *k8s.Client, portClient *cli.PortClient) *ControllersHandler {
+	logger.Debugw("Creating controllers handler", "resourceCount", len(portConfig.Resources), "stateKey", exporterConfig.StateKey)
 	informersFactory := dynamicinformer.NewDynamicSharedInformerFactory(k8sClient.DynamicClient, 0)
 
 	crd.AutodiscoverCRDsToActions(portConfig, k8sClient.ApiExtensionClient, portClient)
+	logger.Debugw("Resources after CRD autodiscover", "resourceCount", len(portConfig.Resources))
 
 	aggResources := make(map[string][]port.KindConfig)
 	for _, resource := range portConfig.Resources {
@@ -73,8 +75,10 @@ func NewControllersHandler(exporterConfig *port.Config, portConfig *port.Integra
 		informer := informersFactory.ForResource(gvr)
 		controller := k8s.NewController(port.AggregatedResource{Kind: kind, KindConfigs: kindConfigs}, informer, portConfig, config.ApplicationConfig)
 		controllers = append(controllers, controller)
+		logger.Debugw("Controller registered for resource", "kind", kind, "gvr", gvr.String())
 	}
 
+	logger.Debugw("Controllers handler created", "controllerCount", len(controllers), "uniqueKinds", len(aggResources))
 	controllersHandler := &ControllersHandler{
 		controllers:      controllers,
 		informersFactory: informersFactory,
@@ -89,6 +93,7 @@ func NewControllersHandler(exporterConfig *port.Config, portConfig *port.Integra
 
 func (c *ControllersHandler) Handle(resyncType ResyncType) {
 	logger.Infow(fmt.Sprintf("Starting resync due to %s", resyncType), "stateKey", c.stateKey)
+	logger.Debugw("Resync started", "resyncType", resyncType, "controllerCount", len(c.controllers))
 	logger.Info("Starting informers")
 	c.informersFactory.Start(c.stopCh)
 

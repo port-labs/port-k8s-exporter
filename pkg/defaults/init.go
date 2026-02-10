@@ -42,6 +42,7 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config,
 	if err != nil {
 		return err
 	}
+	logger.Debug("Defaults loaded")
 
 	// Verify Port origin is supported via feature flags
 	if applicationConfig.CreatePortResourcesOrigin == port.CreatePortResourcesOriginPort {
