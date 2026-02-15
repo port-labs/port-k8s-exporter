@@ -26,8 +26,6 @@ deployments/k8s
 
 .env
 
-.vscode
-
 # debug file
 __debug_bin*
 
