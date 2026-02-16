@@ -47,7 +47,8 @@ jobs:
               yq -i '
                   .version = (
                   .version 
-                    | split("-") as $p
+                    | split("-")
+                    | [.[0], (.[1:] | join("-"))] as $p
                     | ($p[0] | split(".") | map(tonumber)) as $nums
                     | ($nums | .[2] += 1 | map(tostring) | join("."))
                     | [. , $p[1]] 
