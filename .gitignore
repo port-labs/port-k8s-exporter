@@ -18,6 +18,8 @@
 
 .vscode
 
+.zig-cache
+
 __debug_bin
 
 config.yaml
