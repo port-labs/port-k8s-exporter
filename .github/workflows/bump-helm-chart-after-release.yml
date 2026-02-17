@@ -45,14 +45,17 @@ jobs:
         with:
             cmd: |
               yq -i '
-                .version = (
-                  .version
-                  | split("-") as $p
-                  | ($p[0] | split(".") | map(tonumber)) as $nums
-                  | ($nums | .[2] += 1 | map(tostring) | join("."))
-                    + (if $p[1] then "-" + $p[1] else "" end)
-                )
-                | .appVersion = strenv(EXPORTER_VERSION)
+                  .version = (
+                  .version 
+                    | split("-")
+                    | [.[0], (.[1:] | join("-"))] as $p
+                    | ($p[0] | split(".") | map(tonumber)) as $nums
+                    | ($nums | .[2] += 1 | map(tostring) | join("."))
+                    | [. , $p[1]] 
+                    | join("-") 
+                    | sub("-+$", "")
+                  )
+                  | .appVersion = strenv(EXPORTER_VERSION)
               ' "$CHART_FILE"
 
       - name: Create Pull Request
