@@ -283,7 +283,7 @@ func newController(t *testing.T, resource port.Resource, kubeClient *k8sfake.Fak
 	gvr := getGvr(resource.Kind)
 	informer := informerFactory.ForResource(gvr)
 	kindConfig := port.KindConfig{Selector: resource.Selector, Port: resource.Port}
-	controller := NewController(port.AggregatedResource{Kind: resource.Kind, KindConfigs: []port.KindConfig{kindConfig}}, informer, integrationConfig, applicationConfig)
+	controller := NewController(port.AggregatedResource{Kind: resource.Kind, KindConfigs: []port.KindConfig{kindConfig}}, informer, integrationConfig, applicationConfig, nil)
 	ctx := context.Background()
 
 	informerFactory.Start(ctx.Done())

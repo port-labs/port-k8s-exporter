@@ -44,4 +44,6 @@ type ApplicationConfiguration struct {
 	// JQ Configuration
 	AllowAllEnvironmentVariablesInJQ bool     `json:"allowAllEnvironmentVariablesInJQ,omitempty"`
 	AllowedEnvironmentVariablesInJQ  []string `json:"allowedEnvironmentVariablesInJQ,omitempty"`
+	// Image OS Detection
+	ImageOsDetectionEnabled bool `json:"imageOsDetectionEnabled,omitempty"`
 }
