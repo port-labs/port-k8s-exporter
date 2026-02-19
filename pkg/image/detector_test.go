@@ -89,7 +89,7 @@ HOME_URL="https://www.debian.org/"
 
 	pushImage(t, addr, "test/myapp", "v1", layer)
 
-	detector := NewDetector(authn.DefaultKeychain)
+	detector := NewDetector(authn.DefaultKeychain, 10)
 	info, err := detector.Detect(context.Background(), fmt.Sprintf("%s/test/myapp:v1", addr))
 	assert.NoError(t, err)
 	assert.Equal(t, "debian", info.ID)
@@ -107,7 +107,7 @@ func TestDetectorCacheHit(t *testing.T) {
 
 	pushImage(t, addr, "test/cached", "v1", layer)
 
-	detector := NewDetector(authn.DefaultKeychain)
+	detector := NewDetector(authn.DefaultKeychain, 10)
 	ref := fmt.Sprintf("%s/test/cached:v1", addr)
 
 	info1, err := detector.Detect(context.Background(), ref)
@@ -121,7 +121,7 @@ func TestDetectorCacheHit(t *testing.T) {
 }
 
 func TestDetectorInvalidRef(t *testing.T) {
-	detector := NewDetector(authn.DefaultKeychain)
+	detector := NewDetector(authn.DefaultKeychain, 10)
 	_, err := detector.Detect(context.Background(), "!!!invalid!!!")
 	assert.Error(t, err)
 }
@@ -135,7 +135,7 @@ func TestDetectorNoOsRelease(t *testing.T) {
 
 	pushImage(t, addr, "test/scratch", "v1", layer)
 
-	detector := NewDetector(authn.DefaultKeychain)
+	detector := NewDetector(authn.DefaultKeychain, 10)
 	info, err := detector.Detect(context.Background(), fmt.Sprintf("%s/test/scratch:v1", addr))
 	assert.NoError(t, err)
 	assert.Equal(t, &OsInfo{}, info)
@@ -153,7 +153,7 @@ func TestDetectBatch(t *testing.T) {
 	pushImage(t, addr, "test/deb", "v1", debLayer)
 	pushImage(t, addr, "test/alp", "v1", alpLayer)
 
-	detector := NewDetector(authn.DefaultKeychain)
+	detector := NewDetector(authn.DefaultKeychain, 10)
 	refs := []string{
 		fmt.Sprintf("%s/test/deb:v1", addr),
 		fmt.Sprintf("%s/test/alp:v1", addr),

@@ -48,6 +48,7 @@ func (e *Enricher) Enrich(ctx context.Context, obj map[string]interface{}) {
 
 	if len(osInfoMap) > 0 {
 		obj["imageOsInfo"] = osInfoMap
+		logger.Infof("Enriched object with OS info for %d image(s)", len(osInfoMap))
 	}
 }
 
@@ -88,29 +89,28 @@ func extractImageRefs(obj map[string]interface{}) []string {
 		extractFromContainers(spec["ephemeralContainers"])
 	}
 
-	// Pod: .spec.containers
-	if spec, ok := obj["spec"].(map[string]interface{}); ok {
-		extractFromContainers(spec["containers"])
-		extractFromContainers(spec["initContainers"])
-		extractFromContainers(spec["ephemeralContainers"])
-
-		// Deployment/StatefulSet/DaemonSet/ReplicaSet/Job: .spec.template.spec.containers
+	extractFromTemplate := func(spec map[string]interface{}) {
 		if template, ok := spec["template"].(map[string]interface{}); ok {
 			extractFromPodSpec(template["spec"])
 		}
+	}
 
-		// CronJob: .spec.jobTemplate.spec.template.spec.containers
+	extractFromCronJobSpec := func(spec map[string]interface{}) {
 		if jobTemplate, ok := spec["jobTemplate"].(map[string]interface{}); ok {
 			if jtSpec, ok := jobTemplate["spec"].(map[string]interface{}); ok {
-				if template, ok := jtSpec["template"].(map[string]interface{}); ok {
-					extractFromPodSpec(template["spec"])
-				}
+				extractFromTemplate(jtSpec)
 			}
 		}
 	}
 
+	if spec, ok := obj["spec"].(map[string]interface{}); ok {
+		extractFromPodSpec(spec)
+		extractFromTemplate(spec)
+		extractFromCronJobSpec(spec)
+	}
+
 	if len(refs) == 0 {
-		logger.Debug("No image refs found in object for OS detection")
+		logger.Info("No image refs found in object for OS detection")
 	}
 
 	return refs

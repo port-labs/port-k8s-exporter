@@ -13,16 +13,22 @@ import (
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"github.com/port-labs/port-k8s-exporter/pkg/logger"
 )
 
 type Detector struct {
-	keychain authn.Keychain
-	cache    sync.Map
+	keychain       authn.Keychain
+	cache          sync.Map
+	maxConcurrency int
 }
 
-func NewDetector(keychain authn.Keychain) *Detector {
+func NewDetector(keychain authn.Keychain, maxConcurrency int) *Detector {
+	if maxConcurrency <= 0 {
+		maxConcurrency = 10
+	}
 	return &Detector{
-		keychain: keychain,
+		keychain:       keychain,
+		maxConcurrency: maxConcurrency,
 	}
 }
 
@@ -57,12 +63,14 @@ func (d *Detector) Detect(ctx context.Context, imageRef string) (*OsInfo, error)
 	for i := len(layers) - 1; i >= 0; i-- {
 		rc, err := layers[i].Compressed()
 		if err != nil {
+			logger.Debugf("Failed to read compressed layer %d for %q: %v", i, imageRef, err)
 			continue
 		}
 
 		info, err := findOsReleaseInLayer(rc)
 		rc.Close()
 		if err != nil {
+			logger.Debugf("Failed to parse os-release in layer %d for %q: %v", i, imageRef, err)
 			continue
 		}
 		if info != nil {
@@ -77,14 +85,12 @@ func (d *Detector) Detect(ctx context.Context, imageRef string) (*OsInfo, error)
 	return empty, nil
 }
 
-const maxConcurrentDetections = 10
-
 func (d *Detector) DetectBatch(ctx context.Context, imageRefs []string) map[string]*OsInfo {
 	results := make(map[string]*OsInfo)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 
-	sem := make(chan struct{}, maxConcurrentDetections)
+	sem := make(chan struct{}, d.maxConcurrency)
 
 	for _, ref := range imageRefs {
 		wg.Add(1)
@@ -95,6 +101,7 @@ func (d *Detector) DetectBatch(ctx context.Context, imageRefs []string) map[stri
 
 			info, err := d.Detect(ctx, imageRef)
 			if err != nil {
+				logger.Warningf("Failed to detect OS for image %q: %v", imageRef, err)
 				return
 			}
 			mu.Lock()

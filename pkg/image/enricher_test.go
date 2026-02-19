@@ -21,7 +21,7 @@ func setupEnricherTestRegistry(t *testing.T) (*httptest.Server, string, *Detecto
 	assert.NoError(t, err)
 	pushImage(t, addr, "test/nginx", "1.25", layer)
 
-	detector := NewDetector(authn.DefaultKeychain)
+	detector := NewDetector(authn.DefaultKeychain, 10)
 	return server, addr, detector
 }
 
