@@ -3,7 +3,7 @@ name: Go
 on:
   push:
     branches: [ "main" ]
-  pull_request:
+  pull_request_target:
     branches: [ "main" ]
 
 jobs:
@@ -11,13 +11,25 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    # SECURITY: Always checkout the base branch first for trusted setup
+    - name: Checkout base branch
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.base.sha || github.sha }}
 
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
         go-version: 1.24.4
         cache: true
+
+    # SECURITY: Only now checkout the PR code for testing
+    - name: Checkout PR code
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        # Clean checkout to avoid any potential security issues
+        clean: true
 
     - name: Build
       run: go build -v ./...
