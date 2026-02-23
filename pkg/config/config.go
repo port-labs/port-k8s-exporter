@@ -67,6 +67,9 @@ func Init() {
 	NewBool(&ApplicationConfig.AllowAllEnvironmentVariablesInJQ, "allow-all-environment-variables-in-jq", true, "Allow access to all environment variables in jq queries. Optional.")
 	NewStringSlice(&ApplicationConfig.AllowedEnvironmentVariablesInJQ, "allowed-environment-variables-in-jq", []string{"^PORT_", "CLUSTER_NAME"}, "Comma-separated list of environment variables that are allowed in jq queries when allow-all-environment-variables-in-jq is false. Optional.")
 
+	// Image OS Detection
+	NewBool(&ApplicationConfig.ImageOsDetectionEnabled, "image-os-detection-enabled", false, "Enable container image OS detection. Adds .imageOsInfo to K8s objects. Optional.")
+
 	flag.Parse()
 }
 

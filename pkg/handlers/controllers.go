@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/crd"
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
+	"github.com/port-labs/port-k8s-exporter/pkg/image"
 	"github.com/port-labs/port-k8s-exporter/pkg/k8s"
 	"github.com/port-labs/port-k8s-exporter/pkg/logger"
 	"github.com/port-labs/port-k8s-exporter/pkg/metrics"
@@ -50,6 +52,14 @@ func NewControllersHandler(exporterConfig *port.Config, portConfig *port.Integra
 
 	crd.AutodiscoverCRDsToActions(portConfig, k8sClient.ApiExtensionClient, portClient)
 
+	// Set up image OS enricher if enabled
+	var imageEnricher *image.Enricher
+	if config.ApplicationConfig.ImageOsDetectionEnabled {
+		detector := image.NewDetector(authn.DefaultKeychain)
+		imageEnricher = image.NewEnricher(detector, true)
+		logger.Info("Image OS detection enabled")
+	}
+
 	aggResources := make(map[string][]port.KindConfig)
 	for _, resource := range portConfig.Resources {
 		kindConfig := port.KindConfig{Selector: resource.Selector, Port: resource.Port}
@@ -71,7 +81,7 @@ func NewControllersHandler(exporterConfig *port.Config, portConfig *port.Integra
 		}
 
 		informer := informersFactory.ForResource(gvr)
-		controller := k8s.NewController(port.AggregatedResource{Kind: kind, KindConfigs: kindConfigs}, informer, portConfig, config.ApplicationConfig)
+		controller := k8s.NewController(port.AggregatedResource{Kind: kind, KindConfigs: kindConfigs}, informer, portConfig, config.ApplicationConfig, imageEnricher)
 		controllers = append(controllers, controller)
 	}
 
