@@ -10,6 +10,7 @@ import (
 
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
+	"github.com/port-labs/port-k8s-exporter/pkg/image"
 	"github.com/port-labs/port-k8s-exporter/pkg/jq"
 	"github.com/port-labs/port-k8s-exporter/pkg/logger"
 	"github.com/port-labs/port-k8s-exporter/pkg/metrics"
@@ -59,6 +60,7 @@ type Controller struct {
 	eventsWorkqueue      workqueue.RateLimitingInterface
 	initialSyncWorkqueue workqueue.RateLimitingInterface
 	isInitialSyncDone    bool
+	imageEnricher        *image.Enricher
 }
 
 type TransformResult struct {
@@ -66,7 +68,7 @@ type TransformResult struct {
 	RawDataExamples []interface{}
 }
 
-func NewController(resource port.AggregatedResource, informer informers.GenericInformer, integrationConfig *port.IntegrationAppConfig, applicationConfig *config.ApplicationConfiguration) *Controller {
+func NewController(resource port.AggregatedResource, informer informers.GenericInformer, integrationConfig *port.IntegrationAppConfig, applicationConfig *config.ApplicationConfiguration, imageEnricher *image.Enricher) *Controller {
 	// We create a new Port client for each controller because the Resty client is not thread-safe.
 	portClient := cli.New(applicationConfig)
 
@@ -80,6 +82,7 @@ func NewController(resource port.AggregatedResource, informer informers.GenericI
 		lister:               informer.Lister(),
 		initialSyncWorkqueue: workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		eventsWorkqueue:      workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		imageEnricher:        imageEnricher,
 	}
 
 	controller.eventHandler, _ = controller.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -684,6 +687,11 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 		err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.DeepCopy().Object, &structuredObj)
 		if err != nil {
 			return &result, fmt.Errorf("error converting from unstructured: %v", err)
+		}
+		if c.imageEnricher != nil {
+			if objMap, ok := structuredObj.(map[string]interface{}); ok {
+				c.imageEnricher.Enrich(context.Background(), objMap)
+			}
 		}
 		entities := make([]port.EntityRequest, 0, len(mappings))
 		objectsToMap := make([]interface{}, 0)
