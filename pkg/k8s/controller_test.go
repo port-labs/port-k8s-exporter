@@ -9,6 +9,7 @@ import (
 	"time"
 
 	guuid "github.com/google/uuid"
+	"github.com/port-labs/port-k8s-exporter/pkg/logger"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/blueprint"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/integration"
@@ -384,7 +385,7 @@ func (f *fixture) assertSyncResult(result *SyncResult, expectedResult *SyncResul
 }
 
 func (f *fixture) runControllerSyncHandler(item EventItem, expectedResult *SyncResult, expectError bool) {
-	syncResult, err := f.controller.syncHandler(item)
+	syncResult, err := f.controller.syncHandler(item, logger.GetEventLogger("test-event-id"))
 	if !expectError && err != nil {
 		f.t.Errorf("error syncing item: %v", err)
 	} else if expectError && err == nil {
@@ -395,7 +396,7 @@ func (f *fixture) runControllerSyncHandler(item EventItem, expectedResult *SyncR
 }
 
 func (f *fixture) runControllerInitialSync(expectedResult *SyncResult) {
-	syncResult := f.controller.RunInitialSync()
+	syncResult := f.controller.RunInitialSync(logger.GetEventLogger("test-event-id"))
 
 	f.assertSyncResult(syncResult, expectedResult)
 }
@@ -896,7 +897,7 @@ func TestItemsToParseName(t *testing.T) {
 	defer tearDownFixture(t, f)
 
 	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
-	_, err := f.controller.syncHandler(item)
+	_, err := f.controller.syncHandler(item, logger.GetEventLogger("test-event-id"))
 	if err != nil {
 		t.Errorf("error syncing item: %v", err)
 	}
@@ -930,7 +931,7 @@ func TestItemsToParseNameCustom(t *testing.T) {
 	defer tearDownFixture(t, f)
 
 	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
-	_, err := f.controller.syncHandler(item)
+	_, err := f.controller.syncHandler(item, logger.GetEventLogger("test-event-id"))
 	if err != nil {
 		t.Errorf("error syncing item: %v", err)
 	}
