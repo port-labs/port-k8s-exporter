@@ -424,6 +424,12 @@ func Fatalw(message string, args ...interface{}) {
 	GetLogger().Fatalw(message, args...)
 }
 
+// GetEventLogger creates a child logger with a baked-in event_id field.
+// All log calls on the returned logger automatically include event_id → extra.event_id.
+func GetEventLogger(eventId string) *zap.SugaredLogger {
+	return GetLogger().With("event_id", eventId)
+}
+
 // Shutdown gracefully shuts down the logger and flushes any pending logs
 func Shutdown() error {
 	if httpWriter != nil {
