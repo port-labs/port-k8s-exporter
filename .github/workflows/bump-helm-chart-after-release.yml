@@ -5,11 +5,6 @@ on:
     workflows: ["Release"]   # MUST match the workflow "name:" of your release workflow
     types:
       - completed
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Release tag (e.g. v0.5.0)'
-        required: true
 
 permissions:
   contents: read
@@ -19,19 +14,17 @@ jobs:
     name: Create PR in port-labs/helm-charts
     runs-on: ubuntu-latest
 
+    # Only run if Release workflow succeeded AND it was triggered by a v* tag
     if: >
-      github.event_name == 'workflow_dispatch' ||
-      (
-        github.event.workflow_run.conclusion == 'success' &&
-        github.event.workflow_run.event == 'push' &&
-        startsWith(github.event.workflow_run.head_branch, 'v')
-      )
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      startsWith(github.event.workflow_run.head_branch, 'v')
 
     steps:
       - name: Derive version from tag
         id: ver
         env:
-          TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.event.workflow_run.head_branch }}
+          TAG: ${{ github.event.workflow_run.head_branch }}
         run: |
           TAG="${TAG}"
           echo "tag=$TAG" >> $GITHUB_OUTPUT
