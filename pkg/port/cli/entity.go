@@ -147,6 +147,27 @@ func (c *PortClient) GetEntityIdentifierKey(portEntity *port.Entity) string {
 	return fmt.Sprintf("%s;%s", portEntity.Blueprint, portEntity.Identifier)
 }
 
+type BulkUpsertError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *BulkUpsertError) Error() string {
+	return fmt.Sprintf("failed to bulk upsert entities, got status %d: %s", e.StatusCode, e.Body)
+}
+
+func IsNonRetryableStatusCode(statusCode int) bool {
+	return statusCode == 401 || statusCode == 403 || statusCode == 404 || statusCode == 422
+}
+
+func IsBulkNonRetryableError(err error) bool {
+	bulkErr, ok := err.(*BulkUpsertError)
+	if !ok {
+		return false
+	}
+	return IsNonRetryableStatusCode(bulkErr.StatusCode)
+}
+
 func (c *PortClient) BulkUpsertEntities(ctx context.Context, blueprint string, entities []port.EntityRequest, runID string, createMissingRelatedEntities bool) (*port.BulkUpsertResponse, error) {
 	if len(entities) == 0 {
 		return &port.BulkUpsertResponse{OK: true, Entities: []port.BulkEntityResult{}, Errors: []port.BulkEntityError{}}, nil
@@ -173,7 +194,7 @@ func (c *PortClient) BulkUpsertEntities(ctx context.Context, blueprint string, e
 		return nil, err
 	}
 	if resp.StatusCode() != 200 && resp.StatusCode() != 207 {
-		return nil, fmt.Errorf("failed to bulk upsert entities, got status %d: %s", resp.StatusCode(), resp.Body())
+		return nil, &BulkUpsertError{StatusCode: resp.StatusCode(), Body: string(resp.Body())}
 	}
 	return pb, nil
 }
