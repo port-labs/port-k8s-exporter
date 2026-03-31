@@ -2,7 +2,7 @@ name: Go
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "**" ]
   pull_request_target:
     branches: [ "main" ]
 
@@ -80,7 +80,7 @@ jobs:
         CODE_COVERAGE_ARTIFACT_URL: ${{ steps.upload-coverage.outputs.artifact-url }}
         PR_NUMBER: ${{ steps.pr-number.outputs.PR_NUMBER }}
       with:
-        github-token: ${{ secrets.GITHUB_TOKEN }}
+        github-token: ${{ secrets.PORT_MACHINE_USER_GITHUB_TOKEN }}
         script: |
           const output = `#### Code Coverage Artifact 📈: ${{ env.CODE_COVERAGE_ARTIFACT_URL }}
           #### Code Coverage Total Percentage: \`${{ steps.set-stmts-coverage.outputs.STMTS_COVERAGE }}%\``;
@@ -111,7 +111,7 @@ jobs:
         CURRENT_COVERAGE: ${{ steps.set-current-coverage.outputs.CURRENT_COVERAGE }}
         NEW_COVERAGE: ${{ steps.set-stmts-coverage.outputs.STMTS_COVERAGE }}
       with:
-        github-token: ${{ secrets.GITHUB_TOKEN }}
+        github-token: ${{ secrets.PORT_MACHINE_USER_GITHUB_TOKEN }}
         script: |
           const output = `🚨 The new code coverage percentage is lower than the current one. Current coverage: \`${{ env.CURRENT_COVERAGE }}\`\n While the new one is: \`${{ env.NEW_COVERAGE }}\``;
           github.rest.issues.createComment({

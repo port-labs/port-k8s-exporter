@@ -2,6 +2,7 @@ name: Release
 
 on:
   push:
+#    branches: ['**']
     tags:
       - 'v*'
   workflow_dispatch:
@@ -46,7 +47,7 @@ jobs:
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.PORT_MACHINE_USER_GITHUB_TOKEN }}
 
       - name: Import GPG key
         id: import_gpg
@@ -81,7 +82,7 @@ jobs:
           version: latest
           args: release --clean
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PORT_MACHINE_USER_GITHUB_TOKEN }}
           GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
           REGISTRY: ${{ env.REGISTRY }}
           IMAGE: ${{ env.IMAGE_NAME }}
