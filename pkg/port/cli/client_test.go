@@ -248,6 +248,8 @@ func TestIsBulkNonRetryableError(t *testing.T) {
 		err      error
 		expected bool
 	}{
+		{"401 is non-retryable", &BulkUpsertError{StatusCode: 401, Body: "unauthorized"}, true},
+		{"403 is non-retryable", &BulkUpsertError{StatusCode: 403, Body: "forbidden"}, true},
 		{"404 is non-retryable", &BulkUpsertError{StatusCode: 404, Body: "not found"}, true},
 		{"422 is non-retryable", &BulkUpsertError{StatusCode: 422, Body: "validation error"}, true},
 		{"500 is retryable", &BulkUpsertError{StatusCode: 500, Body: "internal error"}, false},

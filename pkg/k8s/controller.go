@@ -352,7 +352,7 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller, eventLogger *zap.
 				retryableIdentifiers := make(map[string]bool)
 				nonRetryableIdentifiers := make(map[string]bool)
 				for _, bulkError := range bulkResponse.Errors {
-					if bulkError.StatusCode == 404 || bulkError.StatusCode == 422 {
+					if cli.IsNonRetryableStatusCode(bulkError.StatusCode) {
 						nonRetryableIdentifiers[bulkError.Identifier] = true
 						eventLogger.Warnw("Skipping fallback for entity due to non-retryable error", "blueprint", blueprint, "identifier", bulkError.Identifier, "statusCode", bulkError.StatusCode, "message", bulkError.Message)
 					} else {

@@ -156,12 +156,16 @@ func (e *BulkUpsertError) Error() string {
 	return fmt.Sprintf("failed to bulk upsert entities, got status %d: %s", e.StatusCode, e.Body)
 }
 
+func IsNonRetryableStatusCode(statusCode int) bool {
+	return statusCode == 401 || statusCode == 403 || statusCode == 404 || statusCode == 422
+}
+
 func IsBulkNonRetryableError(err error) bool {
 	bulkErr, ok := err.(*BulkUpsertError)
 	if !ok {
 		return false
 	}
-	return bulkErr.StatusCode == 404 || bulkErr.StatusCode == 422
+	return IsNonRetryableStatusCode(bulkErr.StatusCode)
 }
 
 func (c *PortClient) BulkUpsertEntities(ctx context.Context, blueprint string, entities []port.EntityRequest, runID string, createMissingRelatedEntities bool) (*port.BulkUpsertResponse, error) {
