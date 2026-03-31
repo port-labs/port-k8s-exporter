@@ -37,6 +37,16 @@ jobs:
     - name: Clean Test Cache
       run: go clean -testcache
 
+    - name: Ensure covdata tool
+      run: |
+        TOOL_DIR=$(go env GOROOT)/pkg/tool/linux_amd64
+        if [ ! -f "$TOOL_DIR/covdata" ]; then
+          echo "covdata missing from $TOOL_DIR — building it"
+          go build -o "$TOOL_DIR/covdata" cmd/covdata
+        else
+          echo "covdata found at $TOOL_DIR/covdata"
+        fi
+
     - name: Test
       run: go run gotest.tools/gotestsum@latest -f github-actions --junitfile ./test-results/junit.xml --format-hide-empty-pkg --junitfile-hide-empty-pkg -- -test.coverprofile=cover.out -p=1 ./...
       env:
