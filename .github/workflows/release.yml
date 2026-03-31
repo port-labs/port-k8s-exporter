@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-#    branches: ['**']
+    branches: ['**']
     tags:
       - 'v*'
   workflow_dispatch:
@@ -56,34 +56,34 @@ jobs:
           gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
           passphrase: ${{ secrets.PASSPHRASE }}
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: 1.24.13
-          cache: true
-
-      - name: Install Zig
-        uses: mlugg/setup-zig@v2
-        with:
-          version: latest
-
-      - name: Make zig-cc wrappers
-        run: |
-          sudo tee /usr/local/bin/zigcc-arm64 >/dev/null <<'EOF' 
-          #!/usr/bin/env sh
-          # Transparently call Zig's musl-enabled cross-compiler
-          exec zig cc -target aarch64-linux-musl "$@"
-          EOF
-          sudo chmod 755 /usr/local/bin/zigcc-arm64
-
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          version: latest
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.PORT_MACHINE_USER_GITHUB_TOKEN }}
-          GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
-          REGISTRY: ${{ env.REGISTRY }}
-          IMAGE: ${{ env.IMAGE_NAME }}
-          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+#      - name: Set up Go
+#        uses: actions/setup-go@v5
+#        with:
+#          go-version: 1.24.13
+#          cache: true
+#
+#      - name: Install Zig
+#        uses: mlugg/setup-zig@v2
+#        with:
+#          version: latest
+#
+#      - name: Make zig-cc wrappers
+#        run: |
+#          sudo tee /usr/local/bin/zigcc-arm64 >/dev/null <<'EOF'
+#          #!/usr/bin/env sh
+#          # Transparently call Zig's musl-enabled cross-compiler
+#          exec zig cc -target aarch64-linux-musl "$@"
+#          EOF
+#          sudo chmod 755 /usr/local/bin/zigcc-arm64
+#
+#      - name: Run GoReleaser
+#        uses: goreleaser/goreleaser-action@v6
+#        with:
+#          version: latest
+#          args: release --clean
+#        env:
+#          GITHUB_TOKEN: ${{ secrets.PORT_MACHINE_USER_GITHUB_TOKEN }}
+#          GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
+#          REGISTRY: ${{ env.REGISTRY }}
+#          IMAGE: ${{ env.IMAGE_NAME }}
+#          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
