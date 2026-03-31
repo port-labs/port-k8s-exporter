@@ -20,7 +20,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: 1.25.7
+        go-version: 1.26.1
         cache: true
 
     # SECURITY: Only now checkout the PR code for testing
@@ -38,14 +38,7 @@ jobs:
       run: go clean -testcache
 
     - name: Test
-      run: go run gotest.tools/gotestsum@latest -f github-actions --junitfile ./test-results/junit.xml --format-hide-empty-pkg --junitfile-hide-empty-pkg -- -p=1 ./...
-      env:
-        PORT_CLIENT_ID: ${{ secrets.PORT_CLIENT_ID }}
-        PORT_CLIENT_SECRET: ${{ secrets.PORT_CLIENT_SECRET }}
-        PORT_BASE_URL: ${{ secrets.PORT_BASE_URL }}
-
-    - name: Coverage
-      run: go test -coverprofile=cover.out -covermode=atomic -p=1 ./...
+      run: go run gotest.tools/gotestsum@latest -f github-actions --junitfile ./test-results/junit.xml --format-hide-empty-pkg --junitfile-hide-empty-pkg -- -test.coverprofile=cover.out -p=1 ./...
       env:
         PORT_CLIENT_ID: ${{ secrets.PORT_CLIENT_ID }}
         PORT_CLIENT_SECRET: ${{ secrets.PORT_CLIENT_SECRET }}
