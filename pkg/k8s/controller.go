@@ -321,12 +321,20 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller, eventLogger *zap.
 				}
 				batchEntities := entities[i:end]
 				batchEntitiesWithKind := entitiesWithKind[i:end]
-				bulkResponse, err := controller.portClient.BulkUpsertEntities(context.Background(), blueprint, batchEntities, "", controller.portClient.CreateMissingRelatedEntities)
-				if err != nil {
-					eventLogger.Warnw(fmt.Sprintf("Bulk upsert failed. Blueprint: %s, Error: %s", blueprint, err.Error()), "blueprint", blueprint, "entityCount", len(batchEntities), "error", err)
+			bulkResponse, err := controller.portClient.BulkUpsertEntities(context.Background(), blueprint, batchEntities, "", controller.portClient.CreateMissingRelatedEntities)
+			if err != nil {
+				eventLogger.Warnw(fmt.Sprintf("Bulk upsert failed. Blueprint: %s, Error: %s", blueprint, err.Error()), "blueprint", blueprint, "entityCount", len(batchEntities), "error", err)
+				if cli.IsBulkNonRetryableError(err) {
+					eventLogger.Warnw("Skipping fallback to individual upserts due to non-retryable error", "blueprint", blueprint, "error", err)
+					for _, ewk := range batchEntitiesWithKind {
+						failedUpsertsCountWithKind[ewk.Kind]++
+					}
+					shouldDeleteStaleEntities = false
+				} else {
 					bc.fallbackToIndividualUpserts(controller, batchEntitiesWithKind, &entitiesSet, &shouldDeleteStaleEntities, &successCountWithKind, &failedUpsertsCountWithKind, eventLogger)
-					continue
 				}
+				continue
+			}
 				successCount := 0
 				for _, result := range bulkResponse.Entities {
 					successCountWithKind[entityIdToKind[result.Identifier]]++
@@ -339,24 +347,37 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller, eventLogger *zap.
 					entitiesSet[controller.portClient.GetEntityIdentifierKey(mockEntity)] = nil
 				}
 
-				// Handle partial failures - retry failed entities individually
-				if len(bulkResponse.Errors) > 0 {
-					eventLogger.Warnw("Bulk upsert had failures", "blueprint", blueprint, "failedCount", len(bulkResponse.Errors), "totalCount", len(batchEntities))
-					failedIdentifiers := make(map[string]bool)
-					for _, bulkError := range bulkResponse.Errors {
-						failedIdentifiers[bulkError.Identifier] = true
+			if len(bulkResponse.Errors) > 0 {
+				eventLogger.Warnw("Bulk upsert had failures", "blueprint", blueprint, "failedCount", len(bulkResponse.Errors), "totalCount", len(batchEntities))
+				retryableIdentifiers := make(map[string]bool)
+				nonRetryableIdentifiers := make(map[string]bool)
+				for _, bulkError := range bulkResponse.Errors {
+					if bulkError.StatusCode == 404 || bulkError.StatusCode == 422 {
+						nonRetryableIdentifiers[bulkError.Identifier] = true
+						eventLogger.Warnw("Skipping fallback for entity due to non-retryable error", "blueprint", blueprint, "identifier", bulkError.Identifier, "statusCode", bulkError.StatusCode, "message", bulkError.Message)
+					} else {
+						retryableIdentifiers[bulkError.Identifier] = true
 						eventLogger.Infow("Bulk upsert failed for entity", "blueprint", blueprint, "identifier", bulkError.Identifier, "message", bulkError.Message)
 					}
-					failedEntitiesWithKind := make([]EntityWithKind, 0)
+				}
+				if len(nonRetryableIdentifiers) > 0 {
 					for _, entityWithKind := range batchEntitiesWithKind {
-						if failedIdentifiers[fmt.Sprintf("%v", entityWithKind.Entity.Identifier)] {
-							failedEntitiesWithKind = append(failedEntitiesWithKind, entityWithKind)
+						if nonRetryableIdentifiers[fmt.Sprintf("%v", entityWithKind.Entity.Identifier)] {
+							failedUpsertsCountWithKind[entityWithKind.Kind]++
 						}
 					}
-					if len(failedEntitiesWithKind) > 0 {
-						bc.fallbackToIndividualUpserts(controller, failedEntitiesWithKind, &entitiesSet, &shouldDeleteStaleEntities, &successCountWithKind, &failedUpsertsCountWithKind, eventLogger)
+					shouldDeleteStaleEntities = false
+				}
+				failedEntitiesWithKind := make([]EntityWithKind, 0)
+				for _, entityWithKind := range batchEntitiesWithKind {
+					if retryableIdentifiers[fmt.Sprintf("%v", entityWithKind.Entity.Identifier)] {
+						failedEntitiesWithKind = append(failedEntitiesWithKind, entityWithKind)
 					}
 				}
+				if len(failedEntitiesWithKind) > 0 {
+					bc.fallbackToIndividualUpserts(controller, failedEntitiesWithKind, &entitiesSet, &shouldDeleteStaleEntities, &successCountWithKind, &failedUpsertsCountWithKind, eventLogger)
+				}
+			}
 				eventLogger.Infow(fmt.Sprintf("Bulk upsert completed for blueprint %s.", blueprint), "blueprint", blueprint, "successCount", successCount, "failedCount", len(bulkResponse.Errors))
 			}
 			return struct{}{}, nil
