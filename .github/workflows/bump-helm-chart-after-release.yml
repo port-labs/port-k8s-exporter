@@ -34,7 +34,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: port-labs/helm-charts
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PORT_MACHINE_USER_GITHUB_TOKEN }}
           path: helm-charts
 
       - name: Update Chart.yaml + values.yaml
@@ -61,7 +61,7 @@ jobs:
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v6
         with:
-            token: ${{ secrets.GITHUB_TOKEN }}
+            token: ${{ secrets.PORT_MACHINE_USER_GITHUB_TOKEN }}
             path: helm-charts
             commit-message: "chore(port-k8s-exporter): bump to ${{ steps.ver.outputs.tag }}"
             branch: "chore/bump-port-k8s-exporter-${{ steps.ver.outputs.tag }}"
