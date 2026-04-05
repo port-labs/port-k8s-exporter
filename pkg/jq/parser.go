@@ -80,6 +80,32 @@ func ParseBool(jqQuery string, obj interface{}) (bool, error) {
 	return boolean, nil
 }
 
+func trimJQStringLiteral(s string) string {
+	return strings.Trim(s, "\"")
+}
+
+// stringOrStringArrayFromJQValue interprets a jq result as either a JSON string or a JSON array of strings.
+func stringOrStringArrayFromJQValue(queryRes interface{}, jqQuery string) (interface{}, error) {
+	switch v := queryRes.(type) {
+	case string:
+		return trimJQStringLiteral(v), nil
+	case []interface{}:
+		out := make([]interface{}, len(v))
+		for i, el := range v {
+			s, ok := el.(string)
+			if !ok {
+				logger.Errorw(fmt.Sprintf("string element expected in jq array result for query: '%#v', but got: %#v at index %d", jqQuery, el, i), "jqQuery", jqQuery, "element", el, "index", i)
+				return nil, fmt.Errorf("jq array result must contain only strings")
+			}
+			out[i] = trimJQStringLiteral(s)
+		}
+		return out, nil
+	default:
+		logger.Errorw(fmt.Sprintf("string or string array result expected from query: '%#v', but got: %#v", jqQuery, queryRes), "jqQuery", jqQuery, "queryRes", queryRes)
+		return nil, fmt.Errorf("jq must evaluate to string or array of strings, got %T", queryRes)
+	}
+}
+
 func ParseString(jqQuery string, obj interface{}) (string, error) {
 	queryRes, err := runJQQuery(jqQuery, obj)
 	if err != nil {
@@ -92,7 +118,17 @@ func ParseString(jqQuery string, obj interface{}) (string, error) {
 		return "", fmt.Errorf("failed to parse string with jq")
 	}
 
-	return strings.Trim(str, "\""), nil
+	return trimJQStringLiteral(str), nil
+}
+
+// ParseStringOrStringArray runs jq and accepts either a JSON string or a JSON array of strings.
+// Trimming of string values matches ParseString. Use when a mapped field accepts either shape.
+func ParseStringOrStringArray(jqQuery string, obj interface{}) (interface{}, error) {
+	queryRes, err := runJQQuery(jqQuery, obj)
+	if err != nil {
+		return nil, err
+	}
+	return stringOrStringArrayFromJQValue(queryRes, jqQuery)
 }
 
 func ParseInterface(jqQuery string, obj interface{}) (interface{}, error) {

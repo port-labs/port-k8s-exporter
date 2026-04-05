@@ -969,6 +969,82 @@ func TestCreateDeploymentWithTeamString(t *testing.T) {
 	assert.Equal(t, exampleTeamName, teamValue)
 }
 
+func TestCreateDeploymentWithTeamJqStringArray(t *testing.T) {
+	stateKey := guuid.NewString()
+	blueprintId := getBlueprintId(stateKey)
+	id := guuid.NewString()
+	teamA := fmt.Sprintf("jq_lit_a_%s", guuid.NewString())
+	teamB := fmt.Sprintf("jq_lit_b_%s", guuid.NewString())
+	d := newDeployment(stateKey)
+	ud := newUnstructured(d)
+
+	resource := getBaseDeploymentResource(stateKey)
+	resource.Port.Entity.Mappings[0].Identifier = fmt.Sprintf("\"%s\"", id)
+	resource.Port.Entity.Mappings[0].Team = fmt.Sprintf("[\"%s\", \"%s\"]", teamA, teamB)
+	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
+	defer tearDownFixture(t, f)
+
+	for _, teamName := range []string{teamA, teamB} {
+		teamEntityBody := &port.Entity{
+			Blueprint:  "_team",
+			Identifier: teamName,
+			Title:      teamName,
+			Properties: map[string]any{},
+			Relations:  map[string]any{},
+		}
+		pb := &port.ResponseBody{}
+		resp, err := f.controller.portClient.Client.R().
+			SetBody(teamEntityBody).
+			SetHeader("Accept", "application/json").
+			SetResult(&pb).
+			SetPathParam("blueprint_id", "_team").
+			SetQueryParam("upsert", "true").
+			Post("v1/blueprints/{blueprint_id}/entities")
+		if err != nil {
+			t.Errorf("error creating team: %v", err)
+			continue
+		}
+		if !pb.OK {
+			body := ""
+			if resp != nil {
+				body = string(resp.Body())
+			}
+			t.Errorf("failed to create team, got: %s", body)
+		}
+	}
+
+	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprintId, id): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
+
+	entity, err := f.controller.portClient.ReadEntity(context.Background(), id, blueprintId)
+	if err != nil {
+		t.Errorf("error reading entity: %v", err)
+	}
+	expectedTeams := []string{teamA, teamB}
+	teamsArray := entity.Team.([]interface{})
+	assert.ElementsMatch(t, expectedTeams, teamsArray)
+
+	for _, teamName := range []string{teamA, teamB} {
+		pc := &port.ResponseBody{}
+		res, err := f.controller.portClient.Client.R().
+			SetHeader("Accept", "application/json").
+			SetResult(&pc).
+			SetPathParam("name", teamName).
+			Delete("v1/teams/{name}")
+		if err != nil {
+			t.Errorf("error deleting team: %v", err)
+			continue
+		}
+		if !pc.OK {
+			body := ""
+			if res != nil {
+				body = string(res.Body())
+			}
+			t.Errorf("failed to delete team, got: %s", body)
+		}
+	}
+}
+
 func TestCreateDeploymentWithTeamSearch(t *testing.T) {
 	stateKey := guuid.NewString()
 	blueprintId := getBlueprintId(stateKey)
