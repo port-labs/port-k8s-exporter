@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
@@ -117,24 +118,27 @@ func TestJqSearchTeam(t *testing.T) {
 	})
 }
 
+// portTeamSplitOrDefaultJq matches common K8s exporter team mappings (label split + default team list).
+const portTeamSplitOrDefaultJq = `(.metadata.labels."port-team" // "" | if . != "" then split("-") else ["port_all"] end)`
+
 func TestParseStringOrStringArray(t *testing.T) {
 	t.Run("string_literal", func(t *testing.T) {
 		got, err := ParseStringOrStringArray(`"hello"`, nil)
-		assert.NoError(t, err)
-		assert.Equal(t, "hello", got)
+		require.NoError(t, err)
+		require.Equal(t, "hello", got)
 	})
 
 	t.Run("string_from_object", func(t *testing.T) {
 		obj := map[string]interface{}{"name": "svc"}
 		got, err := ParseStringOrStringArray(`.name`, obj)
-		assert.NoError(t, err)
-		assert.Equal(t, "svc", got)
+		require.NoError(t, err)
+		require.Equal(t, "svc", got)
 	})
 
 	t.Run("array_literal", func(t *testing.T) {
 		got, err := ParseStringOrStringArray(`["a", "b"]`, nil)
-		assert.NoError(t, err)
-		assert.Equal(t, []interface{}{"a", "b"}, got)
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{"a", "b"}, got)
 	})
 
 	t.Run("split_from_label_when_present", func(t *testing.T) {
@@ -145,10 +149,9 @@ func TestParseStringOrStringArray(t *testing.T) {
 				},
 			},
 		}
-		q := `(.metadata.labels."port-team" // "" | if . != "" then split("-") else ["port_all"] end)`
-		got, err := ParseStringOrStringArray(q, obj)
-		assert.NoError(t, err)
-		assert.Equal(t, []interface{}{"x", "y"}, got)
+		got, err := ParseStringOrStringArray(portTeamSplitOrDefaultJq, obj)
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{"x", "y"}, got)
 	})
 
 	t.Run("default_array_when_label_missing", func(t *testing.T) {
@@ -157,22 +160,21 @@ func TestParseStringOrStringArray(t *testing.T) {
 				"labels": map[string]interface{}{},
 			},
 		}
-		q := `(.metadata.labels."port-team" // "" | if . != "" then split("-") else ["port_all"] end)`
-		got, err := ParseStringOrStringArray(q, obj)
-		assert.NoError(t, err)
-		assert.Equal(t, []interface{}{"port_all"}, got)
+		got, err := ParseStringOrStringArray(portTeamSplitOrDefaultJq, obj)
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{"port_all"}, got)
 	})
 
 	t.Run("reject_non-string_array_elements", func(t *testing.T) {
 		_, err := ParseStringOrStringArray(`[1, 2]`, nil)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "jq array result must contain only strings")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "jq array result must contain only strings")
 	})
 
 	t.Run("reject_number_result", func(t *testing.T) {
 		_, err := ParseStringOrStringArray(`42`, nil)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "jq must evaluate to string or array of strings")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "jq must evaluate to string or array of strings")
 	})
 }
 
