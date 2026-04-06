@@ -19,6 +19,7 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	testUtils "github.com/port-labs/port-k8s-exporter/test_utils"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -75,6 +76,54 @@ func tearDownFixture(
 		f.controller.portClient,
 		blueprintId,
 	)
+}
+
+// upsertTeamEntityForIntegrationTest creates or updates a Port _team entity (upsert).
+func upsertTeamEntityForIntegrationTest(t *testing.T, client *cli.PortClient, identifier string) {
+	t.Helper()
+	body := &port.Entity{
+		Blueprint:  "_team",
+		Identifier: identifier,
+		Title:      identifier,
+		Properties: map[string]any{},
+		Relations:  map[string]any{},
+	}
+	pb := &port.ResponseBody{}
+	resp, err := client.Client.R().
+		SetBody(body).
+		SetHeader("Accept", "application/json").
+		SetResult(&pb).
+		SetPathParam("blueprint_id", "_team").
+		SetQueryParam("upsert", "true").
+		Post("v1/blueprints/{blueprint_id}/entities")
+	require.NoError(t, err)
+	respBody := ""
+	if resp != nil {
+		respBody = string(resp.Body())
+	}
+	require.Truef(t, pb.OK, "upsert _team %q: %s", identifier, respBody)
+}
+
+// tryDeleteTeamEntityForIntegrationTest deletes a team; logs on failure (for t.Cleanup).
+func tryDeleteTeamEntityForIntegrationTest(t *testing.T, client *cli.PortClient, identifier string) {
+	t.Helper()
+	pb := &port.ResponseBody{}
+	resp, err := client.Client.R().
+		SetHeader("Accept", "application/json").
+		SetResult(&pb).
+		SetPathParam("name", identifier).
+		Delete("v1/teams/{name}")
+	if err != nil {
+		t.Logf("cleanup: delete team %q: %v", identifier, err)
+		return
+	}
+	if !pb.OK {
+		body := ""
+		if resp != nil {
+			body = string(resp.Body())
+		}
+		t.Logf("cleanup: delete team %q not ok: %s", identifier, body)
+	}
 }
 
 func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
@@ -967,6 +1016,61 @@ func TestCreateDeploymentWithTeamString(t *testing.T) {
 	teamArray := entity.Team.([]interface{})
 	teamValue := teamArray[0].(string)
 	assert.Equal(t, exampleTeamName, teamValue)
+}
+
+func TestCreateDeploymentWithTeamJqStringArray(t *testing.T) {
+	stateKey := guuid.NewString()
+	blueprintID := getBlueprintId(stateKey)
+	entityID := guuid.NewString()
+	teamAlpha := fmt.Sprintf("jq_lit_a_%s", guuid.NewString())
+	teamBeta := fmt.Sprintf("jq_lit_b_%s", guuid.NewString())
+	teams := []string{teamAlpha, teamBeta}
+
+	d := newDeployment(stateKey)
+	ud := newUnstructured(d)
+
+	resource := getBaseDeploymentResource(stateKey)
+	resource.Port.Entity.Mappings[0].Identifier = fmt.Sprintf("\"%s\"", entityID)
+	// Jq that evaluates to a JSON array of strings (same shape as split("-") / default ["port_all"] in real mappings).
+	resource.Port.Entity.Mappings[0].Team = fmt.Sprintf("[\"%s\", \"%s\"]", teamAlpha, teamBeta)
+
+	f := newFixture(t, &fixtureConfig{
+		stateKey:        stateKey,
+		resource:        resource,
+		existingObjects: []runtime.Object{ud},
+	})
+	defer tearDownFixture(t, f)
+
+	client := f.controller.portClient
+	for _, teamID := range teams {
+		upsertTeamEntityForIntegrationTest(t, client, teamID)
+	}
+	t.Cleanup(func() {
+		for _, teamID := range teams {
+			tryDeleteTeamEntityForIntegrationTest(t, client, teamID)
+		}
+	})
+
+	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
+	f.runControllerSyncHandler(item, &SyncResult{
+		EntitiesSet:               map[string]interface{}{fmt.Sprintf("%s;%s", blueprintID, entityID): nil},
+		RawDataExamples:           []interface{}{ud.Object},
+		ShouldDeleteStaleEntities: true,
+	}, false)
+
+	entity, err := client.ReadEntity(context.Background(), entityID, blueprintID)
+	require.NoError(t, err)
+
+	rawTeams, ok := entity.Team.([]interface{})
+	require.Truef(t, ok, "entity.Team should be []interface{}, got %T", entity.Team)
+
+	teamIDs := make([]string, 0, len(rawTeams))
+	for i, el := range rawTeams {
+		s, isStr := el.(string)
+		require.Truef(t, isStr, "team[%d] should be string, got %T", i, el)
+		teamIDs = append(teamIDs, s)
+	}
+	assert.ElementsMatch(t, teams, teamIDs)
 }
 
 func TestCreateDeploymentWithTeamSearch(t *testing.T) {
