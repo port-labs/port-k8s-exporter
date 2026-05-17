@@ -3,6 +3,8 @@ package org_details
 import (
 	"fmt"
 
+	"github.com/port-labs/port-k8s-exporter/pkg/logger"
+	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 )
 
@@ -22,4 +24,23 @@ func GetOrganizationFeatureFlags(portClient *cli.PortClient) ([]string, error) {
 	}
 
 	return flags, nil
+}
+
+func ShouldUseIntegrationResyncRequestsTopic(portClient *cli.PortClient) bool {
+	flags, err := GetOrganizationFeatureFlags(portClient)
+	if err != nil {
+		logger.Warnw(
+			"Failed to fetch organization feature flags. Falling back to legacy change log topic consumer",
+			"error", err.Error(),
+		)
+		return false
+	}
+
+	for _, flag := range flags {
+		if flag == port.OrgKafkaIntegrationResyncRequestsTopicEnabledFeatureFlag {
+			return true
+		}
+	}
+
+	return false
 }

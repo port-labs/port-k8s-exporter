@@ -357,7 +357,8 @@ type IntegrationAppConfig struct {
 }
 
 const (
-	OrgUseProvisionedDefaultsFeatureFlag = "USE_PROVISIONED_DEFAULTS"
+	OrgUseProvisionedDefaultsFeatureFlag                     = "USE_PROVISIONED_DEFAULTS"
+	OrgKafkaIntegrationResyncRequestsTopicEnabledFeatureFlag = "OCEAN_KAFKA_INTEGRATION_RESYNC_REQUESTS_TOPIC_ENABLED"
 )
 
 type CreatePortResourcesOrigin string
