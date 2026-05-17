@@ -358,7 +358,12 @@ type IntegrationAppConfig struct {
 
 const (
 	OrgUseProvisionedDefaultsFeatureFlag = "USE_PROVISIONED_DEFAULTS"
+	OrgOceanPollingIntegrationResyncRequestsEnabledFeatureFlag = "OCEAN_POLLING_INTEGRATION_RESYNC_REQUESTS_ENABLED"
 )
+
+type IntegrationResyncTriggerRequest struct {
+	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
+}
 
 type CreatePortResourcesOrigin string
 
