@@ -68,8 +68,12 @@ func formatUpdatedAt(updatedAt *time.Time) string {
 }
 
 func shouldResync(lastUpdatedAt string, lastIntegrationStateUpdatedAt string) bool {
-	if lastIntegrationStateUpdatedAt == "" {
+	if lastUpdatedAt == "" {
 		return false
+	}
+	
+	if lastIntegrationStateUpdatedAt == "" {
+		return true
 	}
 	return lastIntegrationStateUpdatedAt != lastUpdatedAt
 }
@@ -111,17 +115,16 @@ func (h *Handler) isResyncRequestsPollingEnabled() bool {
 		return *h.resyncRequestsPollingEnabled
 	}
 
-	enabled := false
 	flags, err := org_details.GetOrganizationFeatureFlags(h.portClient)
 	if err != nil {
 		logger.Errorw(
-			"Failed to fetch organization feature flags for resync request polling, disabling resync request polling",
+			"Failed to fetch organization feature flags for resync request polling, skipping resync request polling for this iteration",
 			"error", err.Error(),
 		)
-	} else {
-		enabled = slices.Contains(flags, port.OrgOceanPollingIntegrationResyncRequestsEnabledFeatureFlag)
+		return false
 	}
 
+	enabled := slices.Contains(flags, port.OrgOceanPollingIntegrationResyncRequestsEnabledFeatureFlag)
 	h.resyncRequestsPollingEnabled = &enabled
 	return enabled
 }
