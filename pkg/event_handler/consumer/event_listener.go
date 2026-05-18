@@ -39,11 +39,15 @@ type IntegrationResyncRequestMessage struct {
 	} `json:"context"`
 }
 
-func resolveKafkaTopic(orgId string, portClient *cli.PortClient) (topic string, useIntegrationResyncTopic bool) {
-	if org_details.ShouldUseIntegrationResyncRequestsTopic(portClient) {
-		return orgId + integrationResyncRequestsTopicSuffix, true
+func resolveKafkaTopic(orgId string, portClient *cli.PortClient) (topic string, useIntegrationResyncTopic bool, err error) {
+	useIntegrationResyncTopic, err = org_details.ShouldUseIntegrationResyncRequestsTopic(portClient)
+	if err != nil {
+		return "", false, err
 	}
-	return orgId + changeLogTopicSuffix, false
+	if useIntegrationResyncTopic {
+		return orgId + integrationResyncRequestsTopicSuffix, true, nil
+	}
+	return orgId + changeLogTopicSuffix, false, nil
 }
 
 func NewEventListener(stateKey string, portClient *cli.PortClient) (*EventListener, error) {
@@ -66,7 +70,10 @@ func NewEventListener(stateKey string, portClient *cli.PortClient) (*EventListen
 		GroupID:                 orgId + ".k8s." + stateKey,
 	}
 
-	topic, useIntegrationResyncTopic := resolveKafkaTopic(orgId, portClient)
+	topic, useIntegrationResyncTopic, err := resolveKafkaTopic(orgId, portClient)
+	if err != nil {
+		return nil, err
+	}
 	instance, err := NewConsumer(c, nil)
 	if err != nil {
 		return nil, err
