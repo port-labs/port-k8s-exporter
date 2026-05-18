@@ -75,6 +75,7 @@ func shouldResync(lastUpdatedAt string, lastIntegrationStateUpdatedAt string) bo
 	if lastIntegrationStateUpdatedAt == "" {
 		return true
 	}
+	
 	return lastIntegrationStateUpdatedAt != lastUpdatedAt
 }
 
