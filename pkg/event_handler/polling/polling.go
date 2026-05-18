@@ -1,15 +1,17 @@
 package polling
 
 import (
+	"errors"
 	"os"
 	"os/signal"
-	"reflect"
+	"slices"
 	"syscall"
 	"time"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/logger"
+	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
-	"github.com/port-labs/port-k8s-exporter/pkg/port/integration"
+	"github.com/port-labs/port-k8s-exporter/pkg/port/org_details"
 )
 
 type ITicker interface {
@@ -35,10 +37,13 @@ func (t *Ticker) GetC() <-chan time.Time {
 }
 
 type Handler struct {
-	ticker      ITicker
-	stateKey    string
-	portClient  *cli.PortClient
-	pollingRate uint
+	ticker                           ITicker
+	stateKey                         string
+	portClient                       *cli.PortClient
+	pollingRate                      uint
+	lastIntegrationStateUpdatedAt    string
+	lastResyncRequestUpdatedAt       string
+	resyncRequestsPollingEnabled     *bool
 }
 
 func NewPollingHandler(pollingRate uint, stateKey string, portClient *cli.PortClient, tickerOverride ITicker) *Handler {
@@ -55,11 +60,132 @@ func NewPollingHandler(pollingRate uint, stateKey string, portClient *cli.PortCl
 	return rv
 }
 
+func formatUpdatedAt(updatedAt *time.Time) string {
+	if updatedAt == nil {
+		return ""
+	}
+	return updatedAt.UTC().Format(time.RFC3339Nano)
+}
+
+func shouldResync(lastUpdatedAt string, lastIntegrationStateUpdatedAt string) bool {
+	if lastUpdatedAt == "" {
+		return false
+	}
+	
+	if lastIntegrationStateUpdatedAt == "" {
+		return true
+	}
+	
+	return lastIntegrationStateUpdatedAt != lastUpdatedAt
+}
+
+func shouldResyncFromResyncRequest(resyncRequestUpdatedAt string, lastProcessedResyncRequestUpdatedAt string) bool {
+	if resyncRequestUpdatedAt == "" {
+		return false
+	}
+
+	resyncRequestTime, err := parsePortTimestamp(resyncRequestUpdatedAt)
+	if err != nil {
+		return false
+	}
+
+	if lastProcessedResyncRequestUpdatedAt == "" {
+		return true
+	}
+
+	lastProcessedTime, err := parsePortTimestamp(lastProcessedResyncRequestUpdatedAt)
+	if err != nil {
+		return true
+	}
+
+	return lastProcessedTime.Before(resyncRequestTime)
+}
+
+func parsePortTimestamp(value string) (time.Time, error) {
+	layouts := []string{time.RFC3339Nano, time.RFC3339}
+	for _, layout := range layouts {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			return parsed, nil
+		}
+	}
+	return time.Time{}, errors.New("invalid timestamp format")
+}
+
+func (h *Handler) isResyncRequestsPollingEnabled() bool {
+	if h.resyncRequestsPollingEnabled != nil {
+		return *h.resyncRequestsPollingEnabled
+	}
+
+	flags, err := org_details.GetOrganizationFeatureFlags(h.portClient)
+	if err != nil {
+		logger.Errorw(
+			"Failed to fetch organization feature flags for resync request polling, skipping resync request polling for this iteration",
+			"error", err.Error(),
+		)
+		return false
+	}
+
+	enabled := slices.Contains(flags, port.OrgOceanPollingIntegrationResyncRequestsEnabledFeatureFlag)
+	h.resyncRequestsPollingEnabled = &enabled
+	return enabled
+}
+
+func (h *Handler) pollIteration(resync func()) {
+	logger.Infof("Polling event listener iteration after %d seconds. Checking for changes...", h.pollingRate)
+
+	integration, err := h.portClient.GetIntegrationForPolling(h.stateKey)
+	if err != nil {
+		logger.Errorw(
+			"Failed to fetch current integration in polling listener, skipping iteration",
+			"error", err.Error(),
+		)
+		return
+	}
+
+	lastUpdatedAt := formatUpdatedAt(integration.UpdatedAt)
+	shouldTriggerResync := shouldResync(lastUpdatedAt, h.lastIntegrationStateUpdatedAt)
+	resyncReason := "Detected change in integration, resyncing"
+	resyncRequestUpdatedAt := ""
+
+	if !shouldTriggerResync && h.isResyncRequestsPollingEnabled() {
+		resyncRequest, err := h.portClient.GetIntegrationResyncRequest(h.stateKey)
+		if err != nil {
+			logger.Errorw(
+				"Failed to fetch integration resync request in polling listener, continuing without resync request signal",
+				"error", err.Error(),
+			)
+		} else if resyncRequest != nil {
+			resyncRequestUpdatedAt = formatUpdatedAt(resyncRequest.UpdatedAt)
+			shouldTriggerResync = shouldResyncFromResyncRequest(
+				resyncRequestUpdatedAt,
+				h.lastResyncRequestUpdatedAt,
+			)
+			if shouldTriggerResync {
+				resyncReason = "Detected integration resync request"
+			}
+		}
+	}
+
+	if !shouldTriggerResync {
+		return
+	}
+
+	logger.Info(resyncReason)
+	h.lastIntegrationStateUpdatedAt = lastUpdatedAt
+	if resyncRequestUpdatedAt != "" {
+		h.lastResyncRequestUpdatedAt = resyncRequestUpdatedAt
+	}
+	resync()
+}
+
 func (h *Handler) Run(resync func()) {
 	logger.Infof("Starting polling handler")
-	currentState, err := integration.GetIntegration(h.portClient, h.stateKey)
+
+	integration, err := h.portClient.GetIntegrationForPolling(h.stateKey)
 	if err != nil {
-		logger.Errorf("Error fetching the first AppConfig state: %s", err.Error())
+		logger.Errorf("Error fetching the first integration state: %s", err.Error())
+	} else {
+		h.lastIntegrationStateUpdatedAt = formatUpdatedAt(integration.UpdatedAt)
 	}
 
 	sigChan := make(chan os.Signal, 1)
@@ -71,19 +197,10 @@ func (h *Handler) Run(resync func()) {
 		select {
 		case sig := <-sigChan:
 			logger.Infof("Received signal %v: terminating\n", sig)
-			// Flush any pending logs before termination
 			logger.Shutdown()
 			run = false
 		case <-h.ticker.GetC():
-			logger.Infof("Polling event listener iteration after %d seconds. Checking for changes...", h.pollingRate)
-			configuration, err := integration.GetIntegration(h.portClient, h.stateKey)
-			if err != nil {
-				logger.Errorf("error getting integration: %s", err.Error())
-			} else if reflect.DeepEqual(currentState, configuration) != true {
-				logger.Infof("Changes detected. Resyncing...")
-				currentState = configuration
-				resync()
-			}
+			h.pollIteration(resync)
 		}
 	}
 }
