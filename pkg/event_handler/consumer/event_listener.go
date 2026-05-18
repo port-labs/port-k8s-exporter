@@ -114,7 +114,7 @@ func (l *EventListener) Run(resync func()) error {
 	l.consumer.Consume(l.topic, func(value []byte) {
 		if l.useIntegrationResyncTopic {
 			incomingMessage := &IntegrationResyncRequestMessage{}
-			parsingError := json.Unmarshal(value, &incomingMessage)
+			parsingError := json.Unmarshal(value, incomingMessage)
 			if parsingError != nil {
 				logger.Errorw("error handling message", "error", parsingError.Error())
 				utilruntime.HandleError(fmt.Errorf("error handling message: %s", parsingError.Error()))
@@ -126,7 +126,7 @@ func (l *EventListener) Run(resync func()) error {
 		}
 
 		incomingMessage := &IncomingMessage{}
-		parsingError := json.Unmarshal(value, &incomingMessage)
+		parsingError := json.Unmarshal(value, incomingMessage)
 		if parsingError != nil {
 			logger.Errorw("error handling message", "error", parsingError.Error())
 			utilruntime.HandleError(fmt.Errorf("error handling message: %s", parsingError.Error()))

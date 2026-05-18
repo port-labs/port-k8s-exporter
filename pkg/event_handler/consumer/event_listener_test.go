@@ -94,4 +94,8 @@ func TestIntegrationResyncRequestMessage_UnmarshalTriggersResyncForMatchingState
 	triggersResync, err = integrationResyncRequestTriggersResync(stateKey, wrongJSONKeyPayload)
 	require.NoError(t, err)
 	assert.False(t, triggersResync, "wrong JSON field name must not populate integrationId")
+
+	triggersResync, err = integrationResyncRequestTriggersResync(stateKey, []byte("null"))
+	require.NoError(t, err)
+	assert.False(t, triggersResync, "top-level JSON null must not panic and must not trigger resync")
 }
