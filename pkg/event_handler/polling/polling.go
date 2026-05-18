@@ -42,8 +42,8 @@ type Handler struct {
 	portClient                       *cli.PortClient
 	pollingRate                      uint
 	lastIntegrationStateUpdatedAt    string
-	lastResyncRequestUpdatedAt            string
-	resyncRequestsPollingEnabled          *bool
+	lastResyncRequestUpdatedAt       string
+	resyncRequestsPollingEnabled     *bool
 }
 
 func NewPollingHandler(pollingRate uint, stateKey string, portClient *cli.PortClient, tickerOverride ITicker) *Handler {

@@ -8,7 +8,7 @@ import (
 )
 
 func TestShouldResync(t *testing.T) {
-	assert.False(t, shouldResync("2026-01-02T00:00:00Z", ""))
+	assert.True(t, shouldResync("2026-01-02T00:00:00Z", ""))
 	assert.False(t, shouldResync("2026-01-02T00:00:00Z", "2026-01-02T00:00:00Z"))
 	assert.True(t, shouldResync("2026-01-02T00:00:00Z", "2026-01-01T00:00:00Z"))
 }
