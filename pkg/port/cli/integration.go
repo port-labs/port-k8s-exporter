@@ -42,10 +42,22 @@ func (c *PortClient) CreateIntegration(i *port.Integration, queryParams map[stri
 }
 
 func (c *PortClient) GetIntegration(stateKey string) (*port.Integration, error) {
+	return c.getIntegration(stateKey, nil)
+}
+
+func (c *PortClient) GetIntegrationForPolling(stateKey string) (*port.Integration, error) {
+	return c.getIntegration(stateKey, map[string]string{
+		"isPolling": "true",
+	})
+}
+
+func (c *PortClient) getIntegration(stateKey string, queryParams map[string]string) (*port.Integration, error) {
 	pb := &port.ResponseBody{}
-	resp, err := c.Client.R().
-		SetResult(&pb).
-		Get(fmt.Sprintf("v1/integration/%s", stateKey))
+	req := c.Client.R().SetResult(&pb)
+	if len(queryParams) > 0 {
+		req.SetQueryParams(queryParams)
+	}
+	resp, err := req.Get(fmt.Sprintf("v1/integration/%s", stateKey))
 	if err != nil {
 		return nil, err
 	}
@@ -53,6 +65,25 @@ func (c *PortClient) GetIntegration(stateKey string) (*port.Integration, error) 
 		return nil, fmt.Errorf("failed to get integration, got: %s", resp.Body())
 	}
 	return &pb.Integration, nil
+}
+
+type integrationResyncRequestResponse struct {
+	OK      bool                                 `json:"ok"`
+	Request *port.IntegrationResyncTriggerRequest `json:"request"`
+}
+
+func (c *PortClient) GetIntegrationResyncRequest(stateKey string) (*port.IntegrationResyncTriggerRequest, error) {
+	pb := &integrationResyncRequestResponse{}
+	resp, err := c.Client.R().
+		SetResult(&pb).
+		Get(fmt.Sprintf("v1/integration/%s/resync-request", stateKey))
+	if err != nil {
+		return nil, err
+	}
+	if !pb.OK {
+		return nil, fmt.Errorf("failed to get integration resync request, got: %s", resp.Body())
+	}
+	return pb.Request, nil
 }
 
 func (c *PortClient) DeleteIntegration(stateKey string) error {
