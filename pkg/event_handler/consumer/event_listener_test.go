@@ -40,6 +40,64 @@ func TestShouldResyncFromChangeLog(t *testing.T) {
 	assert.False(t, shouldResyncFromChangeLog(stateKey, &IncomingMessage{}))
 }
 
+func TestShouldResyncRequestFromChangeLog(t *testing.T) {
+	stateKey := "integration-1"
+
+	assert.True(t, shouldResyncRequestFromChangeLog(stateKey, &IncomingMessage{
+		Action: "RESYNC",
+		Context: &struct {
+			IntegrationId string `json:"integrationId"`
+		}{
+			IntegrationId: stateKey,
+		},
+	}))
+	assert.False(t, shouldResyncRequestFromChangeLog(stateKey, &IncomingMessage{
+		Action: "RESYNC",
+		Context: &struct {
+			IntegrationId string `json:"integrationId"`
+		}{
+			IntegrationId: "integration-2",
+		},
+	}))
+	assert.False(t, shouldResyncRequestFromChangeLog(stateKey, &IncomingMessage{
+		Action: "UPDATE",
+		Context: &struct {
+			IntegrationId string `json:"integrationId"`
+		}{
+			IntegrationId: stateKey,
+		},
+	}))
+}
+
+func changeLogTriggersResync(stateKey string, value []byte) (bool, error) {
+	incomingMessage := &IncomingMessage{}
+	if err := json.Unmarshal(value, incomingMessage); err != nil {
+		return false, err
+	}
+	return shouldResyncFromChangeLog(stateKey, incomingMessage), nil
+}
+
+func TestIncomingMessage_UnmarshalTriggersResyncForMatchingStateKey(t *testing.T) {
+	stateKey := "integration-1"
+
+	resyncPayload := []byte(`{
+		"action": "RESYNC",
+		"context": { "integrationId": "integration-1" }
+	}`)
+	triggersResync, err := changeLogTriggersResync(stateKey, resyncPayload)
+	require.NoError(t, err)
+	assert.True(t, triggersResync, "RESYNC on change.log with matching context.integrationId should trigger resync")
+
+	changeLogPayload := []byte(`{"diff":{"after":{"installationId":"integration-1"}}}`)
+	triggersResync, err = changeLogTriggersResync(stateKey, changeLogPayload)
+	require.NoError(t, err)
+	assert.True(t, triggersResync, "legacy change.log payload should trigger resync")
+
+	triggersResync, err = changeLogTriggersResync(stateKey, []byte("null"))
+	require.NoError(t, err)
+	assert.False(t, triggersResync, "top-level JSON null must not panic and must not trigger resync")
+}
+
 func TestShouldResyncFromIntegrationResyncRequest(t *testing.T) {
 	stateKey := "integration-1"
 

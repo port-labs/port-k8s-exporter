@@ -26,6 +26,7 @@ func GetOrganizationFeatureFlags(portClient *cli.PortClient) ([]string, error) {
 }
 
 func ShouldUseIntegrationResyncRequestsTopic(portClient *cli.PortClient) (bool, error) {
+	return false, nil
 	flags, err := GetOrganizationFeatureFlags(portClient)
 	if err != nil {
 		return false, err

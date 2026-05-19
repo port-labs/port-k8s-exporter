@@ -26,11 +26,15 @@ type EventListener struct {
 }
 
 type IncomingMessage struct {
+	Action  string `json:"action,omitempty"`
+	Context *struct {
+		IntegrationId string `json:"integrationId"`
+	} `json:"context,omitempty"`
 	Diff *struct {
 		After *struct {
 			Identifier string `json:"installationId"`
 		} `json:"after"`
-	} `json:"diff"`
+	} `json:"diff,omitempty"`
 }
 
 type IntegrationResyncRequestMessage struct {
@@ -89,10 +93,23 @@ func NewEventListener(stateKey string, portClient *cli.PortClient) (*EventListen
 }
 
 func shouldResyncFromChangeLog(stateKey string, message *IncomingMessage) bool {
+	if message == nil {
+		return false
+	}
+	if shouldResyncRequestFromChangeLog(stateKey, message) {
+		return true
+	}
 	return message.Diff != nil &&
 		message.Diff.After != nil &&
 		message.Diff.After.Identifier != "" &&
 		message.Diff.After.Identifier == stateKey
+}
+
+func shouldResyncRequestFromChangeLog(stateKey string, message *IncomingMessage) bool {
+	return message.Action == "RESYNC" &&
+		message.Context != nil &&
+		message.Context.IntegrationId != "" &&
+		message.Context.IntegrationId == stateKey
 }
 
 func shouldResyncFromIntegrationResyncRequest(stateKey string, message *IntegrationResyncRequestMessage) bool {
