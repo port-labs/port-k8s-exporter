@@ -12,19 +12,46 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 )
 
+const (
+	changeLogTopicSuffix                 = ".change.log"
+	integrationResyncRequestsTopicSuffix = ".integration.resync.requests"
+)
+
 type EventListener struct {
-	stateKey   string
-	portClient *cli.PortClient
-	topic      string
-	consumer   *Consumer
+	stateKey                    string
+	portClient                  *cli.PortClient
+	topic                       string
+	useIntegrationResyncTopic   bool
+	consumer                    *Consumer
 }
 
 type IncomingMessage struct {
+	Action  string `json:"action,omitempty"`
+	Context *struct {
+		IntegrationId string `json:"integrationId"`
+	} `json:"context,omitempty"`
 	Diff *struct {
 		After *struct {
 			Identifier string `json:"installationId"`
 		} `json:"after"`
-	} `json:"diff"`
+	} `json:"diff,omitempty"`
+}
+
+type IntegrationResyncRequestMessage struct {
+	Context *struct {
+		IntegrationId string `json:"integrationId"`
+	} `json:"context"`
+}
+
+func resolveKafkaTopic(orgId string, portClient *cli.PortClient) (topic string, useIntegrationResyncTopic bool, err error) {
+	useIntegrationResyncTopic, err = org_details.ShouldUseIntegrationResyncRequestsTopic(portClient)
+	if err != nil {
+		return "", false, err
+	}
+	if useIntegrationResyncTopic {
+		return orgId + integrationResyncRequestsTopicSuffix, true, nil
+	}
+	return orgId + changeLogTopicSuffix, false, nil
 }
 
 func NewEventListener(stateKey string, portClient *cli.PortClient) (*EventListener, error) {
@@ -47,38 +74,80 @@ func NewEventListener(stateKey string, portClient *cli.PortClient) (*EventListen
 		GroupID:                 orgId + ".k8s." + stateKey,
 	}
 
-	topic := orgId + ".change.log"
+	topic, useIntegrationResyncTopic, err := resolveKafkaTopic(orgId, portClient)
+	if err != nil {
+		return nil, err
+	}
 	instance, err := NewConsumer(c, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	return &EventListener{
-		stateKey:   stateKey,
-		portClient: portClient,
-		topic:      topic,
-		consumer:   instance,
+		stateKey:                  stateKey,
+		portClient:                portClient,
+		topic:                     topic,
+		useIntegrationResyncTopic: useIntegrationResyncTopic,
+		consumer:                  instance,
 	}, nil
 }
 
-func shouldResync(stateKey string, message *IncomingMessage) bool {
+func shouldResyncFromChangeLog(stateKey string, message *IncomingMessage) bool {
+	if message == nil {
+		return false
+	}
+	if shouldResyncRequestFromChangeLog(stateKey, message) {
+		return true
+	}
 	return message.Diff != nil &&
 		message.Diff.After != nil &&
 		message.Diff.After.Identifier != "" &&
 		message.Diff.After.Identifier == stateKey
 }
 
+func shouldResyncRequestFromChangeLog(stateKey string, message *IncomingMessage) bool {
+	return message.Action == "RESYNC" &&
+		message.Context != nil &&
+		message.Context.IntegrationId != "" &&
+		message.Context.IntegrationId == stateKey
+}
+
+func shouldResyncFromIntegrationResyncRequest(stateKey string, message *IntegrationResyncRequestMessage) bool {
+	return message.Context != nil &&
+		message.Context.IntegrationId != "" &&
+		message.Context.IntegrationId == stateKey
+}
+
 func (l *EventListener) Run(resync func()) error {
 	logger.Info("Starting Kafka event listener")
 
+	if l.useIntegrationResyncTopic {
+		logger.Info("Starting Kafka consumer for integration resync requests topic")
+	} else {
+		logger.Info("Starting Kafka consumer for change log topic")
+	}
+
 	logger.Infow("Starting consumer for topic", "topic", l.topic)
 	l.consumer.Consume(l.topic, func(value []byte) {
+		if l.useIntegrationResyncTopic {
+			incomingMessage := &IntegrationResyncRequestMessage{}
+			parsingError := json.Unmarshal(value, incomingMessage)
+			if parsingError != nil {
+				logger.Errorw("error handling message", "error", parsingError.Error())
+				utilruntime.HandleError(fmt.Errorf("error handling message: %s", parsingError.Error()))
+			} else if shouldResyncFromIntegrationResyncRequest(l.stateKey, incomingMessage) {
+				logger.Info("Changes detected. Resyncing...")
+				resync()
+			}
+			return
+		}
+
 		incomingMessage := &IncomingMessage{}
-		parsingError := json.Unmarshal(value, &incomingMessage)
+		parsingError := json.Unmarshal(value, incomingMessage)
 		if parsingError != nil {
 			logger.Errorw("error handling message", "error", parsingError.Error())
 			utilruntime.HandleError(fmt.Errorf("error handling message: %s", parsingError.Error()))
-		} else if shouldResync(l.stateKey, incomingMessage) {
+		} else if shouldResyncFromChangeLog(l.stateKey, incomingMessage) {
 			logger.Info("Changes detected. Resyncing...")
 			resync()
 		}
