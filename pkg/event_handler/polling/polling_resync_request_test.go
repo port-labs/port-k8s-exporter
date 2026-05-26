@@ -313,8 +313,39 @@ func TestPollIteration_IntegrationChangeTakesPrecedenceOverResyncRequest(t *test
 
 	require.True(t, resyncCalled)
 	assert.Equal(t, formatUpdatedAt(&updatedIntegrationAt), handler.lastIntegrationStateUpdatedAt)
-	assert.Empty(t, handler.lastResyncRequestUpdatedAt)
-	assert.Equal(t, 0, mock.ResyncRequestCallCount())
+	assert.Equal(t, formatUpdatedAt(&resyncRequestAt), handler.lastResyncRequestUpdatedAt)
+	assert.Equal(t, 1, mock.ResyncRequestCallCount())
+}
+
+func TestPollIteration_IntegrationResyncDoesNotRetriggerStaleResyncRequest(t *testing.T) {
+	stateKey := "test-state-key"
+	initialIntegrationAt := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	updatedIntegrationAt := time.Date(2026, 1, 1, 13, 0, 0, 0, time.UTC)
+	resyncRequestAt := time.Date(2026, 1, 2, 12, 0, 0, 0, time.UTC)
+
+	mock := &resyncPollingTestServer{
+		t:                      t,
+		stateKey:               stateKey,
+		featureFlags:           []string{port.OrgOceanPollingIntegrationResyncRequestsEnabledFeatureFlag},
+		integrationUpdatedAt:   updatedIntegrationAt,
+		resyncRequestUpdatedAt: &resyncRequestAt,
+	}
+
+	handler, _ := newTestPollingHandler(t, mock)
+	handler.lastIntegrationStateUpdatedAt = formatUpdatedAt(&initialIntegrationAt)
+
+	firstResyncCalled := false
+	handler.pollIteration(func() {
+		firstResyncCalled = true
+	})
+	require.True(t, firstResyncCalled)
+	assert.Equal(t, formatUpdatedAt(&resyncRequestAt), handler.lastResyncRequestUpdatedAt)
+
+	secondResyncCalled := false
+	handler.pollIteration(func() {
+		secondResyncCalled = true
+	})
+	assert.False(t, secondResyncCalled, "stale resync request should not trigger another resync after integration resync advanced the watermark")
 }
 
 func TestPollIteration_ResyncRequestPathUsesPollingQueryParam(t *testing.T) {
