@@ -2,6 +2,7 @@ package org_details
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
@@ -31,11 +32,5 @@ func ShouldUseIntegrationResyncRequestsTopic(portClient *cli.PortClient) (bool, 
 		return false, err
 	}
 
-	for _, flag := range flags {
-		if flag == port.OrgKafkaIntegrationResyncRequestsTopicEnabledFeatureFlag {
-			return true, nil
-		}
-	}
-
-	return false, nil
+	return slices.Contains(flags, port.OrgKafkaIntegrationResyncRequestsTopicEnabledFeatureFlag), nil
 }
