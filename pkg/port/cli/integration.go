@@ -42,7 +42,9 @@ func (c *PortClient) CreateIntegration(i *port.Integration, queryParams map[stri
 }
 
 func (c *PortClient) GetIntegration(stateKey string) (*port.Integration, error) {
-	return c.getIntegration(stateKey, nil)
+	return c.getIntegration(stateKey, map[string]string{
+		"isPolling": "false",
+	})
 }
 
 func (c *PortClient) GetIntegrationForPolling(stateKey string) (*port.Integration, error) {
