@@ -130,6 +130,24 @@ func (h *Handler) isResyncRequestsPollingEnabled() bool {
 	return enabled
 }
 
+func (h *Handler) initializeResyncRequestWatermark() {
+	if !h.isResyncRequestsPollingEnabled() {
+		return
+	}
+
+	resyncRequest, err := h.portClient.GetIntegrationResyncRequest(h.stateKey)
+	if err != nil {
+		logger.Errorw(
+			"Failed to fetch integration resync request while initializing polling watermark",
+			"error", err.Error(),
+		)
+		return
+	}
+	if resyncRequest != nil {
+		h.lastResyncRequestUpdatedAt = formatUpdatedAt(resyncRequest.UpdatedAt)
+	}
+}
+
 func (h *Handler) pollIteration(resync func()) {
 	logger.Infof("Polling event listener iteration after %d seconds. Checking for changes...", h.pollingRate)
 
@@ -143,11 +161,12 @@ func (h *Handler) pollIteration(resync func()) {
 	}
 
 	lastUpdatedAt := formatUpdatedAt(integration.UpdatedAt)
-	shouldTriggerResync := shouldResync(lastUpdatedAt, h.lastIntegrationStateUpdatedAt)
+	integrationChanged := shouldResync(lastUpdatedAt, h.lastIntegrationStateUpdatedAt)
 	resyncReason := "Detected change in integration, resyncing"
 	resyncRequestUpdatedAt := ""
+	resyncRequestChanged := false
 
-	if !shouldTriggerResync && h.isResyncRequestsPollingEnabled() {
+	if h.isResyncRequestsPollingEnabled() {
 		resyncRequest, err := h.portClient.GetIntegrationResyncRequest(h.stateKey)
 		if err != nil {
 			logger.Errorw(
@@ -156,17 +175,17 @@ func (h *Handler) pollIteration(resync func()) {
 			)
 		} else if resyncRequest != nil {
 			resyncRequestUpdatedAt = formatUpdatedAt(resyncRequest.UpdatedAt)
-			shouldTriggerResync = shouldResyncFromResyncRequest(
+			resyncRequestChanged = shouldResyncFromResyncRequest(
 				resyncRequestUpdatedAt,
 				h.lastResyncRequestUpdatedAt,
 			)
-			if shouldTriggerResync {
+			if resyncRequestChanged && !integrationChanged {
 				resyncReason = "Detected integration resync request"
 			}
 		}
 	}
 
-	if !shouldTriggerResync {
+	if !integrationChanged && !resyncRequestChanged {
 		return
 	}
 
@@ -186,6 +205,7 @@ func (h *Handler) Run(resync func()) {
 		logger.Errorf("Error fetching the first integration state: %s", err.Error())
 	} else {
 		h.lastIntegrationStateUpdatedAt = formatUpdatedAt(integration.UpdatedAt)
+		h.initializeResyncRequestWatermark()
 	}
 
 	sigChan := make(chan os.Signal, 1)
