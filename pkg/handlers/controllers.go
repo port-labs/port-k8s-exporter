@@ -217,7 +217,7 @@ func syncController(controller *k8s.Controller, c *ControllersHandler, eventLogg
 	eventLogger.Infow(fmt.Sprintf("Starting full initial resync for resource '%s'", controller.Resource.Kind))
 	initialSyncResult := controller.RunInitialSync(eventLogger)
 	eventLogger.Infow(fmt.Sprintf("Done full initial resync, starting live events sync for resource '%s'", controller.Resource.Kind))
-	controller.RunEventsSync(1, c.stopCh)
+	controller.RunEventsSync(1, eventLogger, c.stopCh)
 	if len(initialSyncResult.RawDataExamples) > 0 {
 		err := integration.PostIntegrationKindExample(c.portClient, c.stateKey, controller.Resource.Kind, initialSyncResult.RawDataExamples)
 		if err != nil {

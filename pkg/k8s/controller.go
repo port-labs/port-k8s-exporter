@@ -544,80 +544,21 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 	return syncResult, requeueCounterDiff, true
 }
 
-func (c *Controller) RunEventsSync(workers int, stopCh <-chan struct{}) {
+func (c *Controller) RunEventsSync(workers int, eventLogger *zap.SugaredLogger, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash(logger.LogPanic)
+	totalBatchSize := c.calculateTotalBatchSize()
+	batchTimeout := time.Duration(config.ApplicationConfig.LiveEventsBulkSyncBatchTimeoutSeconds) * time.Second
+	batchCollector := NewBatchCollector(totalBatchSize, batchTimeout)
 
 	for i := 0; i < workers; i++ {
 		go wait.Until(func() {
 			shouldContinue := true
 			for shouldContinue {
-				_, _, shouldContinue = c.processNextWorkItem(c.eventsWorkqueue)
+				_, _, shouldContinue = c.processNextWorkItemWithBatching(c.initialSyncWorkqueue, batchCollector, eventLogger)
 			}
 		}, time.Second, stopCh)
 	}
 }
-
-func (c *Controller) processNextWorkItem(workqueue workqueue.RateLimitingInterface) (*SyncResult, int, bool) {
-	permanentErrorSyncResult := &SyncResult{
-		EntitiesSet:               make(map[string]interface{}),
-		RawDataExamples:           make([]interface{}, 0),
-		ShouldDeleteStaleEntities: false,
-	}
-
-	obj, shutdown := workqueue.Get()
-
-	if shutdown {
-		return permanentErrorSyncResult, 0, false
-	}
-
-	syncResult, requeueCounterDiff, err := func(obj interface{}) (*SyncResult, int, error) {
-		defer workqueue.Done(obj)
-
-		numRequeues := workqueue.NumRequeues(obj)
-		requeueCounterDiff := 0
-		if numRequeues > 0 {
-			requeueCounterDiff = -1
-		}
-
-		item, ok := obj.(EventItem)
-
-		if !ok {
-			workqueue.Forget(obj)
-			return permanentErrorSyncResult, requeueCounterDiff, fmt.Errorf("expected event item of resource '%s' in workqueue but got %#v", c.Resource.Kind, obj)
-		}
-		eventLogger := logger.GetEventLogger(guuid.NewString())
-		eventLogger.Infow(fmt.Sprintf("Processing item %s from workqueue.", item.Key), "numRequeues", numRequeues, "controller", c.Resource.Kind, "eventSource", item.EventSource, "key", item.Key)
-
-		syncResult, err := c.syncHandler(item, eventLogger)
-		if err != nil {
-			eventLogger.Errorw(fmt.Sprintf("Error syncing object %s. Error: %s", item.Key, err.Error()), "key", item.Key, "controller", c.Resource.Kind, "error", err, "eventSource", item.EventSource)
-
-			if numRequeues >= MaxNumRequeues {
-				workqueue.Forget(obj)
-				return syncResult, requeueCounterDiff, fmt.Errorf("error syncing '%s' of resource '%s'. Out of retries - object will not be processed", item.Key, c.Resource.Kind)
-			}
-
-			if numRequeues == 0 {
-				requeueCounterDiff = 1
-			} else {
-				requeueCounterDiff = 0
-			}
-			workqueue.AddRateLimited(obj)
-			return nil, requeueCounterDiff, fmt.Errorf("error syncing '%s' of resource '%s'. Requeuing", item.Key, c.Resource.Kind)
-		}
-
-		workqueue.Forget(obj)
-		return syncResult, requeueCounterDiff, nil
-	}(obj)
-
-	if err != nil {
-		logger.Errorw(fmt.Sprintf("Got error while trying to sync a k8s object. Error: %s", err.Error()), "error", err.Error(), "resource", c.Resource.Kind)
-		utilruntime.HandleError(err)
-	}
-
-	return syncResult, requeueCounterDiff, true
-}
-
 
 func (c *Controller) syncHandler(item EventItem, eventLogger *zap.SugaredLogger) (*SyncResult, error) {
 	obj, exists, err := c.informer.GetIndexer().GetByKey(item.Key)

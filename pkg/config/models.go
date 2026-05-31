@@ -33,9 +33,10 @@ type ApplicationConfiguration struct {
 	LoggingLevel       string `json:"loggingLevel,omitempty"`
 	HTTPLoggingTimeout int    `json:"httpLoggingTimeout,omitempty"` // in seconds
 	// Bulk sync configuration
-	BulkSyncMaxPayloadBytes     int `json:"bulkSyncMaxPayloadBytes,omitempty"`
-	BulkSyncMaxEntitiesPerBatch int `json:"bulkSyncMaxEntitiesPerBatch,omitempty"`
-	BulkSyncBatchTimeoutSeconds int `json:"bulkSyncBatchTimeoutSeconds,omitempty"`
+	BulkSyncMaxPayloadBytes               int `json:"bulkSyncMaxPayloadBytes,omitempty"`
+	BulkSyncMaxEntitiesPerBatch           int `json:"bulkSyncMaxEntitiesPerBatch,omitempty"`
+	BulkSyncBatchTimeoutSeconds           int `json:"bulkSyncBatchTimeoutSeconds,omitempty"`
+	LiveEventsBulkSyncBatchTimeoutSeconds int `json:"liveEventsBulkSyncBatchTimeoutSeconds,omitempty`
 	// Debug Mode
 	DebugMode bool `json:"debugMode,omitempty"`
 	// Metrics Configuration
