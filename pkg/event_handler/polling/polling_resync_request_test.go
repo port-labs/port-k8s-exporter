@@ -17,10 +17,9 @@ import (
 )
 
 type resyncPollingTestServer struct {
-	t                    *testing.T
-	stateKey             string
-	featureFlags         []string
-	integrationUpdatedAt time.Time
+	t                      *testing.T
+	stateKey               string
+	integrationUpdatedAt   time.Time
 	resyncRequestUpdatedAt *time.Time
 
 	mu                     sync.Mutex
@@ -40,14 +39,6 @@ func (s *resyncPollingTestServer) ServeHTTP(w http.ResponseWriter, r *http.Reque
 		_ = json.NewEncoder(w).Encode(port.AccessTokenResponse{
 			AccessToken: "test-token",
 			ExpiresIn:   3600,
-		})
-	case r.URL.Path == "/v1/organization":
-		_ = json.NewEncoder(w).Encode(port.ResponseBody{
-			OK: true,
-			OrgDetails: port.OrgDetails{
-				OrgId:        "test-org",
-				FeatureFlags: s.featureFlags,
-			},
 		})
 	case r.URL.Path == "/v1/integration/"+s.stateKey:
 		_ = json.NewEncoder(w).Encode(port.ResponseBody{
@@ -107,60 +98,34 @@ func TestPollIteration_ResyncRequestPolling(t *testing.T) {
 	stateKey := "test-state-key"
 
 	tests := []struct {
-		name                         string
-		featureFlags                 []string
-		resyncRequestUpdatedAt       *time.Time
-		lastResyncRequestWatermark   string
-		expectResync                 bool
-		expectResyncRequestFetched   bool
+		name                       string
+		resyncRequestUpdatedAt     *time.Time
+		lastResyncRequestWatermark string
+		expectResync               bool
 	}{
 		{
-			name:                       "feature flag disabled skips resync request polling",
-			featureFlags:               []string{},
-			resyncRequestUpdatedAt:     &resyncRequestUpdatedAt,
-			lastResyncRequestWatermark: "",
-			expectResync:               false,
-			expectResyncRequestFetched: false,
-		},
-		{
-			name: "feature flag enabled triggers resync when resync request advances",
-			featureFlags: []string{
-				port.OrgOceanPollingIntegrationResyncRequestsEnabledFeatureFlag,
-			},
+			name:                       "triggers resync when resync request advances",
 			resyncRequestUpdatedAt:     &resyncRequestUpdatedAt,
 			lastResyncRequestWatermark: "",
 			expectResync:               true,
-			expectResyncRequestFetched: true,
 		},
 		{
-			name: "feature flag enabled does not resync when watermark matches resync request",
-			featureFlags: []string{
-				port.OrgOceanPollingIntegrationResyncRequestsEnabledFeatureFlag,
-			},
+			name:                       "does not resync when watermark matches resync request",
 			resyncRequestUpdatedAt:     &resyncRequestUpdatedAt,
 			lastResyncRequestWatermark: formatUpdatedAt(&resyncRequestUpdatedAt),
 			expectResync:               false,
-			expectResyncRequestFetched: true,
 		},
 		{
-			name: "feature flag enabled does not resync when resync request is older than watermark",
-			featureFlags: []string{
-				port.OrgOceanPollingIntegrationResyncRequestsEnabledFeatureFlag,
-			},
+			name:                       "does not resync when resync request is older than watermark",
 			resyncRequestUpdatedAt:     &olderResyncRequestUpdatedAt,
 			lastResyncRequestWatermark: formatUpdatedAt(&resyncRequestUpdatedAt),
 			expectResync:               false,
-			expectResyncRequestFetched: true,
 		},
 		{
-			name: "feature flag enabled does not resync when resync request is missing",
-			featureFlags: []string{
-				port.OrgOceanPollingIntegrationResyncRequestsEnabledFeatureFlag,
-			},
+			name:                       "does not resync when resync request is missing",
 			resyncRequestUpdatedAt:     nil,
 			lastResyncRequestWatermark: "",
 			expectResync:               false,
-			expectResyncRequestFetched: true,
 		},
 	}
 
@@ -169,7 +134,6 @@ func TestPollIteration_ResyncRequestPolling(t *testing.T) {
 			mock := newResyncPollingTestServer(t, resyncPollingTestServer{
 				t:                      t,
 				stateKey:               stateKey,
-				featureFlags:           tt.featureFlags,
 				integrationUpdatedAt:   integrationUpdatedAt,
 				resyncRequestUpdatedAt: tt.resyncRequestUpdatedAt,
 			})
@@ -184,7 +148,7 @@ func TestPollIteration_ResyncRequestPolling(t *testing.T) {
 			})
 
 			assert.Equal(t, tt.expectResync, resyncCalled)
-			assert.Equal(t, tt.expectResyncRequestFetched, mock.ResyncRequestCallCount() > 0)
+			assert.Positive(t, mock.ResyncRequestCallCount())
 
 			if tt.expectResync {
 				assert.Equal(t, formatUpdatedAt(tt.resyncRequestUpdatedAt), handler.lastResyncRequestUpdatedAt)
@@ -202,10 +166,9 @@ func TestPollIteration_ResyncRequestWatermarkAdvancesAcrossIterations(t *testing
 	secondResyncRequestAt := time.Date(2026, 1, 3, 12, 0, 0, 0, time.UTC)
 
 	mock := &resyncPollingTestServer{
-		t:                    t,
-		stateKey:             stateKey,
-		featureFlags:         []string{port.OrgOceanPollingIntegrationResyncRequestsEnabledFeatureFlag},
-		integrationUpdatedAt: integrationUpdatedAt,
+		t:                      t,
+		stateKey:               stateKey,
+		integrationUpdatedAt:   integrationUpdatedAt,
 		resyncRequestUpdatedAt: &firstResyncRequestAt,
 	}
 
@@ -237,58 +200,6 @@ func TestPollIteration_ResyncRequestWatermarkAdvancesAcrossIterations(t *testing
 	assert.Equal(t, formatUpdatedAt(&secondResyncRequestAt), handler.lastResyncRequestUpdatedAt)
 }
 
-func TestIsResyncRequestsPollingEnabled_CachesOnlyOnSuccess(t *testing.T) {
-	stateKey := "test-state-key"
-	orgRequestCount := 0
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-
-		switch {
-		case r.URL.Path == "/v1/auth/access_token":
-			_ = json.NewEncoder(w).Encode(port.AccessTokenResponse{
-				AccessToken: "test-token",
-				ExpiresIn:   3600,
-			})
-		case r.URL.Path == "/v1/organization":
-			orgRequestCount++
-			if orgRequestCount == 1 {
-				w.WriteHeader(http.StatusInternalServerError)
-				_, _ = w.Write([]byte(`{"ok": false}`))
-				return
-			}
-			_ = json.NewEncoder(w).Encode(port.ResponseBody{
-				OK: true,
-				OrgDetails: port.OrgDetails{
-					OrgId: "test-org",
-					FeatureFlags: []string{
-						port.OrgOceanPollingIntegrationResyncRequestsEnabledFeatureFlag,
-					},
-				},
-			})
-		default:
-			t.Fatalf("unexpected request: %s", r.URL.Path)
-		}
-	}))
-	t.Cleanup(server.Close)
-
-	portClient := cli.New(&config.ApplicationConfiguration{
-		PortBaseURL:      server.URL,
-		PortClientId:     "test-client-id",
-		PortClientSecret: "test-client-secret",
-		StateKey:         stateKey,
-	})
-	handler := NewPollingHandler(1, stateKey, portClient, nil)
-
-	assert.False(t, handler.isResyncRequestsPollingEnabled())
-	assert.Nil(t, handler.resyncRequestsPollingEnabled)
-
-	assert.True(t, handler.isResyncRequestsPollingEnabled())
-	require.NotNil(t, handler.resyncRequestsPollingEnabled)
-	assert.True(t, *handler.resyncRequestsPollingEnabled)
-	assert.Equal(t, 2, orgRequestCount)
-}
-
 func TestPollIteration_IntegrationChangeTakesPrecedenceOverResyncRequest(t *testing.T) {
 	stateKey := "test-state-key"
 	initialIntegrationAt := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -298,7 +209,6 @@ func TestPollIteration_IntegrationChangeTakesPrecedenceOverResyncRequest(t *test
 	mock := &resyncPollingTestServer{
 		t:                      t,
 		stateKey:               stateKey,
-		featureFlags:           []string{port.OrgOceanPollingIntegrationResyncRequestsEnabledFeatureFlag},
 		integrationUpdatedAt:   updatedIntegrationAt,
 		resyncRequestUpdatedAt: &resyncRequestAt,
 	}
@@ -326,7 +236,6 @@ func TestPollIteration_IntegrationResyncDoesNotRetriggerStaleResyncRequest(t *te
 	mock := &resyncPollingTestServer{
 		t:                      t,
 		stateKey:               stateKey,
-		featureFlags:           []string{port.OrgOceanPollingIntegrationResyncRequestsEnabledFeatureFlag},
 		integrationUpdatedAt:   updatedIntegrationAt,
 		resyncRequestUpdatedAt: &resyncRequestAt,
 	}
@@ -361,14 +270,6 @@ func TestPollIteration_ResyncRequestPathUsesPollingQueryParam(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(port.AccessTokenResponse{
 				AccessToken: "test-token",
 				ExpiresIn:   3600,
-			})
-		case r.URL.Path == "/v1/organization":
-			_ = json.NewEncoder(w).Encode(port.ResponseBody{
-				OK: true,
-				OrgDetails: port.OrgDetails{
-					OrgId:        "test-org",
-					FeatureFlags: []string{port.OrgOceanPollingIntegrationResyncRequestsEnabledFeatureFlag},
-				},
 			})
 		case strings.HasPrefix(r.URL.Path, "/v1/integration/"):
 			if strings.HasSuffix(r.URL.Path, "/resync-request") {
