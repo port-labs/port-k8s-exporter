@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"sync"
 	"time"
 
 	guuid "github.com/google/uuid"
-	"go.uber.org/zap"
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
 	"github.com/port-labs/port-k8s-exporter/pkg/image"
@@ -19,6 +19,7 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/entity"
+	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -31,12 +32,13 @@ import (
 type EventActionType string
 
 const (
-	CreateAction             EventActionType = "create"
-	UpdateAction             EventActionType = "update"
-	DeleteAction             EventActionType = "delete"
-	MaxNumRequeues           int             = 4
-	MaxRawDataExamplesToSend int             = 5
-	BlueprintBatchMultiplier int             = 5
+	CreateAction                  EventActionType = "create"
+	UpdateAction                  EventActionType = "update"
+	DeleteAction                  EventActionType = "delete"
+	MaxNumRequeues                int             = 4
+	MaxRawDataExamplesToSend      int             = 5
+	BlueprintBatchMultiplier      int             = 5
+	LiveEventsWorkqueueGetTimeout                 = 5 * time.Second
 )
 
 type EventItem struct {
@@ -186,14 +188,15 @@ func (c *Controller) RunInitialSync(eventLogger *zap.SugaredLogger) *SyncResult 
 
 	eventLogger.Infow("Initializing batch collector", "totalBatchSize", totalBatchSize, "batchTimeout", batchTimeout)
 
+	poller := newWorkqueuePoller(c.initialSyncWorkqueue)
 	shouldContinue := true
 	requeueCounter := 0
 	var requeueCounterDiff int
 	var syncResult *SyncResult
 
-	for shouldContinue && (requeueCounter > 0 || c.initialSyncWorkqueue.Len() > 0 || !c.eventHandler.HasSynced()) {
+	for shouldContinue && (requeueCounter > 0 || c.initialSyncWorkqueue.Len() > 0 || !c.eventHandler.HasSynced() || poller.HasPending()) {
 		eventLogger.Debugw("Processing next work item with batching", "requeueCounter", requeueCounter, "initialSyncWorkqueueLen", c.initialSyncWorkqueue.Len(), "eventHandlerHasSynced", c.eventHandler.HasSynced())
-		syncResult, requeueCounterDiff, shouldContinue = c.processNextWorkItemWithBatching(c.initialSyncWorkqueue, batchCollector, eventLogger)
+		syncResult, requeueCounterDiff, shouldContinue = c.processNextWorkItemWithBatching(c.initialSyncWorkqueue, batchCollector, eventLogger, poller, 0)
 		eventLogger.Debugw("Processed next work item with batching", "syncResult", syncResult, "requeueCounterDiff", requeueCounterDiff, "shouldContinue", shouldContinue)
 		requeueCounter += requeueCounterDiff
 		if syncResult != nil {
@@ -228,6 +231,57 @@ func (c *Controller) RunInitialSync(eventLogger *zap.SugaredLogger) *SyncResult 
 type EntityWithKind struct {
 	Entity port.EntityRequest
 	Kind   string
+}
+
+type workqueueGetResult struct {
+	obj      interface{}
+	shutdown bool
+}
+
+type workqueuePoller struct {
+	wq      workqueue.RateLimitingInterface
+	results chan workqueueGetResult
+	once    sync.Once
+}
+
+func newWorkqueuePoller(wq workqueue.RateLimitingInterface) *workqueuePoller {
+	return &workqueuePoller{
+		wq:      wq,
+		results: make(chan workqueueGetResult, 1),
+	}
+}
+
+func (p *workqueuePoller) start() {
+	p.once.Do(func() {
+		go func() {
+			for {
+				obj, shutdown := p.wq.Get()
+				p.results <- workqueueGetResult{obj: obj, shutdown: shutdown}
+				if shutdown {
+					return
+				}
+			}
+		}()
+	})
+}
+
+func (p *workqueuePoller) HasPending() bool {
+	p.start()
+	return len(p.results) > 0
+}
+
+func (p *workqueuePoller) Get(timeout time.Duration) (obj interface{}, shutdown bool, ok bool) {
+	p.start()
+	if timeout <= 0 {
+		result := <-p.results
+		return result.obj, result.shutdown, true
+	}
+	select {
+	case result := <-p.results:
+		return result.obj, result.shutdown, true
+	case <-time.After(timeout):
+		return nil, false, false
+	}
 }
 
 type BatchCollector struct {
@@ -321,20 +375,20 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller, eventLogger *zap.
 				}
 				batchEntities := entities[i:end]
 				batchEntitiesWithKind := entitiesWithKind[i:end]
-			bulkResponse, err := controller.portClient.BulkUpsertEntities(context.Background(), blueprint, batchEntities, "", controller.portClient.CreateMissingRelatedEntities)
-			if err != nil {
-				eventLogger.Warnw(fmt.Sprintf("Bulk upsert failed. Blueprint: %s, Error: %s", blueprint, err.Error()), "blueprint", blueprint, "entityCount", len(batchEntities), "error", err)
-				if cli.IsBulkNonRetryableError(err) {
-					eventLogger.Warnw("Skipping fallback to individual upserts due to non-retryable error", "blueprint", blueprint, "error", err)
-					for _, ewk := range batchEntitiesWithKind {
-						failedUpsertsCountWithKind[ewk.Kind]++
+				bulkResponse, err := controller.portClient.BulkUpsertEntities(context.Background(), blueprint, batchEntities, "", controller.portClient.CreateMissingRelatedEntities)
+				if err != nil {
+					eventLogger.Warnw(fmt.Sprintf("Bulk upsert failed. Blueprint: %s, Error: %s", blueprint, err.Error()), "blueprint", blueprint, "entityCount", len(batchEntities), "error", err)
+					if cli.IsBulkNonRetryableError(err) {
+						eventLogger.Warnw("Skipping fallback to individual upserts due to non-retryable error", "blueprint", blueprint, "error", err)
+						for _, ewk := range batchEntitiesWithKind {
+							failedUpsertsCountWithKind[ewk.Kind]++
+						}
+						shouldDeleteStaleEntities = false
+					} else {
+						bc.fallbackToIndividualUpserts(controller, batchEntitiesWithKind, &entitiesSet, &shouldDeleteStaleEntities, &successCountWithKind, &failedUpsertsCountWithKind, eventLogger)
 					}
-					shouldDeleteStaleEntities = false
-				} else {
-					bc.fallbackToIndividualUpserts(controller, batchEntitiesWithKind, &entitiesSet, &shouldDeleteStaleEntities, &successCountWithKind, &failedUpsertsCountWithKind, eventLogger)
+					continue
 				}
-				continue
-			}
 				successCount := 0
 				for _, result := range bulkResponse.Entities {
 					successCountWithKind[entityIdToKind[result.Identifier]]++
@@ -347,37 +401,37 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller, eventLogger *zap.
 					entitiesSet[controller.portClient.GetEntityIdentifierKey(mockEntity)] = nil
 				}
 
-			if len(bulkResponse.Errors) > 0 {
-				eventLogger.Warnw("Bulk upsert had failures", "blueprint", blueprint, "failedCount", len(bulkResponse.Errors), "totalCount", len(batchEntities))
-				retryableIdentifiers := make(map[string]bool)
-				nonRetryableIdentifiers := make(map[string]bool)
-				for _, bulkError := range bulkResponse.Errors {
-					if cli.IsNonRetryableStatusCode(bulkError.StatusCode) {
-						nonRetryableIdentifiers[bulkError.Identifier] = true
-						eventLogger.Warnw("Skipping fallback for entity due to non-retryable error", "blueprint", blueprint, "identifier", bulkError.Identifier, "statusCode", bulkError.StatusCode, "message", bulkError.Message)
-					} else {
-						retryableIdentifiers[bulkError.Identifier] = true
-						eventLogger.Infow("Bulk upsert failed for entity", "blueprint", blueprint, "identifier", bulkError.Identifier, "message", bulkError.Message)
-					}
-				}
-				if len(nonRetryableIdentifiers) > 0 {
-					for _, entityWithKind := range batchEntitiesWithKind {
-						if nonRetryableIdentifiers[fmt.Sprintf("%v", entityWithKind.Entity.Identifier)] {
-							failedUpsertsCountWithKind[entityWithKind.Kind]++
+				if len(bulkResponse.Errors) > 0 {
+					eventLogger.Warnw("Bulk upsert had failures", "blueprint", blueprint, "failedCount", len(bulkResponse.Errors), "totalCount", len(batchEntities))
+					retryableIdentifiers := make(map[string]bool)
+					nonRetryableIdentifiers := make(map[string]bool)
+					for _, bulkError := range bulkResponse.Errors {
+						if cli.IsNonRetryableStatusCode(bulkError.StatusCode) {
+							nonRetryableIdentifiers[bulkError.Identifier] = true
+							eventLogger.Warnw("Skipping fallback for entity due to non-retryable error", "blueprint", blueprint, "identifier", bulkError.Identifier, "statusCode", bulkError.StatusCode, "message", bulkError.Message)
+						} else {
+							retryableIdentifiers[bulkError.Identifier] = true
+							eventLogger.Infow("Bulk upsert failed for entity", "blueprint", blueprint, "identifier", bulkError.Identifier, "message", bulkError.Message)
 						}
 					}
-					shouldDeleteStaleEntities = false
-				}
-				failedEntitiesWithKind := make([]EntityWithKind, 0)
-				for _, entityWithKind := range batchEntitiesWithKind {
-					if retryableIdentifiers[fmt.Sprintf("%v", entityWithKind.Entity.Identifier)] {
-						failedEntitiesWithKind = append(failedEntitiesWithKind, entityWithKind)
+					if len(nonRetryableIdentifiers) > 0 {
+						for _, entityWithKind := range batchEntitiesWithKind {
+							if nonRetryableIdentifiers[fmt.Sprintf("%v", entityWithKind.Entity.Identifier)] {
+								failedUpsertsCountWithKind[entityWithKind.Kind]++
+							}
+						}
+						shouldDeleteStaleEntities = false
+					}
+					failedEntitiesWithKind := make([]EntityWithKind, 0)
+					for _, entityWithKind := range batchEntitiesWithKind {
+						if retryableIdentifiers[fmt.Sprintf("%v", entityWithKind.Entity.Identifier)] {
+							failedEntitiesWithKind = append(failedEntitiesWithKind, entityWithKind)
+						}
+					}
+					if len(failedEntitiesWithKind) > 0 {
+						bc.fallbackToIndividualUpserts(controller, failedEntitiesWithKind, &entitiesSet, &shouldDeleteStaleEntities, &successCountWithKind, &failedUpsertsCountWithKind, eventLogger)
 					}
 				}
-				if len(failedEntitiesWithKind) > 0 {
-					bc.fallbackToIndividualUpserts(controller, failedEntitiesWithKind, &entitiesSet, &shouldDeleteStaleEntities, &successCountWithKind, &failedUpsertsCountWithKind, eventLogger)
-				}
-			}
 				eventLogger.Infow(fmt.Sprintf("Bulk upsert completed for blueprint %s.", blueprint), "blueprint", blueprint, "successCount", successCount, "failedCount", len(bulkResponse.Errors))
 			}
 			return struct{}{}, nil
@@ -430,7 +484,15 @@ func (bc *BatchCollector) ProcessRemaining(controller *Controller, eventLogger *
 	return bc.ProcessBatch(controller, eventLogger)
 }
 
-func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLimitingInterface, batchCollector *BatchCollector, eventLogger *zap.SugaredLogger) (*SyncResult, int, bool) {
+func workqueueGetTimeout(batchTimeout time.Duration) time.Duration {
+	getTimeout := LiveEventsWorkqueueGetTimeout
+	if batchTimeout > 0 && batchTimeout < getTimeout {
+		getTimeout = batchTimeout
+	}
+	return getTimeout
+}
+
+func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLimitingInterface, batchCollector *BatchCollector, eventLogger *zap.SugaredLogger, poller *workqueuePoller, getTimeout time.Duration) (*SyncResult, int, bool) {
 	if batchCollector.ShouldFlush() {
 		eventLogger.Debugw("Batch collector should flush", "controller", c.Resource.Kind)
 		syncResult := batchCollector.ProcessBatch(c, eventLogger)
@@ -440,12 +502,19 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 		}
 	}
 
-	obj, shutdown := workqueue.Get()
+	obj, shutdown, received := poller.Get(getTimeout)
+	if !received {
+		return nil, 0, true
+	}
 	if shutdown {
 		eventLogger.Debugw("Workqueue is shutting down", "controller", c.Resource.Kind)
 		return nil, 0, false
 	}
 
+	return c.processWorkqueueObjectWithBatching(workqueue, batchCollector, eventLogger, obj)
+}
+
+func (c *Controller) processWorkqueueObjectWithBatching(workqueue workqueue.RateLimitingInterface, batchCollector *BatchCollector, eventLogger *zap.SugaredLogger, obj interface{}) (*SyncResult, int, bool) {
 	syncResult, requeueCounterDiff, err := func(obj interface{}) (*SyncResult, int, error) {
 		defer workqueue.Done(obj)
 
@@ -552,9 +621,11 @@ func (c *Controller) RunEventsSync(workers int, eventLogger *zap.SugaredLogger, 
 
 	for i := 0; i < workers; i++ {
 		go wait.Until(func() {
+			poller := newWorkqueuePoller(c.eventsWorkqueue)
+			defer batchCollector.ProcessRemaining(c, eventLogger)
 			shouldContinue := true
 			for shouldContinue {
-				_, _, shouldContinue = c.processNextWorkItemWithBatching(c.initialSyncWorkqueue, batchCollector, eventLogger)
+				_, _, shouldContinue = c.processNextWorkItemWithBatching(c.eventsWorkqueue, batchCollector, eventLogger, poller, workqueueGetTimeout(batchTimeout))
 			}
 		}, time.Second, stopCh)
 	}
