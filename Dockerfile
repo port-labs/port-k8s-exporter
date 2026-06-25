@@ -1,7 +1,7 @@
 ARG ACCOUNT_ID=1
 FROM ${ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/echo/dynamic:latest
 
-RUN apt-get update && apt-get upgrade -y libssl3 && apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get upgrade -y libssl3 perl-base && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY assets/ /assets
 
