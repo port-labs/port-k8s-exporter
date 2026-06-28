@@ -56,14 +56,7 @@ func (f *Fixture) CleanIntegration() {
 
 func deleteDefaultResources(portClient *cli.PortClient, stateKey string) {
 	_ = integration.DeleteIntegration(portClient, stateKey)
-	_ = blueprint.DeleteBlueprintEntities(portClient, "workload")
-	_ = blueprint.DeleteBlueprint(portClient, "workload")
-	_ = blueprint.DeleteBlueprintEntities(portClient, "namespace")
-	_ = blueprint.DeleteBlueprint(portClient, "namespace")
-	_ = blueprint.DeleteBlueprintEntities(portClient, "cluster")
-	_ = blueprint.DeleteBlueprint(portClient, "cluster")
-	_ = page.DeletePage(portClient, "workload_overview_dashboard")
-	_ = page.DeletePage(portClient, "availability_scorecard_dashboard")
+	testUtils.DeleteDefaultTestResources(portClient)
 }
 
 func Test_InitIntegration_InitDefaults(t *testing.T) {

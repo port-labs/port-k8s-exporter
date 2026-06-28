@@ -6,8 +6,31 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/port/blueprint"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/page"
+	"github.com/port-labs/port-k8s-exporter/pkg/port/scorecards"
 	"github.com/stretchr/testify/assert"
 )
+
+var (
+	defaultTestBlueprintIdentifiers = []string{"workload", "namespace", "cluster"}
+	defaultTestScorecardIdentifiers = []string{"configuration", "highAvailability"}
+	defaultTestPageIdentifiers      = []string{"workload_overview_dashboard", "availability_scorecard_dashboard"}
+)
+
+// DeleteDefaultTestResources removes shared default integration resources from the Port org.
+// Scorecards must be deleted before blueprints; otherwise blueprint deletion fails and leaves
+// orphaned scorecards/pages that cause identifier_taken errors in subsequent tests.
+func DeleteDefaultTestResources(portClient *cli.PortClient) {
+	for _, scorecardIdentifier := range defaultTestScorecardIdentifiers {
+		_ = scorecards.DeleteScorecard(portClient, "workload", scorecardIdentifier)
+	}
+	for _, blueprintIdentifier := range defaultTestBlueprintIdentifiers {
+		_ = blueprint.DeleteBlueprintEntities(portClient, blueprintIdentifier)
+		_ = blueprint.DeleteBlueprint(portClient, blueprintIdentifier)
+	}
+	for _, pageIdentifier := range defaultTestPageIdentifiers {
+		_ = page.DeletePage(portClient, pageIdentifier)
+	}
+}
 
 func CheckResourcesExistence(
 	shouldExist bool,

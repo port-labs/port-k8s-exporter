@@ -87,6 +87,7 @@ func tearDownFixture(
 		f.portClient,
 		blueprintId,
 	)
+	testUtils.DeleteDefaultTestResources(f.portClient)
 }
 
 type resourceMapEntry struct {
@@ -262,6 +263,7 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 		}
 	}
 
+	testUtils.DeleteDefaultTestResources(portClient)
 	err := defaults.InitIntegration(portClient, exporterConfig, "unknown", true)
 	if err != nil {
 		t.Errorf("error initializing integration: %v", err)

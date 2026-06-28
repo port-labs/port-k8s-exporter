@@ -41,6 +41,10 @@ var (
 	blueprintPrefix = "k8s-export-test"
 	deploymentKind  = "apps/v1/deployments"
 	daemonSetKind   = "apps/v1/daemonsets"
+
+	// Live Port API calls in CI can be slow to surface integration examples and indexed entities.
+	portIntegrationAsyncTimeout  = 45 * time.Second
+	portIntegrationAsyncInterval = 500 * time.Millisecond
 )
 
 func getBlueprintId(stateKey string) string {
@@ -82,6 +86,7 @@ func tearDownFixture(
 		f.portClient,
 		blueprintId,
 	)
+	testUtils.DeleteDefaultTestResources(f.portClient)
 }
 
 type resourceMapEntry struct {
@@ -268,6 +273,7 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 		}
 	}
 
+	testUtils.DeleteDefaultTestResources(portClient)
 	err := defaults.InitIntegration(portClient, exporterConfig, "unknown", true)
 	if err != nil {
 		t.Errorf("error initializing integration: %v", err)
@@ -469,7 +475,7 @@ func (f *fixture) assertObjectsHandled(objects []struct{ kind, name string }) {
 		}
 
 		return true
-	}, time.Second*15, time.Millisecond*500)
+	}, portIntegrationAsyncTimeout, portIntegrationAsyncInterval)
 
 	assert.Eventually(f.t, func() bool {
 		processedStateKey := fmt.Sprintf("(statekey/%s)", f.controllersHandler.stateKey)
@@ -489,7 +495,7 @@ func (f *fixture) assertObjectsHandled(objects []struct{ kind, name string }) {
 		}
 
 		return err == nil && len(entities) == len(objects)
-	}, time.Second*15, time.Millisecond*500)
+	}, portIntegrationAsyncTimeout, portIntegrationAsyncInterval)
 }
 
 func (f *fixture) runControllersHandle() {
