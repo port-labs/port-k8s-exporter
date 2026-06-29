@@ -43,7 +43,7 @@ var (
 	daemonSetKind   = "apps/v1/daemonsets"
 
 	// Live Port API calls in CI can be slow to surface integration examples and indexed entities.
-	portIntegrationAsyncTimeout  = 45 * time.Second
+	portIntegrationAsyncTimeout  = 90 * time.Second
 	portIntegrationAsyncInterval = 500 * time.Millisecond
 )
 
