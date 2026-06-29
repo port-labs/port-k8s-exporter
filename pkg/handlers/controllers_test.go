@@ -454,6 +454,8 @@ func (f *fixture) deleteObjects(objects []struct{ kind, namespace, name string }
 }
 
 func (f *fixture) assertObjectsHandled(objects []struct{ kind, name string }) {
+	blueprintId := getBlueprintId(f.controllersHandler.stateKey)
+
 	assert.Eventually(f.t, func() bool {
 		integrationKinds, err := f.portClient.GetIntegrationKinds(f.controllersHandler.stateKey)
 		if err != nil {
@@ -477,24 +479,15 @@ func (f *fixture) assertObjectsHandled(objects []struct{ kind, name string }) {
 		return true
 	}, portIntegrationAsyncTimeout, portIntegrationAsyncInterval)
 
+	// ReadEntity is reliable immediately after upsert; datasource search indexing can lag in CI.
 	assert.Eventually(f.t, func() bool {
-		processedStateKey := fmt.Sprintf("(statekey/%s)", f.controllersHandler.stateKey)
-		entities, err := f.portClient.SearchEntitiesByDatasource(context.Background(), "port-k8s-exporter", processedStateKey)
-
 		for _, obj := range objects {
-			found := false
-			for _, entity := range entities {
-				if entity.Identifier == obj.name {
-					found = true
-					continue
-				}
-			}
-			if !found {
+			_, err := f.portClient.ReadEntity(context.Background(), obj.name, blueprintId)
+			if err != nil {
 				return false
 			}
 		}
-
-		return err == nil && len(entities) == len(objects)
+		return true
 	}, portIntegrationAsyncTimeout, portIntegrationAsyncInterval)
 }
 

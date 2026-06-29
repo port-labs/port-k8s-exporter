@@ -17,9 +17,9 @@ var (
 )
 
 // DeleteDefaultTestResources removes shared default integration resources from the Port org.
-// Scorecards must be deleted before blueprints; otherwise blueprint deletion fails and leaves
-// orphaned scorecards/pages that cause identifier_taken errors in subsequent tests.
+// Scorecard rule entities on _scorecard must be deleted before scorecards; scorecards before blueprints.
 func DeleteDefaultTestResources(portClient *cli.PortClient) {
+	_ = blueprint.DeleteBlueprintEntitiesWithDependents(portClient, "_scorecard")
 	for _, scorecardIdentifier := range defaultTestScorecardIdentifiers {
 		_ = scorecards.DeleteScorecard(portClient, "workload", scorecardIdentifier)
 	}

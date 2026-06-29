@@ -62,10 +62,22 @@ func DeleteBlueprint(portClient *PortClient, blueprintIdentifier string) error {
 }
 
 func DeleteBlueprintEntities(portClient *PortClient, blueprintIdentifier string) error {
+	return deleteBlueprintEntities(portClient, blueprintIdentifier, false)
+}
+
+func DeleteBlueprintEntitiesWithDependents(portClient *PortClient, blueprintIdentifier string) error {
+	return deleteBlueprintEntities(portClient, blueprintIdentifier, true)
+}
+
+func deleteBlueprintEntities(portClient *PortClient, blueprintIdentifier string, deleteDependents bool) error {
+	url := fmt.Sprintf("v1/blueprints/%s/all-entities?delete_blueprint=false", blueprintIdentifier)
+	if deleteDependents {
+		url += "&delete_dependents=true"
+	}
 	pb := &port.ResponseBody{}
 	resp, err := portClient.Client.R().
 		SetResult(&pb).
-		Delete(fmt.Sprintf("v1/blueprints/%s/all-entities?delete_blueprint=false", blueprintIdentifier))
+		Delete(url)
 	if err != nil {
 		return err
 	}

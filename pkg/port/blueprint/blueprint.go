@@ -55,6 +55,14 @@ func DeleteBlueprintEntities(portClient *cli.PortClient, blueprintIdentifier str
 	return nil
 }
 
+func DeleteBlueprintEntitiesWithDependents(portClient *cli.PortClient, blueprintIdentifier string) error {
+	err := cli.DeleteBlueprintEntitiesWithDependents(portClient, blueprintIdentifier)
+	if err != nil {
+		return fmt.Errorf("error deleting Port blueprint entities: %v", err)
+	}
+	return nil
+}
+
 func GetBlueprint(portClient *cli.PortClient, blueprintIdentifier string) (*port.Blueprint, error) {
 	bp, err := cli.GetBlueprint(portClient, blueprintIdentifier)
 	if err != nil {

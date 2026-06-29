@@ -39,10 +39,11 @@ func NewAuthenticator(clientID, clientSecret string) *Authenticator {
 func (a *Authenticator) AuthenticateClient(ctx context.Context, client *PortClient) (string, int, error) {
 	a.AuthMutex.Lock()
 	defer a.AuthMutex.Unlock()
-	client.ClearAuthToken()
-	if time.Since(a.LastRefresh) > time.Duration(a.ExpiresIn)*time.Second {
-		_, _, err := a.refreshAccessToken(ctx, client)
-		if err != nil {
+
+	needsRefresh := a.AccessToken == "" || a.ExpiresIn == 0 ||
+		time.Since(a.LastRefresh) >= time.Duration(a.ExpiresIn)*time.Second
+	if needsRefresh {
+		if _, _, err := a.refreshAccessToken(ctx, client); err != nil {
 			return "", 0, err
 		}
 	}
@@ -51,6 +52,7 @@ func (a *Authenticator) AuthenticateClient(ctx context.Context, client *PortClie
 }
 
 func (a *Authenticator) refreshAccessToken(ctx context.Context, client *PortClient) (string, int, error) {
+	client.ClearAuthToken()
 	tokenResp, err := a.getAccessTokenResponse(ctx, client)
 	if err != nil {
 		return a.AccessToken, a.ExpiresIn, err
