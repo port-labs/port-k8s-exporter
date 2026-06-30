@@ -448,8 +448,6 @@ func (f *fixture) deleteObjects(objects []struct{ kind, namespace, name string }
 }
 
 func (f *fixture) assertObjectsHandled(objects []struct{ kind, name string }) {
-	blueprintId := getBlueprintId(f.controllersHandler.stateKey)
-
 	assert.Eventually(f.t, func() bool {
 		integrationKinds, err := f.portClient.GetIntegrationKinds(f.controllersHandler.stateKey)
 		if err != nil {
@@ -473,17 +471,30 @@ func (f *fixture) assertObjectsHandled(objects []struct{ kind, name string }) {
 		return true
 	}, time.Second*15, time.Millisecond*500)
 
-	// CI: upserts succeed immediately but SearchEntitiesByDatasource waits on Port search
-	// indexing, which is slow and flaky. ReadEntity confirms the entity was written.
+	// Production stale-entity deletion uses SearchEntitiesByDatasource; allow extra time for
+	// Port search indexing in CI.
 	assert.Eventually(f.t, func() bool {
+		processedStateKey := fmt.Sprintf("(statekey/%s)", f.controllersHandler.stateKey)
+		entities, err := f.portClient.SearchEntitiesByDatasource(context.Background(), "port-k8s-exporter", processedStateKey)
+		if err != nil {
+			return false
+		}
+
 		for _, obj := range objects {
-			_, err := f.portClient.ReadEntity(context.Background(), obj.name, blueprintId)
-			if err != nil {
+			found := false
+			for _, entity := range entities {
+				if entity.Identifier == obj.name {
+					found = true
+					break
+				}
+			}
+			if !found {
 				return false
 			}
 		}
-		return true
-	}, time.Second*15, time.Millisecond*500)
+
+		return len(entities) >= len(objects)
+	}, time.Second*60, time.Millisecond*500)
 }
 
 func (f *fixture) runControllersHandle() {
