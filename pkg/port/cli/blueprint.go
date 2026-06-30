@@ -62,24 +62,10 @@ func DeleteBlueprint(portClient *PortClient, blueprintIdentifier string) error {
 }
 
 func DeleteBlueprintEntities(portClient *PortClient, blueprintIdentifier string) error {
-	return deleteBlueprintEntities(portClient, blueprintIdentifier, false)
-}
-
-// DeleteBlueprintEntitiesWithDependents deletes all entities on a blueprint including
-// dependent rule entities. Used by integration test cleanup for the _scorecard blueprint.
-func DeleteBlueprintEntitiesWithDependents(portClient *PortClient, blueprintIdentifier string) error {
-	return deleteBlueprintEntities(portClient, blueprintIdentifier, true)
-}
-
-func deleteBlueprintEntities(portClient *PortClient, blueprintIdentifier string, deleteDependents bool) error {
-	url := fmt.Sprintf("v1/blueprints/%s/all-entities?delete_blueprint=false", blueprintIdentifier)
-	if deleteDependents {
-		url += "&delete_dependents=true"
-	}
 	pb := &port.ResponseBody{}
 	resp, err := portClient.Client.R().
 		SetResult(&pb).
-		Delete(url)
+		Delete(fmt.Sprintf("v1/blueprints/%s/all-entities?delete_blueprint=false", blueprintIdentifier))
 	if err != nil {
 		return err
 	}

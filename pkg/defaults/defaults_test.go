@@ -56,8 +56,14 @@ func (f *Fixture) CleanIntegration() {
 
 func deleteDefaultResources(portClient *cli.PortClient, stateKey string) {
 	_ = integration.DeleteIntegration(portClient, stateKey)
-	// Shared CI org: tear down scorecards and default blueprints/pages in dependency order.
-	testUtils.DeleteDefaultTestResources(portClient)
+	_ = blueprint.DeleteBlueprintEntities(portClient, "workload")
+	_ = blueprint.DeleteBlueprint(portClient, "workload")
+	_ = blueprint.DeleteBlueprintEntities(portClient, "namespace")
+	_ = blueprint.DeleteBlueprint(portClient, "namespace")
+	_ = blueprint.DeleteBlueprintEntities(portClient, "cluster")
+	_ = blueprint.DeleteBlueprint(portClient, "cluster")
+	_ = page.DeletePage(portClient, "workload_overview_dashboard")
+	_ = page.DeletePage(portClient, "availability_scorecard_dashboard")
 }
 
 func Test_InitIntegration_InitDefaults(t *testing.T) {

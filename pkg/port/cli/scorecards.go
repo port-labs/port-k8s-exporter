@@ -20,19 +20,3 @@ func (c *PortClient) CreateScorecard(blueprintIdentifier string, scorecard port.
 	}
 	return &pb.Scorecard, nil
 }
-
-func (c *PortClient) DeleteScorecard(blueprintIdentifier string, scorecardIdentifier string) error {
-	pb := &port.ResponseBody{}
-	resp, err := c.Client.R().
-		SetResult(&pb).
-		SetPathParam("blueprint", blueprintIdentifier).
-		SetPathParam("scorecard", scorecardIdentifier).
-		Delete("v1/blueprints/{blueprint}/scorecards/{scorecard}")
-	if err != nil {
-		return err
-	}
-	if !pb.OK {
-		return fmt.Errorf("failed to delete scorecard, got: %s", resp.Body())
-	}
-	return nil
-}
