@@ -56,6 +56,7 @@ func (f *Fixture) CleanIntegration() {
 
 func deleteDefaultResources(portClient *cli.PortClient, stateKey string) {
 	_ = integration.DeleteIntegration(portClient, stateKey)
+	// Shared CI org: tear down scorecards and default blueprints/pages in dependency order.
 	testUtils.DeleteDefaultTestResources(portClient)
 }
 

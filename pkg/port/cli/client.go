@@ -40,6 +40,9 @@ func (a *Authenticator) AuthenticateClient(ctx context.Context, client *PortClie
 	a.AuthMutex.Lock()
 	defer a.AuthMutex.Unlock()
 
+	// Do not clear the token on every request. InitIntegration patches blueprints in
+	// parallel; clearing the shared resty token between goroutines caused "no token
+	// provided" failures in CI (Test_InitIntegration_ExistingIntegration).
 	needsRefresh := a.AccessToken == "" || a.ExpiresIn == 0 ||
 		time.Since(a.LastRefresh) >= time.Duration(a.ExpiresIn)*time.Second
 	if needsRefresh {

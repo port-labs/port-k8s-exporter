@@ -65,6 +65,8 @@ func DeleteBlueprintEntities(portClient *PortClient, blueprintIdentifier string)
 	return deleteBlueprintEntities(portClient, blueprintIdentifier, false)
 }
 
+// DeleteBlueprintEntitiesWithDependents deletes all entities on a blueprint including
+// dependent rule entities. Used by integration test cleanup for the _scorecard blueprint.
 func DeleteBlueprintEntitiesWithDependents(portClient *PortClient, blueprintIdentifier string) error {
 	return deleteBlueprintEntities(portClient, blueprintIdentifier, true)
 }

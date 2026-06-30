@@ -16,8 +16,11 @@ var (
 	defaultTestPageIdentifiers      = []string{"workload_overview_dashboard", "availability_scorecard_dashboard"}
 )
 
-// DeleteDefaultTestResources removes shared default integration resources from the Port org.
-// Scorecard rule entities on _scorecard must be deleted before scorecards; scorecards before blueprints.
+// DeleteDefaultTestResources removes default integration resources from the shared Port CI org.
+//
+// Order matters: scorecard creation also writes rule entities to the _scorecard blueprint.
+// Those must be removed (with dependents) before scorecard definitions, or later tests hit
+// identifier_taken / has_dependents errors when cleaning up or deleting stale entities.
 func DeleteDefaultTestResources(portClient *cli.PortClient) {
 	_ = blueprint.DeleteBlueprintEntitiesWithDependents(portClient, "_scorecard")
 	for _, scorecardIdentifier := range defaultTestScorecardIdentifiers {

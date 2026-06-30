@@ -41,10 +41,6 @@ var (
 	blueprintPrefix = "k8s-export-test"
 	deploymentKind  = "apps/v1/deployments"
 	daemonSetKind   = "apps/v1/daemonsets"
-
-	// Live Port API calls in CI can be slow to surface integration examples and indexed entities.
-	portIntegrationAsyncTimeout  = 90 * time.Second
-	portIntegrationAsyncInterval = 500 * time.Millisecond
 )
 
 func getBlueprintId(stateKey string) string {
@@ -86,7 +82,6 @@ func tearDownFixture(
 		f.portClient,
 		blueprintId,
 	)
-	testUtils.DeleteDefaultTestResources(f.portClient)
 }
 
 type resourceMapEntry struct {
@@ -273,7 +268,6 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 		}
 	}
 
-	testUtils.DeleteDefaultTestResources(portClient)
 	err := defaults.InitIntegration(portClient, exporterConfig, "unknown", true)
 	if err != nil {
 		t.Errorf("error initializing integration: %v", err)
@@ -477,9 +471,10 @@ func (f *fixture) assertObjectsHandled(objects []struct{ kind, name string }) {
 		}
 
 		return true
-	}, portIntegrationAsyncTimeout, portIntegrationAsyncInterval)
+	}, time.Second*15, time.Millisecond*500)
 
-	// ReadEntity is reliable immediately after upsert; datasource search indexing can lag in CI.
+	// CI: upserts succeed immediately but SearchEntitiesByDatasource waits on Port search
+	// indexing, which is slow and flaky. ReadEntity confirms the entity was written.
 	assert.Eventually(f.t, func() bool {
 		for _, obj := range objects {
 			_, err := f.portClient.ReadEntity(context.Background(), obj.name, blueprintId)
@@ -488,7 +483,7 @@ func (f *fixture) assertObjectsHandled(objects []struct{ kind, name string }) {
 			}
 		}
 		return true
-	}, portIntegrationAsyncTimeout, portIntegrationAsyncInterval)
+	}, time.Second*15, time.Millisecond*500)
 }
 
 func (f *fixture) runControllersHandle() {
