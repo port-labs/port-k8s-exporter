@@ -471,21 +471,16 @@ func (f *fixture) assertObjectsHandled(objects []struct{ kind, name string }) {
 		return true
 	}, time.Second*15, time.Millisecond*500)
 
-	// Production stale-entity deletion uses SearchEntitiesByDatasource; allow extra time for
-	// Port search indexing in CI.
 	assert.Eventually(f.t, func() bool {
 		processedStateKey := fmt.Sprintf("(statekey/%s)", f.controllersHandler.stateKey)
 		entities, err := f.portClient.SearchEntitiesByDatasource(context.Background(), "port-k8s-exporter", processedStateKey)
-		if err != nil {
-			return false
-		}
 
 		for _, obj := range objects {
 			found := false
 			for _, entity := range entities {
 				if entity.Identifier == obj.name {
 					found = true
-					break
+					continue
 				}
 			}
 			if !found {
@@ -493,7 +488,7 @@ func (f *fixture) assertObjectsHandled(objects []struct{ kind, name string }) {
 			}
 		}
 
-		return len(entities) >= len(objects)
+		return err == nil && len(entities) == len(objects)
 	}, time.Second*60, time.Millisecond*500)
 }
 
