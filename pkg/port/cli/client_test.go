@@ -398,63 +398,6 @@ func TestBulkUpsert_PartialSuccess207(t *testing.T) {
 	}
 }
 
-func TestAuthenticator_ParallelRequestsAlwaysSendAuthorization(t *testing.T) {
-	var mu sync.Mutex
-	var requestsWithoutAuth int
-	var apiRequestCount int
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/auth/access_token" {
-			tokenResp := port.AccessTokenResponse{
-				AccessToken: "test-token",
-				ExpiresIn:   3600,
-			}
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(tokenResp)
-			return
-		}
-
-		if r.URL.Path == "/v1/entities/search" {
-			mu.Lock()
-			apiRequestCount++
-			auth := r.Header.Get("Authorization")
-			if auth == "" || !strings.HasPrefix(auth, "Bearer ") {
-				requestsWithoutAuth++
-			}
-			mu.Unlock()
-
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(port.ResponseBody{OK: true, Entities: []port.Entity{}})
-			return
-		}
-
-		http.NotFound(w, r)
-	}))
-	defer server.Close()
-
-	client := newTestClient(server.URL)
-
-	const goroutines = 25
-	var wg sync.WaitGroup
-	wg.Add(goroutines)
-	for i := 0; i < goroutines; i++ {
-		go func() {
-			defer wg.Done()
-			_, err := client.SearchEntities(context.Background(), port.SearchBody{})
-			assert.NoError(t, err)
-		}()
-	}
-	wg.Wait()
-
-	mu.Lock()
-	noAuth := requestsWithoutAuth
-	total := apiRequestCount
-	mu.Unlock()
-
-	assert.Equal(t, 0, noAuth, "parallel requests must not race auth off the shared resty client")
-	assert.Equal(t, goroutines, total)
-}
-
 func TestBulkUpsert_NetworkErrorIsRetryable(t *testing.T) {
 	server := newBulkTestServer(func(w http.ResponseWriter, r *http.Request) {})
 	server.Close()

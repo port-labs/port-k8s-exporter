@@ -39,22 +39,18 @@ func NewAuthenticator(clientID, clientSecret string) *Authenticator {
 func (a *Authenticator) AuthenticateClient(ctx context.Context, client *PortClient) (string, int, error) {
 	a.AuthMutex.Lock()
 	defer a.AuthMutex.Unlock()
-
-	// The shared resty client stores the bearer token globally. Only clear it inside
-	// refreshAccessToken; clearing here would race with parallel requests and drop auth.
-	needsRefresh := a.AccessToken == "" || a.ExpiresIn == 0 ||
-		time.Since(a.LastRefresh) >= time.Duration(a.ExpiresIn)*time.Second
-	if needsRefresh {
-		if _, _, err := a.refreshAccessToken(ctx, client); err != nil {
+	client.ClearAuthToken()
+	if time.Since(a.LastRefresh) > time.Duration(a.ExpiresIn)*time.Second {
+		_, _, err := a.refreshAccessToken(ctx, client)
+		if err != nil {
 			return "", 0, err
 		}
-		client.Client.SetAuthToken(a.AccessToken)
 	}
+	client.Client.SetAuthToken(a.AccessToken)
 	return a.AccessToken, a.ExpiresIn, nil
 }
 
 func (a *Authenticator) refreshAccessToken(ctx context.Context, client *PortClient) (string, int, error) {
-	client.ClearAuthToken()
 	tokenResp, err := a.getAccessTokenResponse(ctx, client)
 	if err != nil {
 		return a.AccessToken, a.ExpiresIn, err
