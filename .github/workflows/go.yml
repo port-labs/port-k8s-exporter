@@ -13,7 +13,7 @@ jobs:
     steps:
     # SECURITY: Always checkout the base branch first for trusted setup
     - name: Checkout base branch
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
       with:
         ref: ${{ github.event.pull_request.base.sha || github.sha }}
 
@@ -25,7 +25,7 @@ jobs:
 
     # SECURITY: Only now checkout the PR code for testing
     - name: Checkout PR code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
       with:
         ref: ${{ github.event.pull_request.head.sha || github.sha }}
         # Clean checkout to avoid any potential security issues

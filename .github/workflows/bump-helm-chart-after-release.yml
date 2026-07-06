@@ -31,7 +31,7 @@ jobs:
           echo "version=${TAG#v}" >> $GITHUB_OUTPUT
 
       - name: Checkout helm-charts
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: port-labs/helm-charts
           token: ${{ secrets.PORT_MACHINE_USER_GITHUB_TOKEN }}
