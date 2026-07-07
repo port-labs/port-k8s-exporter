@@ -6,12 +6,10 @@ import (
 	"fmt"
 	"sync"
 
-	guuid "github.com/google/uuid"
-	"go.uber.org/zap"
 	"github.com/google/go-containerregistry/pkg/authn"
+	guuid "github.com/google/uuid"
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/crd"
-	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
 	"github.com/port-labs/port-k8s-exporter/pkg/image"
 	"github.com/port-labs/port-k8s-exporter/pkg/k8s"
 	"github.com/port-labs/port-k8s-exporter/pkg/logger"
@@ -20,6 +18,7 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 	"github.com/port-labs/port-k8s-exporter/pkg/port/integration"
 	"github.com/port-labs/port-k8s-exporter/pkg/signal"
+	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 )
@@ -32,11 +31,6 @@ type ControllersHandler struct {
 	stopCh           chan struct{}
 	isStopped        bool
 	portConfig       *port.IntegrationAppConfig
-}
-
-type FullResyncResults struct {
-	EntitiesSets              []map[string]interface{}
-	ShouldDeleteStaleEntities bool
 }
 
 type ResyncType string
@@ -118,18 +112,30 @@ func (c *ControllersHandler) Handle(resyncType ResyncType) {
 		cancelCtx()
 	}()
 
-	if resyncResults.ShouldDeleteStaleEntities {
-		eventLogger.Infow("Deleting stale entities")
-		err := c.runDeleteStaleEntities(ctx, resyncResults.EntitiesSets, eventLogger)
-		if err != nil {
-			eventLogger.Errorw("Error deleting stale entities", "error", err.Error())
-		}
-		eventLogger.Infow("Done deleting stale entities")
-		metrics.SetSuccessStatusConditionally(metrics.MetricKindReconciliation, metrics.MetricPhaseDelete, err == nil)
+	blueprintToKinds := buildBlueprintToKinds(c.portConfig.Resources)
+	mergedSet, eligibleBlueprints, skippedKinds := computeDeletionPlan(resyncResults.ControllerResults, blueprintToKinds)
+
+	if len(eligibleBlueprints) == 0 {
+		eventLogger.Warnw("Skipping delete of stale entities; no blueprints eligible", "skippedKinds", skippedKinds)
 		return
 	}
 
-	eventLogger.Warnw("Skipping delete of stale entities due to a failure in getting all current entities from k8s")
+	eligibleBlueprintKeys := make([]string, 0, len(eligibleBlueprints))
+	for blueprint := range eligibleBlueprints {
+		eligibleBlueprintKeys = append(eligibleBlueprintKeys, blueprint)
+	}
+
+	if len(skippedKinds) > 0 {
+		eventLogger.Warnw("Partial stale entity cleanup; some kinds failed sync", "skippedKinds", skippedKinds, "eligibleBlueprints", eligibleBlueprintKeys)
+	}
+
+	eventLogger.Infow("Deleting stale entities", "eligibleBlueprints", eligibleBlueprintKeys, "skippedKinds", skippedKinds)
+	err = c.runDeleteStaleEntities(ctx, mergedSet, eligibleBlueprints, eventLogger)
+	if err != nil {
+		eventLogger.Errorw("Error deleting stale entities", "error", err.Error())
+	}
+	eventLogger.Infow("Done deleting stale entities")
+	metrics.SetSuccessStatusConditionally(metrics.MetricKindReconciliation, metrics.MetricPhaseDelete, err == nil)
 }
 
 func RunResync(exporterConfig *port.Config, k8sClient *k8s.Client, portClient *cli.PortClient, resyncType ResyncType) error {
@@ -164,11 +170,13 @@ func RunResync(exporterConfig *port.Config, k8sClient *k8s.Client, portClient *c
 
 func syncAllControllers(c *ControllersHandler, eventLogger *zap.SugaredLogger) (*FullResyncResults, error) {
 	return metrics.MeasureDuration(metrics.MetricKindResync, metrics.MetricPhaseResync, func(phase string) (*FullResyncResults, error) {
-		currentEntitiesSets := make([]map[string]interface{}, 0)
-		shouldDeleteStaleEntities := true
+		controllerResults := make([]ControllerSyncResult, 0, len(c.controllers))
+		var resultsMu sync.Mutex
+		allKindsSucceeded := true
 		var syncWg sync.WaitGroup
 
 		for _, controller := range c.controllers {
+			controller := controller
 			go func() {
 				<-c.stopCh
 				logger.Info("Shutting down controllers")
@@ -189,26 +197,36 @@ func syncAllControllers(c *ControllersHandler, eventLogger *zap.SugaredLogger) (
 				return struct{}{}, nil
 			})
 
+			recordResult := func(entitiesSet map[string]interface{}, shouldDeleteStaleEntities bool) {
+				resultsMu.Lock()
+				defer resultsMu.Unlock()
+				controllerResults = append(controllerResults, ControllerSyncResult{
+					Kind:                      controller.Resource.Kind,
+					EntitiesSet:               entitiesSet,
+					ShouldDeleteStaleEntities: shouldDeleteStaleEntities,
+				})
+				if !shouldDeleteStaleEntities {
+					allKindsSucceeded = false
+				}
+			}
+
 			if c.portConfig.CreateMissingRelatedEntities {
 				syncWg.Add(1)
 				go func() {
 					defer syncWg.Done()
 					controllerEntitiesSet, controllerShouldDeleteStaleEntities := syncController(controller, c, eventLogger)
-					currentEntitiesSets = append(currentEntitiesSets, controllerEntitiesSet)
-					shouldDeleteStaleEntities = shouldDeleteStaleEntities && controllerShouldDeleteStaleEntities
+					recordResult(controllerEntitiesSet, controllerShouldDeleteStaleEntities)
 				}()
 				continue
 			}
 			controllerEntitiesSet, controllerShouldDeleteStaleEntities := syncController(controller, c, eventLogger)
-			currentEntitiesSets = append(currentEntitiesSets, controllerEntitiesSet)
-			shouldDeleteStaleEntities = shouldDeleteStaleEntities && controllerShouldDeleteStaleEntities
+			recordResult(controllerEntitiesSet, controllerShouldDeleteStaleEntities)
 		}
 		syncWg.Wait()
-		metrics.SetSuccessStatusConditionally(metrics.MetricKindResync, phase, shouldDeleteStaleEntities)
+		metrics.SetSuccessStatusConditionally(metrics.MetricKindResync, phase, allKindsSucceeded)
 
 		return &FullResyncResults{
-			EntitiesSets:              currentEntitiesSets,
-			ShouldDeleteStaleEntities: shouldDeleteStaleEntities,
+			ControllerResults: controllerResults,
 		}, nil
 	})
 }
@@ -231,9 +249,9 @@ func syncController(controller *k8s.Controller, c *ControllersHandler, eventLogg
 	return map[string]interface{}{}, initialSyncResult.ShouldDeleteStaleEntities
 }
 
-func (c *ControllersHandler) runDeleteStaleEntities(ctx context.Context, currentEntitiesSet []map[string]interface{}, eventLogger *zap.SugaredLogger) error {
+func (c *ControllersHandler) runDeleteStaleEntities(ctx context.Context, existingEntitiesSet map[string]interface{}, eligibleBlueprints map[string]bool, eventLogger *zap.SugaredLogger) error {
 	_, err := metrics.MeasureDuration(metrics.MetricKindReconciliation, metrics.MetricPhaseDelete, func(phase string) (struct{}, error) {
-		err := c.portClient.DeleteStaleEntities(ctx, c.stateKey, goutils.MergeMaps(currentEntitiesSet...))
+		err := c.portClient.DeleteStaleEntities(ctx, c.stateKey, existingEntitiesSet, eligibleBlueprints)
 		if err != nil {
 			eventLogger.Errorw("error deleting stale entities", "error", err.Error())
 			return struct{}{}, err

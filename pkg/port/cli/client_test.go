@@ -298,9 +298,9 @@ func newTestClient(serverURL string) *PortClient {
 
 func TestBulkUpsert_ReturnsTypedErrorWithStatusCode(t *testing.T) {
 	tests := []struct {
-		name           string
-		statusCode     int
-		nonRetryable   bool
+		name         string
+		statusCode   int
+		nonRetryable bool
 	}{
 		{"404 returns non-retryable BulkUpsertError", 404, true},
 		{"422 returns non-retryable BulkUpsertError", 422, true},
@@ -409,4 +409,42 @@ func TestBulkUpsert_NetworkErrorIsRetryable(t *testing.T) {
 
 	require.Error(t, err)
 	assert.False(t, IsBulkNonRetryableError(err), "network errors should be retryable")
+}
+
+func TestDeleteStaleEntities_RespectsEligibleBlueprints(t *testing.T) {
+	var deletedIdentifiers []string
+
+	server := newBulkTestServer(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/datasource-entities") {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(port.ResponseBody{
+				OK: true,
+				Entities: []port.Entity{
+					{Identifier: "keep-me", Blueprint: "eligible-bp"},
+					{Identifier: "skip-me", Blueprint: "ineligible-bp"},
+				},
+			})
+			return
+		}
+		if r.Method == http.MethodDelete {
+			deletedIdentifiers = append(deletedIdentifiers, r.URL.Path)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(port.ResponseBody{OK: true})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	})
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+	err := client.DeleteStaleEntities(
+		context.Background(),
+		"test-state-key",
+		map[string]interface{}{},
+		map[string]bool{"eligible-bp": true},
+	)
+
+	require.NoError(t, err)
+	assert.Len(t, deletedIdentifiers, 1)
+	assert.Contains(t, deletedIdentifiers[0], "keep-me")
 }

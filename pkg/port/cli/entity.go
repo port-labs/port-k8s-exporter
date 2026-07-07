@@ -115,7 +115,7 @@ func (c *PortClient) DeleteEntity(ctx context.Context, id string, blueprint stri
 	return nil
 }
 
-func (c *PortClient) DeleteStaleEntities(ctx context.Context, stateKey string, existingEntitiesSet map[string]interface{}) error {
+func (c *PortClient) DeleteStaleEntities(ctx context.Context, stateKey string, existingEntitiesSet map[string]interface{}, eligibleBlueprints map[string]bool) error {
 	processedStateKey := fmt.Sprintf("(statekey/%s)", stateKey)
 	portEntities, err := c.SearchEntitiesByDatasource(ctx, "port-k8s-exporter", processedStateKey)
 	if err != nil {
@@ -125,6 +125,9 @@ func (c *PortClient) DeleteStaleEntities(ctx context.Context, stateKey string, e
 	successCount := 0
 	failedCount := 0
 	for _, portEntity := range portEntities {
+		if eligibleBlueprints != nil && !eligibleBlueprints[portEntity.Blueprint] {
+			continue
+		}
 		_, ok := existingEntitiesSet[c.GetEntityIdentifierKey(&portEntity)]
 		if !ok {
 			err := c.DeleteEntity(ctx, portEntity.Identifier, portEntity.Blueprint, c.DeleteDependents)
