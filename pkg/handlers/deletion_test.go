@@ -168,3 +168,82 @@ func TestComputeDeletionPlan_DynamicBlueprintFromEntitySet(t *testing.T) {
 
 	assert.True(t, eligible["dynamic-bp"])
 }
+
+func TestSortBlueprintsForDeletion_ChildBeforeParent(t *testing.T) {
+	relations := map[string]map[string]port.Relation{
+		"k8s_pod": {
+			"node": {Target: "k8s_node"},
+		},
+		"k8s_node": nil,
+		"k8s_workload": {
+			"namespace": {Target: "namespace"},
+		},
+		"namespace": {
+			"Cluster": {Target: "cluster"},
+		},
+		"cluster": nil,
+	}
+
+	order := sortBlueprintsForDeletion(relations)
+
+	podIdx := indexOf(order, "k8s_pod")
+	nodeIdx := indexOf(order, "k8s_node")
+	workloadIdx := indexOf(order, "k8s_workload")
+	namespaceIdx := indexOf(order, "namespace")
+	clusterIdx := indexOf(order, "cluster")
+
+	assert.Less(t, podIdx, nodeIdx)
+	assert.Less(t, workloadIdx, namespaceIdx)
+	assert.Less(t, namespaceIdx, clusterIdx)
+}
+
+func TestSortBlueprintsForDeletion_NoRelationsUsesStableOrder(t *testing.T) {
+	order := sortBlueprintsForDeletion(map[string]map[string]port.Relation{
+		"beta":  nil,
+		"alpha": nil,
+	})
+	assert.Equal(t, []string{"alpha", "beta"}, order)
+}
+
+func TestPopMinReady_SingleElement(t *testing.T) {
+	current, remaining := popMinReady([]string{"only"})
+
+	assert.Equal(t, "only", current)
+	assert.Empty(t, remaining)
+}
+
+func TestPopMinReady_PicksAlphabeticallyFirst(t *testing.T) {
+	current, remaining := popMinReady([]string{"zebra", "alpha", "mango"})
+
+	assert.Equal(t, "alpha", current)
+	assert.Equal(t, []string{"zebra", "mango"}, remaining)
+}
+
+func TestPopMinReady_RemovesSelectedElementOnly(t *testing.T) {
+	_, remaining := popMinReady([]string{"beta", "alpha"})
+
+	assert.Equal(t, []string{"beta"}, remaining)
+}
+
+func TestPopMinReady_SequentialPicksAreSorted(t *testing.T) {
+	ready := []string{"charlie", "alpha", "bravo"}
+	picked := make([]string, 0, len(ready))
+
+	for len(ready) > 0 {
+		var current string
+		current, ready = popMinReady(ready)
+		picked = append(picked, current)
+	}
+
+	assert.Equal(t, []string{"alpha", "bravo", "charlie"}, picked)
+	assert.Empty(t, ready)
+}
+
+func indexOf(items []string, target string) int {
+	for i, item := range items {
+		if item == target {
+			return i
+		}
+	}
+	return -1
+}

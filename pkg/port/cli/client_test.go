@@ -441,10 +441,51 @@ func TestDeleteStaleEntities_RespectsEligibleBlueprints(t *testing.T) {
 		context.Background(),
 		"test-state-key",
 		map[string]interface{}{},
-		map[string]bool{"eligible-bp": true},
+		[]string{"eligible-bp"},
 	)
 
 	require.NoError(t, err)
 	assert.Len(t, deletedIdentifiers, 1)
 	assert.Contains(t, deletedIdentifiers[0], "keep-me")
+}
+
+func TestDeleteStaleEntities_DeletesInBlueprintOrder(t *testing.T) {
+	var deletedBlueprints []string
+
+	server := newBulkTestServer(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/datasource-entities") {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(port.ResponseBody{
+				OK: true,
+				Entities: []port.Entity{
+					{Identifier: "parent-1", Blueprint: "parent-bp"},
+					{Identifier: "child-1", Blueprint: "child-bp"},
+				},
+			})
+			return
+		}
+		if r.Method == http.MethodDelete {
+			parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+			// v1/blueprints/{blueprint}/entities/{identifier}
+			if len(parts) >= 3 {
+				deletedBlueprints = append(deletedBlueprints, parts[2])
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(port.ResponseBody{OK: true})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	})
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+	err := client.DeleteStaleEntities(
+		context.Background(),
+		"test-state-key",
+		map[string]interface{}{},
+		[]string{"child-bp", "parent-bp"},
+	)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"child-bp", "parent-bp"}, deletedBlueprints)
 }

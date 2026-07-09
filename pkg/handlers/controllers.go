@@ -250,8 +250,22 @@ func syncController(controller *k8s.Controller, c *ControllersHandler, eventLogg
 }
 
 func (c *ControllersHandler) runDeleteStaleEntities(ctx context.Context, existingEntitiesSet map[string]interface{}, eligibleBlueprints map[string]bool, eventLogger *zap.SugaredLogger) error {
+	relationsByBlueprint := make(map[string]map[string]port.Relation, len(eligibleBlueprints))
+	for blueprintID := range eligibleBlueprints {
+		bp, err := cli.GetBlueprint(c.portClient, blueprintID)
+		if err != nil {
+			eventLogger.Warnw("Could not fetch blueprint for delete ordering; using alphabetical fallback for this blueprint", "blueprint", blueprintID, "error", err.Error())
+			relationsByBlueprint[blueprintID] = nil
+			continue
+		}
+		relationsByBlueprint[blueprintID] = bp.Relations
+	}
+
+	blueprintDeleteOrder := sortBlueprintsForDeletion(relationsByBlueprint)
+	eventLogger.Infow("Computed blueprint delete order", "blueprintDeleteOrder", blueprintDeleteOrder)
+
 	_, err := metrics.MeasureDuration(metrics.MetricKindReconciliation, metrics.MetricPhaseDelete, func(phase string) (struct{}, error) {
-		err := c.portClient.DeleteStaleEntities(ctx, c.stateKey, existingEntitiesSet, eligibleBlueprints)
+		err := c.portClient.DeleteStaleEntities(ctx, c.stateKey, existingEntitiesSet, blueprintDeleteOrder)
 		if err != nil {
 			eventLogger.Errorw("error deleting stale entities", "error", err.Error())
 			return struct{}{}, err

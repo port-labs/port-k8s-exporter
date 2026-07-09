@@ -115,21 +115,33 @@ func (c *PortClient) DeleteEntity(ctx context.Context, id string, blueprint stri
 	return nil
 }
 
-func (c *PortClient) DeleteStaleEntities(ctx context.Context, stateKey string, existingEntitiesSet map[string]interface{}, eligibleBlueprints map[string]bool) error {
+func (c *PortClient) DeleteStaleEntities(ctx context.Context, stateKey string, existingEntitiesSet map[string]interface{}, blueprintDeleteOrder []string) error {
 	processedStateKey := fmt.Sprintf("(statekey/%s)", stateKey)
 	portEntities, err := c.SearchEntitiesByDatasource(ctx, "port-k8s-exporter", processedStateKey)
 	if err != nil {
 		return fmt.Errorf("error searching Port entities: %v", err)
 	}
 
-	successCount := 0
-	failedCount := 0
+	eligibleBlueprints := make(map[string]bool, len(blueprintDeleteOrder))
+	for _, blueprint := range blueprintDeleteOrder {
+		eligibleBlueprints[blueprint] = true
+	}
+
+	staleByBlueprint := make(map[string][]port.Entity)
 	for _, portEntity := range portEntities {
-		if eligibleBlueprints != nil && !eligibleBlueprints[portEntity.Blueprint] {
+		if !eligibleBlueprints[portEntity.Blueprint] {
 			continue
 		}
-		_, ok := existingEntitiesSet[c.GetEntityIdentifierKey(&portEntity)]
-		if !ok {
+		if _, ok := existingEntitiesSet[c.GetEntityIdentifierKey(&portEntity)]; ok {
+			continue
+		}
+		staleByBlueprint[portEntity.Blueprint] = append(staleByBlueprint[portEntity.Blueprint], portEntity)
+	}
+
+	successCount := 0
+	failedCount := 0
+	for _, blueprint := range blueprintDeleteOrder {
+		for _, portEntity := range staleByBlueprint[blueprint] {
 			err := c.DeleteEntity(ctx, portEntity.Identifier, portEntity.Blueprint, c.DeleteDependents)
 			if err != nil {
 				logger.Errorf("error deleting Port entity '%s' of blueprint '%s': %v", portEntity.Identifier, portEntity.Blueprint, err)
