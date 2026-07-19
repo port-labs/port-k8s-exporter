@@ -72,6 +72,14 @@ type TransformResult struct {
 	RawDataExamples []interface{}
 }
 
+func (c *Controller) enqueueEventItems(workqueue workqueue.RateLimitingInterface, item EventItem) {
+	for kindIndex := range c.Resource.KindConfigs {
+		itemWithKind := item
+		itemWithKind.KindIndex = kindIndex
+		workqueue.Add(itemWithKind)
+	}
+}
+
 func NewController(resource port.AggregatedResource, informer informers.GenericInformer, integrationConfig *port.IntegrationAppConfig, applicationConfig *config.ApplicationConfiguration, imageEnricher *image.Enricher) *Controller {
 	// We create a new Port client for each controller because the Resty client is not thread-safe.
 	portClient := cli.New(applicationConfig)
@@ -109,15 +117,11 @@ func NewController(resource port.AggregatedResource, informer informers.GenericI
 				}
 				item.EventSource = port.LiveEventsSource
 				logger.Debugw("sending the item to events queue for processing", "item", item.Key)
-				controller.eventsWorkqueue.Add(item)
+				controller.enqueueEventItems(controller.eventsWorkqueue, item)
 			} else {
 				item.EventSource = port.ResyncSource
 				logger.Debugw("sending the item to resync queue for processing", "item", item.Key)
-				for kindIndex := range controller.Resource.KindConfigs {
-					itemWithKind := item
-					itemWithKind.KindIndex = kindIndex
-					controller.initialSyncWorkqueue.Add(itemWithKind)
-				}
+				controller.enqueueEventItems(controller.initialSyncWorkqueue, item)
 			}
 		},
 		UpdateFunc: func(old interface{}, new interface{}) {
@@ -134,7 +138,7 @@ func NewController(resource port.AggregatedResource, informer informers.GenericI
 
 			if controller.shouldSendUpdateEvent(old, new, integrationConfig.UpdateEntityOnlyOnDiff == nil || *(integrationConfig.UpdateEntityOnlyOnDiff)) {
 				logger.Debugw("sending the update event to queue for processing", "item", item.Key)
-				controller.eventsWorkqueue.Add(item)
+				controller.enqueueEventItems(controller.eventsWorkqueue, item)
 				return
 			}
 			logger.Debugw("decided not to update. Ignoring.", "item", item.Key)
@@ -209,7 +213,7 @@ func (c *Controller) RunInitialSync(eventLogger *zap.SugaredLogger) *SyncResult 
 
 	// Process any remaining batched entities
 	eventLogger.Debugw("Going to process all the remaining entities in the collector.", "controller", c.Resource.Kind)
-	finalSyncResult := batchCollector.ProcessRemaining(c, eventLogger)
+	finalSyncResult := batchCollector.ProcessRemaining(c, c.initialSyncWorkqueue, eventLogger)
 	if finalSyncResult != nil {
 		entitiesSet = goutils.MergeMaps(entitiesSet, finalSyncResult.EntitiesSet)
 		shouldDeleteStaleEntities = shouldDeleteStaleEntities && finalSyncResult.ShouldDeleteStaleEntities
@@ -229,8 +233,9 @@ func (c *Controller) RunInitialSync(eventLogger *zap.SugaredLogger) *SyncResult 
 }
 
 type EntityWithKind struct {
-	Entity port.EntityRequest
-	Kind   string
+	Entity    port.EntityRequest
+	Kind      string
+	SourceObj interface{}
 }
 
 type workqueueGetResult struct {
@@ -302,11 +307,33 @@ func NewBatchCollector(maxBatchSize int, timeout time.Duration) *BatchCollector 
 	}
 }
 
-func (bc *BatchCollector) AddEntity(entity port.EntityRequest, kind string) {
+func (bc *BatchCollector) AddEntity(entity port.EntityRequest, kind string, sourceObj interface{}) {
 	if bc.entitiesByBlueprint[entity.Blueprint] == nil {
 		bc.entitiesByBlueprint[entity.Blueprint] = make([]EntityWithKind, 0)
 	}
-	bc.entitiesByBlueprint[entity.Blueprint] = append(bc.entitiesByBlueprint[entity.Blueprint], EntityWithKind{Entity: entity, Kind: kind})
+	bc.entitiesByBlueprint[entity.Blueprint] = append(bc.entitiesByBlueprint[entity.Blueprint], EntityWithKind{Entity: entity, Kind: kind, SourceObj: sourceObj})
+}
+
+func (bc *BatchCollector) trackFailedWorkItem(failedSourceObjs map[interface{}]struct{}, sourceObj interface{}) {
+	if sourceObj != nil {
+		failedSourceObjs[sourceObj] = struct{}{}
+	}
+}
+
+func (bc *BatchCollector) requeueFailedWorkItems(workqueue workqueue.RateLimitingInterface, failedSourceObjs map[interface{}]struct{}, eventLogger *zap.SugaredLogger) {
+	if len(failedSourceObjs) == 0 {
+		return
+	}
+	for obj := range failedSourceObjs {
+		numRequeues := workqueue.NumRequeues(obj)
+		if numRequeues >= MaxNumRequeues {
+			eventLogger.Warnw("Giving up on work item after max requeues due to batch flush failure", "numRequeues", numRequeues)
+			workqueue.Forget(obj)
+			continue
+		}
+		eventLogger.Debugw("Requeuing work item due to retryable batch flush failure", "numRequeues", numRequeues)
+		workqueue.AddRateLimited(obj)
+	}
 }
 
 func (bc *BatchCollector) MarkError() {
@@ -331,7 +358,7 @@ func (c *Controller) calculateTotalBatchSize() int {
 	return maxEntitiesPerBlueprintBatch * BlueprintBatchMultiplier
 }
 
-func (bc *BatchCollector) ProcessBatch(controller *Controller, eventLogger *zap.SugaredLogger) *SyncResult {
+func (bc *BatchCollector) ProcessBatch(controller *Controller, workqueue workqueue.RateLimitingInterface, eventLogger *zap.SugaredLogger) *SyncResult {
 	if len(bc.entitiesByBlueprint) == 0 {
 		bc.lastFlush = time.Now()
 		eventLogger.Debugw("Batch collector has no entities to process", "hasErrors", bc.hasErrors, "controller", controller.Resource.Kind)
@@ -343,6 +370,7 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller, eventLogger *zap.
 	}
 	entitiesSet := make(map[string]interface{})
 	shouldDeleteStaleEntities := !bc.hasErrors
+	failedSourceObjs := make(map[interface{}]struct{})
 	maxPayloadBytes := config.ApplicationConfig.BulkSyncMaxPayloadBytes
 	maxEntitiesPerBlueprintBatch := config.ApplicationConfig.BulkSyncMaxEntitiesPerBatch
 	totalEntities := 0
@@ -385,7 +413,7 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller, eventLogger *zap.
 						}
 						shouldDeleteStaleEntities = false
 					} else {
-						bc.fallbackToIndividualUpserts(controller, batchEntitiesWithKind, &entitiesSet, &shouldDeleteStaleEntities, &successCountWithKind, &failedUpsertsCountWithKind, eventLogger)
+						bc.fallbackToIndividualUpserts(controller, batchEntitiesWithKind, &entitiesSet, &shouldDeleteStaleEntities, &successCountWithKind, &failedUpsertsCountWithKind, failedSourceObjs, eventLogger)
 					}
 					continue
 				}
@@ -429,7 +457,7 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller, eventLogger *zap.
 						}
 					}
 					if len(failedEntitiesWithKind) > 0 {
-						bc.fallbackToIndividualUpserts(controller, failedEntitiesWithKind, &entitiesSet, &shouldDeleteStaleEntities, &successCountWithKind, &failedUpsertsCountWithKind, eventLogger)
+						bc.fallbackToIndividualUpserts(controller, failedEntitiesWithKind, &entitiesSet, &shouldDeleteStaleEntities, &successCountWithKind, &failedUpsertsCountWithKind, failedSourceObjs, eventLogger)
 					}
 				}
 				eventLogger.Infow(fmt.Sprintf("Bulk upsert completed for blueprint %s.", blueprint), "blueprint", blueprint, "successCount", successCount, "failedCount", len(bulkResponse.Errors))
@@ -440,6 +468,7 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller, eventLogger *zap.
 	// Clear the batch
 	bc.entitiesByBlueprint = make(map[string][]EntityWithKind)
 	bc.lastFlush = time.Now()
+	bc.requeueFailedWorkItems(workqueue, failedSourceObjs, eventLogger)
 
 	go func() {
 		for kindLabel, count := range successCountWithKind {
@@ -460,7 +489,7 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller, eventLogger *zap.
 	}
 }
 
-func (bc *BatchCollector) fallbackToIndividualUpserts(controller *Controller, entitiesWithKind []EntityWithKind, entitiesSet *map[string]interface{}, shouldDeleteStaleEntities *bool, successCountWithKind *map[string]int, failedUpsertsCountWithKind *map[string]int, eventLogger *zap.SugaredLogger) {
+func (bc *BatchCollector) fallbackToIndividualUpserts(controller *Controller, entitiesWithKind []EntityWithKind, entitiesSet *map[string]interface{}, shouldDeleteStaleEntities *bool, successCountWithKind *map[string]int, failedUpsertsCountWithKind *map[string]int, failedSourceObjs map[interface{}]struct{}, eventLogger *zap.SugaredLogger) {
 	eventLogger.Infow("Falling back to individual upserts", "entityCount", len(entitiesWithKind))
 
 	for _, entityWithKind := range entitiesWithKind {
@@ -469,6 +498,7 @@ func (bc *BatchCollector) fallbackToIndividualUpserts(controller *Controller, en
 			eventLogger.Errorw("Individual upsert fallback failed", "identifier", entityWithKind.Entity.Identifier, "blueprint", entityWithKind.Entity.Blueprint, "error", err)
 			(*failedUpsertsCountWithKind)[entityWithKind.Kind]++
 			*shouldDeleteStaleEntities = false
+			bc.trackFailedWorkItem(failedSourceObjs, entityWithKind.SourceObj)
 		} else if handledEntity != nil {
 			(*entitiesSet)[controller.portClient.GetEntityIdentifierKey(handledEntity)] = nil
 			eventLogger.Infow("Individual upsert fallback succeeded", "identifier", entityWithKind.Entity.Identifier, "blueprint", entityWithKind.Entity.Blueprint)
@@ -477,11 +507,11 @@ func (bc *BatchCollector) fallbackToIndividualUpserts(controller *Controller, en
 	}
 }
 
-func (bc *BatchCollector) ProcessRemaining(controller *Controller, eventLogger *zap.SugaredLogger) *SyncResult {
+func (bc *BatchCollector) ProcessRemaining(controller *Controller, workqueue workqueue.RateLimitingInterface, eventLogger *zap.SugaredLogger) *SyncResult {
 	if len(bc.entitiesByBlueprint) == 0 {
 		return nil
 	}
-	return bc.ProcessBatch(controller, eventLogger)
+	return bc.ProcessBatch(controller, workqueue, eventLogger)
 }
 
 func workqueueGetTimeout(batchTimeout time.Duration) time.Duration {
@@ -495,7 +525,7 @@ func workqueueGetTimeout(batchTimeout time.Duration) time.Duration {
 func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLimitingInterface, batchCollector *BatchCollector, eventLogger *zap.SugaredLogger, poller *workqueuePoller, getTimeout time.Duration) (*SyncResult, int, bool) {
 	if batchCollector.ShouldFlush() {
 		eventLogger.Debugw("Batch collector should flush", "controller", c.Resource.Kind)
-		syncResult := batchCollector.ProcessBatch(c, eventLogger)
+		syncResult := batchCollector.ProcessBatch(c, workqueue, eventLogger)
 		eventLogger.Debugw("Batch collector processed batch", "numEntities", len(syncResult.EntitiesSet), "numRawDataExamples", len(syncResult.RawDataExamples), "shouldDeleteStaleEntities", syncResult.ShouldDeleteStaleEntities)
 		if syncResult != nil {
 			return syncResult, 0, true
@@ -564,7 +594,7 @@ func (c *Controller) processWorkqueueObjectWithBatching(workqueue workqueue.Rate
 		kindLabel := metrics.GetKindLabel(c.Resource.Kind, &item.KindIndex)
 		portEntities, rawDataExamplesForObj, err := c.getObjectEntities(k8sObj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, kindConfig.Port.ItemsToParseName, item.KindIndex, eventLogger)
 		if err != nil {
-			eventLogger.Errorw(fmt.Sprintf("Error getting entities for object %s. Error: %s", item.Key, err.Error()), "key", item.Key, "controller", c.Resource.Kind, "error", err, "eventSource", item.EventSource)
+			eventLogger.Errorw(fmt.Sprintf("Error getting entities for object %s. Error: %s", item.Key, err.Error()), "key", item.Key, "controller", c.Resource.Kind, "error", err, "eventSource", item.EventSource, "kindIndex", item.KindIndex)
 			eventLogger.Debugw("Marking batch collector as having errors", "controller", c.Resource.Kind)
 			batchCollector.MarkError()
 
@@ -592,8 +622,8 @@ func (c *Controller) processWorkqueueObjectWithBatching(workqueue workqueue.Rate
 		}
 
 		for _, portEntity := range portEntities {
-			eventLogger.Debugw("Adding entity to batch collector", "identifier", portEntity.Identifier, "blueprint", portEntity.Blueprint)
-			batchCollector.AddEntity(portEntity, kindLabel)
+			eventLogger.Debugw("Adding entity to batch collector", "identifier", portEntity.Identifier, "blueprint", portEntity.Blueprint, "kindIndex", item.KindIndex)
+			batchCollector.AddEntity(portEntity, kindLabel, obj)
 		}
 
 		eventLogger.Debugw("Removing object from workqueue", "key", item.Key, "controller", c.Resource.Kind, "eventSource", item.EventSource)
@@ -622,7 +652,7 @@ func (c *Controller) RunEventsSync(workers int, eventLogger *zap.SugaredLogger, 
 	for i := 0; i < workers; i++ {
 		go wait.Until(func() {
 			poller := newWorkqueuePoller(c.eventsWorkqueue)
-			defer batchCollector.ProcessRemaining(c, eventLogger)
+			defer batchCollector.ProcessRemaining(c, c.eventsWorkqueue, eventLogger)
 			shouldContinue := true
 			for shouldContinue {
 				_, _, shouldContinue = c.processNextWorkItemWithBatching(c.eventsWorkqueue, batchCollector, eventLogger, poller, workqueueGetTimeout(batchTimeout))
