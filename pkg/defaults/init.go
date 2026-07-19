@@ -19,6 +19,13 @@ func getEventListenerConfig(eventListenerType string) *port.EventListenerSetting
 	return nil
 }
 
+func shouldRecreateIntegrationForEventListener(existing *port.Integration, eventListenerType string) bool {
+	if eventListenerType != "KAFKA" {
+		return false
+	}
+	return existing.EventListener == nil || existing.EventListener.Type != "KAFKA"
+}
+
 func isPortProvisioningSupported(portClient *cli.PortClient) (bool, error) {
 	logger.Info("Resources origin is set to be Port, verifying integration is supported")
 	featureFlags, err := org_details.GetOrganizationFeatureFlags(portClient)
@@ -77,18 +84,36 @@ func InitIntegration(portClient *cli.PortClient, applicationConfig *port.Config,
 			return err
 		}
 	} else {
-		logger.Infof("Integration with state key %s already exists, patching it", applicationConfig.StateKey)
-		integrationPatch := &port.Integration{
-			EventListener: getEventListenerConfig(applicationConfig.EventListenerType),
-			Version:       version,
+		configToUse := existingIntegration.Config
+		shouldOverwriteConfig := (existingIntegration.Config == nil && applicationConfig.CreatePortResourcesOrigin != port.CreatePortResourcesOriginPort) || applicationConfig.OverwriteConfigurationOnRestart
+		if shouldOverwriteConfig {
+			configToUse = defaultIntegrationConfig
 		}
 
-		if (existingIntegration.Config == nil && !(applicationConfig.CreatePortResourcesOrigin == port.CreatePortResourcesOriginPort)) || applicationConfig.OverwriteConfigurationOnRestart {
-			integrationPatch.Config = defaultIntegrationConfig
-		}
+		if shouldRecreateIntegrationForEventListener(existingIntegration, applicationConfig.EventListenerType) {
+			logger.Infof("Integration with state key %s requires event listener type change to %s, recreating it", applicationConfig.StateKey, applicationConfig.EventListenerType)
+			if err := integration.DeleteIntegration(portClient, applicationConfig.StateKey); err != nil {
+				return err
+			}
+			shouldCreateResourcesUsingPort := applicationConfig.CreatePortResourcesOrigin == port.CreatePortResourcesOriginPort
+			existingIntegration, err = integration.CreateIntegration(portClient, applicationConfig.StateKey, applicationConfig.EventListenerType, configToUse, shouldCreateResourcesUsingPort, version)
+			if err != nil {
+				return err
+			}
+		} else {
+			logger.Infof("Integration with state key %s already exists, patching it", applicationConfig.StateKey)
+			integrationPatch := &port.Integration{
+				EventListener: getEventListenerConfig(applicationConfig.EventListenerType),
+				Version:       version,
+			}
 
-		if err := integration.PatchIntegration(portClient, applicationConfig.StateKey, integrationPatch); err != nil {
-			return err
+			if shouldOverwriteConfig {
+				integrationPatch.Config = defaultIntegrationConfig
+			}
+
+			if err := integration.PatchIntegration(portClient, applicationConfig.StateKey, integrationPatch); err != nil {
+				return err
+			}
 		}
 	}
 	logger.SetHttpWriterParametersAndStart(existingIntegration.LogAttributes.IngestUrl, func() (string, int, error) {
