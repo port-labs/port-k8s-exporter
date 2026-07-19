@@ -198,7 +198,7 @@ func (c *Controller) RunInitialSync(eventLogger *zap.SugaredLogger) *SyncResult 
 	var requeueCounterDiff int
 	var syncResult *SyncResult
 
-	for shouldContinue && (requeueCounter > 0 || c.initialSyncWorkqueue.Len() > 0 || !c.eventHandler.HasSynced() || poller.HasPending()) {
+	for shouldContinue && (requeueCounter > 0 || c.initialSyncWorkqueue.Len() > 0 || !c.eventHandler.HasSynced() || poller.HasPending() || batchCollector.HasPending()) {
 		eventLogger.Debugw("Processing next work item with batching", "requeueCounter", requeueCounter, "initialSyncWorkqueueLen", c.initialSyncWorkqueue.Len(), "eventHandlerHasSynced", c.eventHandler.HasSynced())
 		syncResult, requeueCounterDiff, shouldContinue = c.processNextWorkItemWithBatching(c.initialSyncWorkqueue, batchCollector, eventLogger, poller, 0)
 		eventLogger.Debugw("Processed next work item with batching", "syncResult", syncResult, "requeueCounterDiff", requeueCounterDiff, "shouldContinue", shouldContinue)
@@ -211,12 +211,37 @@ func (c *Controller) RunInitialSync(eventLogger *zap.SugaredLogger) *SyncResult 
 		}
 	}
 
-	// Process any remaining batched entities
+	// Process any remaining batched entities without requeueing so initial sync can fail closed.
 	eventLogger.Debugw("Going to process all the remaining entities in the collector.", "controller", c.Resource.Kind)
 	finalSyncResult := batchCollector.ProcessRemaining(c, c.initialSyncWorkqueue, eventLogger)
 	if finalSyncResult != nil {
 		entitiesSet = goutils.MergeMaps(entitiesSet, finalSyncResult.EntitiesSet)
 		shouldDeleteStaleEntities = shouldDeleteStaleEntities && finalSyncResult.ShouldDeleteStaleEntities
+	}
+
+	// Drain any work items requeued during batch flushes before finishing initial sync.
+	for c.initialSyncWorkqueue.Len() > 0 || poller.HasPending() {
+		eventLogger.Debugw("Draining requeued work items after batch flush", "initialSyncWorkqueueLen", c.initialSyncWorkqueue.Len(), "pollerHasPending", poller.HasPending())
+		syncResult, requeueCounterDiff, shouldContinue = c.processNextWorkItemWithBatching(c.initialSyncWorkqueue, batchCollector, eventLogger, poller, 0)
+		requeueCounter += requeueCounterDiff
+		if !shouldContinue {
+			break
+		}
+		if syncResult != nil {
+			entitiesSet = goutils.MergeMaps(entitiesSet, syncResult.EntitiesSet)
+			amountOfExamplesToAdd := min(len(syncResult.RawDataExamples), MaxRawDataExamplesToSend-len(rawDataExamples))
+			rawDataExamples = append(rawDataExamples, syncResult.RawDataExamples[:amountOfExamplesToAdd]...)
+			shouldDeleteStaleEntities = shouldDeleteStaleEntities && syncResult.ShouldDeleteStaleEntities
+		}
+	}
+
+	if batchCollector.HasPending() {
+		eventLogger.Debugw("Flushing remaining batched entities after draining requeued work items", "controller", c.Resource.Kind)
+		remainingSyncResult := batchCollector.ProcessRemaining(c, c.initialSyncWorkqueue, eventLogger)
+		if remainingSyncResult != nil {
+			entitiesSet = goutils.MergeMaps(entitiesSet, remainingSyncResult.EntitiesSet)
+			shouldDeleteStaleEntities = shouldDeleteStaleEntities && remainingSyncResult.ShouldDeleteStaleEntities
+		}
 	}
 
 	if batchCollector.HasErrors() {
@@ -314,24 +339,109 @@ func (bc *BatchCollector) AddEntity(entity port.EntityRequest, kind string, sour
 	bc.entitiesByBlueprint[entity.Blueprint] = append(bc.entitiesByBlueprint[entity.Blueprint], EntityWithKind{Entity: entity, Kind: kind, SourceObj: sourceObj})
 }
 
+func (bc *BatchCollector) HasPending() bool {
+	for _, entities := range bc.entitiesByBlueprint {
+		if len(entities) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (bc *BatchCollector) collectSourceObjs(sourceObjs map[interface{}]struct{}, entitiesWithKind []EntityWithKind) {
+	for _, entityWithKind := range entitiesWithKind {
+		if entityWithKind.SourceObj != nil {
+			sourceObjs[entityWithKind.SourceObj] = struct{}{}
+		}
+	}
+}
+
 func (bc *BatchCollector) trackFailedWorkItem(failedSourceObjs map[interface{}]struct{}, sourceObj interface{}) {
 	if sourceObj != nil {
 		failedSourceObjs[sourceObj] = struct{}{}
 	}
 }
 
-func (bc *BatchCollector) requeueFailedWorkItems(workqueue workqueue.RateLimitingInterface, failedSourceObjs map[interface{}]struct{}, eventLogger *zap.SugaredLogger) {
+func eventItemFromWorkqueueObj(obj interface{}) (EventItem, bool) {
+	item, ok := obj.(EventItem)
+	return item, ok
+}
+
+func (bc *BatchCollector) logPermanentPortWriteFailure(entityWithKind EntityWithKind, reason string, err error, eventLogger *zap.SugaredLogger) {
+	logFields := []interface{}{
+		"reason", reason,
+		"identifier", entityWithKind.Entity.Identifier,
+		"blueprint", entityWithKind.Entity.Blueprint,
+		"kind", entityWithKind.Kind,
+	}
+	if err != nil {
+		logFields = append(logFields, "error", err)
+	}
+	if item, ok := eventItemFromWorkqueueObj(entityWithKind.SourceObj); ok {
+		logFields = append(logFields, "key", item.Key, "kindIndex", item.KindIndex, "actionType", item.ActionType, "eventSource", item.EventSource)
+	}
+	eventLogger.Warnw("Dropping work item after non-retryable Port write failure", logFields...)
+}
+
+func (bc *BatchCollector) trackPermanentFailure(permanentlyFailedSourceObjs map[interface{}]struct{}, failedSourceObjs map[interface{}]struct{}, entityWithKind EntityWithKind, reason string, err error, eventLogger *zap.SugaredLogger) {
+	bc.logPermanentPortWriteFailure(entityWithKind, reason, err, eventLogger)
+	bc.trackFailedWorkItem(permanentlyFailedSourceObjs, entityWithKind.SourceObj)
+	delete(failedSourceObjs, entityWithKind.SourceObj)
+}
+
+func (bc *BatchCollector) completeWorkItem(workqueue workqueue.RateLimitingInterface, sourceObj interface{}) {
+	if sourceObj == nil {
+		return
+	}
+	workqueue.Done(sourceObj)
+	workqueue.Forget(sourceObj)
+}
+
+func (bc *BatchCollector) completeSuccessfulWorkItems(workqueue workqueue.RateLimitingInterface, allSourceObjs map[interface{}]struct{}, failedSourceObjs map[interface{}]struct{}, permanentlyFailedSourceObjs map[interface{}]struct{}, eventLogger *zap.SugaredLogger) {
+	for obj := range allSourceObjs {
+		if _, failed := failedSourceObjs[obj]; failed {
+			continue
+		}
+		if _, permanentlyFailed := permanentlyFailedSourceObjs[obj]; permanentlyFailed {
+			continue
+		}
+		eventLogger.Debugw("Completing work item after successful batch flush")
+		bc.completeWorkItem(workqueue, obj)
+	}
+}
+
+func (bc *BatchCollector) completePermanentFailures(workqueue workqueue.RateLimitingInterface, permanentlyFailedSourceObjs map[interface{}]struct{}) {
+	for obj := range permanentlyFailedSourceObjs {
+		bc.completeWorkItem(workqueue, obj)
+	}
+}
+
+func (bc *BatchCollector) requeueFailedWorkItems(workqueue workqueue.RateLimitingInterface, failedSourceObjs map[interface{}]struct{}, allowRequeue bool, eventLogger *zap.SugaredLogger) {
 	if len(failedSourceObjs) == 0 {
 		return
 	}
 	for obj := range failedSourceObjs {
 		numRequeues := workqueue.NumRequeues(obj)
-		if numRequeues >= MaxNumRequeues {
-			eventLogger.Warnw("Giving up on work item after max requeues due to batch flush failure", "numRequeues", numRequeues)
-			workqueue.Forget(obj)
+		if !allowRequeue {
+			eventLogger.Warnw("Not requeuing work item after batch flush failure because requeue is disabled", "numRequeues", numRequeues)
+			bc.completeWorkItem(workqueue, obj)
 			continue
 		}
-		eventLogger.Debugw("Requeuing work item due to retryable batch flush failure", "numRequeues", numRequeues)
+		if numRequeues >= MaxNumRequeues {
+			if item, ok := eventItemFromWorkqueueObj(obj); ok {
+				eventLogger.Warnw("Giving up on work item after max requeues due to batch flush failure", "numRequeues", numRequeues, "key", item.Key, "kindIndex", item.KindIndex, "eventSource", item.EventSource)
+			} else {
+				eventLogger.Warnw("Giving up on work item after max requeues due to batch flush failure", "numRequeues", numRequeues)
+			}
+			bc.completeWorkItem(workqueue, obj)
+			continue
+		}
+		if item, ok := eventItemFromWorkqueueObj(obj); ok {
+			eventLogger.Debugw("Requeuing work item due to retryable batch flush failure", "numRequeues", numRequeues, "key", item.Key, "kindIndex", item.KindIndex, "eventSource", item.EventSource)
+		} else {
+			eventLogger.Debugw("Requeuing work item due to retryable batch flush failure", "numRequeues", numRequeues)
+		}
+		workqueue.Done(obj)
 		workqueue.AddRateLimited(obj)
 	}
 }
@@ -358,7 +468,7 @@ func (c *Controller) calculateTotalBatchSize() int {
 	return maxEntitiesPerBlueprintBatch * BlueprintBatchMultiplier
 }
 
-func (bc *BatchCollector) ProcessBatch(controller *Controller, workqueue workqueue.RateLimitingInterface, eventLogger *zap.SugaredLogger) *SyncResult {
+func (bc *BatchCollector) ProcessBatch(controller *Controller, workqueue workqueue.RateLimitingInterface, eventLogger *zap.SugaredLogger, allowRequeue bool) *SyncResult {
 	if len(bc.entitiesByBlueprint) == 0 {
 		bc.lastFlush = time.Now()
 		eventLogger.Debugw("Batch collector has no entities to process", "hasErrors", bc.hasErrors, "controller", controller.Resource.Kind)
@@ -371,6 +481,8 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller, workqueue workque
 	entitiesSet := make(map[string]interface{})
 	shouldDeleteStaleEntities := !bc.hasErrors
 	failedSourceObjs := make(map[interface{}]struct{})
+	permanentlyFailedSourceObjs := make(map[interface{}]struct{})
+	allSourceObjs := make(map[interface{}]struct{})
 	maxPayloadBytes := config.ApplicationConfig.BulkSyncMaxPayloadBytes
 	maxEntitiesPerBlueprintBatch := config.ApplicationConfig.BulkSyncMaxEntitiesPerBatch
 	totalEntities := 0
@@ -378,6 +490,7 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller, workqueue workque
 	failedUpsertsCountWithKind := make(map[string]int)
 	for _, entitiesWithKind := range bc.entitiesByBlueprint {
 		totalEntities += len(entitiesWithKind)
+		bc.collectSourceObjs(allSourceObjs, entitiesWithKind)
 	}
 	eventLogger.Infow("Batch processing", "totalEntities", totalEntities, "blueprintCount", len(bc.entitiesByBlueprint), "maxPayloadBytes", maxPayloadBytes, "maxEntitiesPerBlueprintBatch", maxEntitiesPerBlueprintBatch)
 
@@ -410,6 +523,7 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller, workqueue workque
 						eventLogger.Warnw("Skipping fallback to individual upserts due to non-retryable error", "blueprint", blueprint, "error", err)
 						for _, ewk := range batchEntitiesWithKind {
 							failedUpsertsCountWithKind[ewk.Kind]++
+							bc.trackPermanentFailure(permanentlyFailedSourceObjs, failedSourceObjs, ewk, "non-retryable bulk upsert error", err, eventLogger)
 						}
 						shouldDeleteStaleEntities = false
 					} else {
@@ -446,6 +560,7 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller, workqueue workque
 						for _, entityWithKind := range batchEntitiesWithKind {
 							if nonRetryableIdentifiers[fmt.Sprintf("%v", entityWithKind.Entity.Identifier)] {
 								failedUpsertsCountWithKind[entityWithKind.Kind]++
+								bc.trackPermanentFailure(permanentlyFailedSourceObjs, failedSourceObjs, entityWithKind, "non-retryable bulk upsert entity error", nil, eventLogger)
 							}
 						}
 						shouldDeleteStaleEntities = false
@@ -468,7 +583,9 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller, workqueue workque
 	// Clear the batch
 	bc.entitiesByBlueprint = make(map[string][]EntityWithKind)
 	bc.lastFlush = time.Now()
-	bc.requeueFailedWorkItems(workqueue, failedSourceObjs, eventLogger)
+	bc.completeSuccessfulWorkItems(workqueue, allSourceObjs, failedSourceObjs, permanentlyFailedSourceObjs, eventLogger)
+	bc.requeueFailedWorkItems(workqueue, failedSourceObjs, allowRequeue, eventLogger)
+	bc.completePermanentFailures(workqueue, permanentlyFailedSourceObjs)
 
 	go func() {
 		for kindLabel, count := range successCountWithKind {
@@ -511,7 +628,7 @@ func (bc *BatchCollector) ProcessRemaining(controller *Controller, workqueue wor
 	if len(bc.entitiesByBlueprint) == 0 {
 		return nil
 	}
-	return bc.ProcessBatch(controller, workqueue, eventLogger)
+	return bc.ProcessBatch(controller, workqueue, eventLogger, false)
 }
 
 func workqueueGetTimeout(batchTimeout time.Duration) time.Duration {
@@ -525,7 +642,7 @@ func workqueueGetTimeout(batchTimeout time.Duration) time.Duration {
 func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLimitingInterface, batchCollector *BatchCollector, eventLogger *zap.SugaredLogger, poller *workqueuePoller, getTimeout time.Duration) (*SyncResult, int, bool) {
 	if batchCollector.ShouldFlush() {
 		eventLogger.Debugw("Batch collector should flush", "controller", c.Resource.Kind)
-		syncResult := batchCollector.ProcessBatch(c, workqueue, eventLogger)
+		syncResult := batchCollector.ProcessBatch(c, workqueue, eventLogger, true)
 		eventLogger.Debugw("Batch collector processed batch", "numEntities", len(syncResult.EntitiesSet), "numRawDataExamples", len(syncResult.RawDataExamples), "shouldDeleteStaleEntities", syncResult.ShouldDeleteStaleEntities)
 		if syncResult != nil {
 			return syncResult, 0, true
@@ -546,7 +663,24 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 
 func (c *Controller) processWorkqueueObjectWithBatching(workqueue workqueue.RateLimitingInterface, batchCollector *BatchCollector, eventLogger *zap.SugaredLogger, obj interface{}) (*SyncResult, int, bool) {
 	syncResult, requeueCounterDiff, err := func(obj interface{}) (*SyncResult, int, error) {
-		defer workqueue.Done(obj)
+		type workItemCompletion int
+		const (
+			workItemDeferToBatch workItemCompletion = iota
+			workItemComplete
+			workItemRequeue
+		)
+
+		completion := workItemDeferToBatch
+		defer func() {
+			switch completion {
+			case workItemComplete:
+				workqueue.Forget(obj)
+				workqueue.Done(obj)
+			case workItemRequeue:
+				workqueue.Done(obj)
+				workqueue.AddRateLimited(obj)
+			}
+		}()
 
 		numRequeues := workqueue.NumRequeues(obj)
 		eventLogger.Debugw("Processing next work item in workqueue", "numRequeues", numRequeues, "controller", c.Resource.Kind)
@@ -558,7 +692,7 @@ func (c *Controller) processWorkqueueObjectWithBatching(workqueue workqueue.Rate
 		item, ok := obj.(EventItem)
 		if !ok {
 			eventLogger.Debugw("Expected event item but got something else. removing from workqueue", "obj", obj)
-			workqueue.Forget(obj)
+			completion = workItemComplete
 			return nil, requeueCounterDiff, fmt.Errorf("expected event item in workqueue but got %#v", obj)
 		}
 		eventLogger.Infow(fmt.Sprintf("Processing item %s from workqueue.", item.Key), "numRequeues", numRequeues, "controller", c.Resource.Kind, "eventSource", item.EventSource, "key", item.Key)
@@ -569,7 +703,7 @@ func (c *Controller) processWorkqueueObjectWithBatching(workqueue workqueue.Rate
 
 			if numRequeues >= MaxNumRequeues {
 				eventLogger.Debugw("Removing object from workqueue because it's been requeued too many times", "error", err.Error(), "key", item.Key, "controller", c.Resource.Kind, "eventSource", item.EventSource)
-				workqueue.Forget(obj)
+				completion = workItemComplete
 				return nil, requeueCounterDiff, fmt.Errorf("error fetching object '%s'. giving up", item.Key)
 			}
 
@@ -579,13 +713,13 @@ func (c *Controller) processWorkqueueObjectWithBatching(workqueue workqueue.Rate
 				requeueCounterDiff = 0
 			}
 			eventLogger.Debugw("Requeuing object with rate limiting", "error", err.Error(), "key", item.Key, "controller", c.Resource.Kind, "eventSource", item.EventSource)
-			workqueue.AddRateLimited(obj)
+			completion = workItemRequeue
 			return nil, requeueCounterDiff, fmt.Errorf("error fetching object '%s'. requeuing", item.Key)
 		}
 
 		if !exists {
 			eventLogger.Debugw("Object no longer exists in informer cache. removing from workqueue", "key", item.Key, "controller", c.Resource.Kind, "eventSource", item.EventSource)
-			workqueue.Forget(obj)
+			completion = workItemComplete
 			return nil, requeueCounterDiff, nil
 		}
 
@@ -600,7 +734,7 @@ func (c *Controller) processWorkqueueObjectWithBatching(workqueue workqueue.Rate
 
 			if numRequeues >= MaxNumRequeues {
 				eventLogger.Debugw("Removing object from workqueue because it's been requeued too many times", "error", err.Error(), "key", item.Key, "controller", c.Resource.Kind, "eventSource", item.EventSource)
-				workqueue.Forget(obj)
+				completion = workItemComplete
 				metrics.AddObjectCount(kindLabel, metrics.MetricFailedResult, metrics.MetricPhaseTransform, 1)
 				return nil, requeueCounterDiff, fmt.Errorf("error getting entities for object '%s'. Out of retries - object will not be processed", item.Key)
 			}
@@ -611,7 +745,7 @@ func (c *Controller) processWorkqueueObjectWithBatching(workqueue workqueue.Rate
 				requeueCounterDiff = 0
 			}
 			eventLogger.Debugw("Requeuing object with rate limiting", "error", err.Error(), "key", item.Key, "controller", c.Resource.Kind, "eventSource", item.EventSource)
-			workqueue.AddRateLimited(obj)
+			completion = workItemRequeue
 			return nil, requeueCounterDiff, fmt.Errorf("error getting entities for object '%s'. Requeuing", item.Key)
 		}
 
@@ -621,13 +755,22 @@ func (c *Controller) processWorkqueueObjectWithBatching(workqueue workqueue.Rate
 			rawDataExamples = append(rawDataExamples, rawDataExamplesForObj[:amountToAdd]...)
 		}
 
+		if len(portEntities) == 0 {
+			eventLogger.Debugw("No entities produced for object. removing from workqueue", "key", item.Key, "controller", c.Resource.Kind, "eventSource", item.EventSource, "kindIndex", item.KindIndex)
+			completion = workItemComplete
+			return &SyncResult{
+				EntitiesSet:               make(map[string]interface{}),
+				RawDataExamples:           rawDataExamples,
+				ShouldDeleteStaleEntities: true,
+			}, requeueCounterDiff, nil
+		}
+
 		for _, portEntity := range portEntities {
 			eventLogger.Debugw("Adding entity to batch collector", "identifier", portEntity.Identifier, "blueprint", portEntity.Blueprint, "kindIndex", item.KindIndex)
 			batchCollector.AddEntity(portEntity, kindLabel, obj)
 		}
 
-		eventLogger.Debugw("Removing object from workqueue", "key", item.Key, "controller", c.Resource.Kind, "eventSource", item.EventSource)
-		workqueue.Forget(obj)
+		eventLogger.Debugw("Deferring workqueue completion until batch flush succeeds", "key", item.Key, "controller", c.Resource.Kind, "eventSource", item.EventSource, "kindIndex", item.KindIndex)
 		return &SyncResult{
 			EntitiesSet:               make(map[string]interface{}),
 			RawDataExamples:           rawDataExamples,
