@@ -97,6 +97,27 @@ func TestBatchCollectorDoesNotRequeueWhenDisabled(t *testing.T) {
 	assert.Equal(t, 0, wq.Len())
 }
 
+func TestBatchCollectorHasPendingBelowFlushThreshold(t *testing.T) {
+	bc := NewBatchCollector(100, time.Hour)
+	item := newTestEventItem("default/test")
+	bc.AddEntity(port.EntityRequest{Identifier: "id-1", Blueprint: "bp"}, "kind", item)
+
+	assert.True(t, bc.HasPending())
+	assert.False(t, bc.ShouldFlush(), "pending below max size and before timeout must wait for ProcessRemaining, not mid-loop Get()")
+}
+
+func TestWorkqueuePollerGetTimeoutDoesNotBlockForever(t *testing.T) {
+	wq := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+	poller := newWorkqueuePoller(wq)
+
+	start := time.Now()
+	_, _, received := poller.Get(50 * time.Millisecond)
+	assert.False(t, received)
+	assert.Less(t, time.Since(start), 500*time.Millisecond)
+
+	wq.ShutDown()
+}
+
 func TestBatchCollectorPermanentFailureTakesPrecedenceOverRetryableFailure(t *testing.T) {
 	bc := newTestBatchCollector()
 	wq := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
