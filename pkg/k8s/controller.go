@@ -2,9 +2,7 @@ package k8s
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"math"
 	"reflect"
 	"time"
 
@@ -12,6 +10,7 @@ import (
 	"go.uber.org/zap"
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
+	portUtils "github.com/port-labs/port-k8s-exporter/pkg/handlers/utils"
 	"github.com/port-labs/port-k8s-exporter/pkg/image"
 	"github.com/port-labs/port-k8s-exporter/pkg/jq"
 	"github.com/port-labs/port-k8s-exporter/pkg/logger"
@@ -312,7 +311,7 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller, eventLogger *zap.
 		}
 		eventLogger.Infow("Processing entities for blueprint", "blueprint", blueprint, "entityCount", len(entities))
 		metrics.MeasureDuration(metrics.GetKindLabel(controller.Resource.Kind, nil), metrics.MetricPhaseLoad, func(phase string) (struct{}, error) {
-			optimalBatchSize := calculateBulkSize(entities, maxEntitiesPerBlueprintBatch, maxPayloadBytes)
+			optimalBatchSize := portUtils.CalculateBulkSize(entities, maxEntitiesPerBlueprintBatch, maxPayloadBytes)
 			eventLogger.Infow("Calculated optimal batch size for blueprint", "blueprint", blueprint, "optimalBatchSize", optimalBatchSize)
 			for i := 0; i < len(entities); i += optimalBatchSize {
 				end := i + optimalBatchSize
@@ -848,36 +847,6 @@ func (c *Controller) shouldSendUpdateEvent(old interface{}, new interface{}, upd
 	}
 
 	return false
-}
-
-// calculateBulkSize determines the optimal batch size based on entity size estimation
-func calculateBulkSize(entities []port.EntityRequest, maxLength int, maxSizeInBytes int) int {
-	if len(entities) == 0 {
-		return 1
-	}
-
-	// Calculate average object size from a sample
-	sampleSize := int(math.Min(10, float64(len(entities))))
-	sampleEntities := entities[:sampleSize]
-
-	totalSampleSize := 0
-	for _, entity := range sampleEntities {
-		entityBytes, err := json.Marshal(entity)
-		if err != nil {
-			logger.Infow("Failed to marshal entity for size calculation, using conservative estimate", "error", err)
-			totalSampleSize += 1024 // 1KB conservative estimate per entity
-			continue
-		}
-		totalSampleSize += len(entityBytes)
-	}
-
-	averageObjectSize := float64(totalSampleSize) / float64(sampleSize)
-
-	// Use a conservative estimate (1.5x the average) to ensure we stay under the limit
-	estimatedObjectSize := int(math.Ceil(averageObjectSize * 1.5))
-	maxObjectsPerBatch := int(math.Min(float64(maxLength), math.Floor(float64(maxSizeInBytes)/float64(estimatedObjectSize))))
-
-	return int(math.Max(1, float64(maxObjectsPerBatch)))
 }
 
 func (c *Controller) InitialSyncWorkqueueLen() int {
