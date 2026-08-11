@@ -56,7 +56,8 @@ func TestBatchCollectorRequeuesRetryableFailuresWithoutForgetting(t *testing.T) 
 	enqueueTestItem(t, wq, item)
 
 	failedSourceObjs := map[interface{}]struct{}{item: {}}
-	bc.requeueFailedWorkItems(wq, failedSourceObjs, true, eventLogger)
+	requeued := bc.requeueFailedWorkItems(wq, failedSourceObjs, true, eventLogger)
+	assert.Equal(t, 1, requeued)
 
 	assert.Eventually(t, func() bool {
 		return wq.Len() > 0
@@ -77,7 +78,12 @@ func TestBatchCollectorGivesUpAfterMaxRequeues(t *testing.T) {
 	for i := 0; i <= MaxNumRequeues; i++ {
 		enqueueTestItem(t, wq, item)
 		failedSourceObjs := map[interface{}]struct{}{item: {}}
-		bc.requeueFailedWorkItems(wq, failedSourceObjs, true, eventLogger)
+		requeued := bc.requeueFailedWorkItems(wq, failedSourceObjs, true, eventLogger)
+		if i < MaxNumRequeues {
+			assert.Equal(t, 1, requeued)
+		} else {
+			assert.Equal(t, 0, requeued)
+		}
 	}
 
 	assert.Equal(t, 0, wq.Len())
@@ -92,8 +98,9 @@ func TestBatchCollectorDoesNotRequeueWhenDisabled(t *testing.T) {
 	enqueueTestItem(t, wq, item)
 
 	failedSourceObjs := map[interface{}]struct{}{item: {}}
-	bc.requeueFailedWorkItems(wq, failedSourceObjs, false, eventLogger)
+	requeued := bc.requeueFailedWorkItems(wq, failedSourceObjs, false, eventLogger)
 
+	assert.Equal(t, 0, requeued)
 	assert.Equal(t, 0, wq.Len())
 }
 

@@ -50,6 +50,7 @@ type SyncResult struct {
 	EntitiesSet               map[string]interface{}
 	RawDataExamples           []interface{}
 	ShouldDeleteStaleEntities bool
+	RequeuedCount             int
 }
 
 type Controller struct {
@@ -196,29 +197,47 @@ func (c *Controller) RunInitialSync(eventLogger *zap.SugaredLogger) *SyncResult 
 	var requeueCounterDiff int
 	var syncResult *SyncResult
 
-	// Do not gate on batchCollector.HasPending() — getTimeout is 0, so an empty
-	// queue would block forever in poller.Get; ProcessRemaining flushes leftovers.
-	// Batch flush failures fail closed (allowRequeue=false) so rate-limited retries
-	// are not stranded after Len() drops while items are still delaying.
-	for shouldContinue && (requeueCounter > 0 || c.initialSyncWorkqueue.Len() > 0 || !c.eventHandler.HasSynced() || poller.HasPending()) {
-		eventLogger.Debugw("Processing next work item with batching", "requeueCounter", requeueCounter, "initialSyncWorkqueueLen", c.initialSyncWorkqueue.Len(), "eventHandlerHasSynced", c.eventHandler.HasSynced())
-		syncResult, requeueCounterDiff, shouldContinue = c.processNextWorkItemWithBatching(c.initialSyncWorkqueue, batchCollector, eventLogger, poller, 0, false)
-		eventLogger.Debugw("Processed next work item with batching", "syncResult", syncResult, "requeueCounterDiff", requeueCounterDiff, "shouldContinue", shouldContinue)
-		requeueCounter += requeueCounterDiff
-		if syncResult != nil {
-			entitiesSet = goutils.MergeMaps(entitiesSet, syncResult.EntitiesSet)
-			amountOfExamplesToAdd := min(len(syncResult.RawDataExamples), MaxRawDataExamplesToSend-len(rawDataExamples))
-			rawDataExamples = append(rawDataExamples, syncResult.RawDataExamples[:amountOfExamplesToAdd]...)
-			shouldDeleteStaleEntities = shouldDeleteStaleEntities && syncResult.ShouldDeleteStaleEntities
+	mergeSyncResult := func(result *SyncResult) {
+		if result == nil {
+			return
 		}
+		entitiesSet = goutils.MergeMaps(entitiesSet, result.EntitiesSet)
+		amountOfExamplesToAdd := min(len(result.RawDataExamples), MaxRawDataExamplesToSend-len(rawDataExamples))
+		rawDataExamples = append(rawDataExamples, result.RawDataExamples[:amountOfExamplesToAdd]...)
+		shouldDeleteStaleEntities = shouldDeleteStaleEntities && result.ShouldDeleteStaleEntities
 	}
 
-	// Process any remaining batched entities without requeueing so initial sync can fail closed.
-	eventLogger.Debugw("Going to process all the remaining entities in the collector.", "controller", c.Resource.Kind)
-	finalSyncResult := batchCollector.ProcessRemaining(c, c.initialSyncWorkqueue, eventLogger)
-	if finalSyncResult != nil {
-		entitiesSet = goutils.MergeMaps(entitiesSet, finalSyncResult.EntitiesSet)
-		shouldDeleteStaleEntities = shouldDeleteStaleEntities && finalSyncResult.ShouldDeleteStaleEntities
+	// Flush pending batches when the queue is idle so we never call Get(0) while
+	// only the collector has work (that hung forever). Track batch requeues in
+	// requeueCounter so AddRateLimited retries are waited on even though Len()
+	// is 0 while items are delaying.
+	for shouldContinue {
+		hasQueueWork := requeueCounter > 0 || c.initialSyncWorkqueue.Len() > 0 || !c.eventHandler.HasSynced() || poller.HasPending()
+		hasBatchWork := batchCollector.HasPending()
+		if !hasQueueWork && !hasBatchWork {
+			break
+		}
+
+		queueIdle := c.initialSyncWorkqueue.Len() == 0 && !poller.HasPending()
+		if hasBatchWork && queueIdle {
+			eventLogger.Debugw("Flushing pending batch while workqueue is idle", "requeueCounter", requeueCounter, "controller", c.Resource.Kind)
+			syncResult = batchCollector.ProcessBatch(c, c.initialSyncWorkqueue, eventLogger, true)
+			requeueCounter += syncResult.RequeuedCount
+			mergeSyncResult(syncResult)
+			continue
+		}
+
+		eventLogger.Debugw("Processing next work item with batching", "requeueCounter", requeueCounter, "initialSyncWorkqueueLen", c.initialSyncWorkqueue.Len(), "eventHandlerHasSynced", c.eventHandler.HasSynced())
+		syncResult, requeueCounterDiff, shouldContinue = c.processNextWorkItemWithBatching(c.initialSyncWorkqueue, batchCollector, eventLogger, poller, 0, true)
+		eventLogger.Debugw("Processed next work item with batching", "syncResult", syncResult, "requeueCounterDiff", requeueCounterDiff, "shouldContinue", shouldContinue)
+		requeueCounter += requeueCounterDiff
+		mergeSyncResult(syncResult)
+	}
+
+	if batchCollector.HasPending() {
+		eventLogger.Debugw("Flushing remaining batched entities after initial sync drain", "controller", c.Resource.Kind)
+		finalSyncResult := batchCollector.ProcessRemaining(c, c.initialSyncWorkqueue, eventLogger)
+		mergeSyncResult(finalSyncResult)
 	}
 
 	if batchCollector.HasErrors() {
@@ -302,9 +321,9 @@ func (c *Controller) processNextWorkItemWithBatching(workqueue workqueue.RateLim
 	if batchCollector.ShouldFlush() {
 		eventLogger.Debugw("Batch collector should flush", "controller", c.Resource.Kind)
 		syncResult := batchCollector.ProcessBatch(c, workqueue, eventLogger, allowRequeue)
-		eventLogger.Debugw("Batch collector processed batch", "numEntities", len(syncResult.EntitiesSet), "numRawDataExamples", len(syncResult.RawDataExamples), "shouldDeleteStaleEntities", syncResult.ShouldDeleteStaleEntities)
+		eventLogger.Debugw("Batch collector processed batch", "numEntities", len(syncResult.EntitiesSet), "numRawDataExamples", len(syncResult.RawDataExamples), "shouldDeleteStaleEntities", syncResult.ShouldDeleteStaleEntities, "requeuedCount", syncResult.RequeuedCount)
 		if syncResult != nil {
-			return syncResult, 0, true
+			return syncResult, syncResult.RequeuedCount, true
 		}
 	}
 

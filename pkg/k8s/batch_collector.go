@@ -124,9 +124,10 @@ func (bc *BatchCollector) completePermanentFailures(workqueue workqueue.RateLimi
 	}
 }
 
-func (bc *BatchCollector) requeueFailedWorkItems(workqueue workqueue.RateLimitingInterface, failedSourceObjs map[interface{}]struct{}, allowRequeue bool, eventLogger *zap.SugaredLogger) {
+func (bc *BatchCollector) requeueFailedWorkItems(workqueue workqueue.RateLimitingInterface, failedSourceObjs map[interface{}]struct{}, allowRequeue bool, eventLogger *zap.SugaredLogger) int {
+	requeuedCount := 0
 	if len(failedSourceObjs) == 0 {
-		return
+		return requeuedCount
 	}
 	for obj := range failedSourceObjs {
 		numRequeues := workqueue.NumRequeues(obj)
@@ -151,7 +152,9 @@ func (bc *BatchCollector) requeueFailedWorkItems(workqueue workqueue.RateLimitin
 		}
 		workqueue.Done(obj)
 		workqueue.AddRateLimited(obj)
+		requeuedCount++
 	}
+	return requeuedCount
 }
 
 func (bc *BatchCollector) MarkError() {
@@ -179,6 +182,7 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller, workqueue workque
 			EntitiesSet:               make(map[string]interface{}),
 			RawDataExamples:           make([]interface{}, 0),
 			ShouldDeleteStaleEntities: !bc.hasErrors,
+			RequeuedCount:             0,
 		}
 	}
 	entitiesSet := make(map[string]interface{})
@@ -287,7 +291,7 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller, workqueue workque
 	bc.entitiesByBlueprint = make(map[string][]EntityWithKind)
 	bc.lastFlush = time.Now()
 	bc.completeSuccessfulWorkItems(workqueue, allSourceObjs, failedSourceObjs, permanentlyFailedSourceObjs, eventLogger)
-	bc.requeueFailedWorkItems(workqueue, failedSourceObjs, allowRequeue, eventLogger)
+	requeuedCount := bc.requeueFailedWorkItems(workqueue, failedSourceObjs, allowRequeue, eventLogger)
 	bc.completePermanentFailures(workqueue, permanentlyFailedSourceObjs)
 
 	go func() {
@@ -306,6 +310,7 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller, workqueue workque
 		EntitiesSet:               entitiesSet,
 		RawDataExamples:           make([]interface{}, 0),
 		ShouldDeleteStaleEntities: shouldDeleteStaleEntities,
+		RequeuedCount:             requeuedCount,
 	}
 }
 
