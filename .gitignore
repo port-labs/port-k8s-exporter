@@ -18,6 +18,8 @@
 
 .vscode
 
+.zig-cache
+
 __debug_bin
 
 config.yaml
@@ -25,8 +27,6 @@ config.yaml
 deployments/k8s
 
 .env
-
-.vscode
 
 # debug file
 __debug_bin*

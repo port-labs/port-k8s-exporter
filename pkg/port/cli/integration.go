@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/port-labs/port-k8s-exporter/pkg/parsers"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
@@ -41,10 +42,24 @@ func (c *PortClient) CreateIntegration(i *port.Integration, queryParams map[stri
 }
 
 func (c *PortClient) GetIntegration(stateKey string) (*port.Integration, error) {
+	return c.getIntegration(stateKey, map[string]string{
+		"isPolling": "false",
+	})
+}
+
+func (c *PortClient) GetIntegrationForPolling(stateKey string) (*port.Integration, error) {
+	return c.getIntegration(stateKey, map[string]string{
+		"isPolling": "true",
+	})
+}
+
+func (c *PortClient) getIntegration(stateKey string, queryParams map[string]string) (*port.Integration, error) {
 	pb := &port.ResponseBody{}
-	resp, err := c.Client.R().
-		SetResult(&pb).
-		Get(fmt.Sprintf("v1/integration/%s", stateKey))
+	req := c.Client.R().SetResult(&pb)
+	if len(queryParams) > 0 {
+		req.SetQueryParams(queryParams)
+	}
+	resp, err := req.Get(fmt.Sprintf("v1/integration/%s", stateKey))
 	if err != nil {
 		return nil, err
 	}
@@ -52,6 +67,25 @@ func (c *PortClient) GetIntegration(stateKey string) (*port.Integration, error) 
 		return nil, fmt.Errorf("failed to get integration, got: %s", resp.Body())
 	}
 	return &pb.Integration, nil
+}
+
+type integrationResyncRequestResponse struct {
+	OK      bool                                 `json:"ok"`
+	Request *port.IntegrationResyncTriggerRequest `json:"request"`
+}
+
+func (c *PortClient) GetIntegrationResyncRequest(stateKey string) (*port.IntegrationResyncTriggerRequest, error) {
+	pb := &integrationResyncRequestResponse{}
+	resp, err := c.Client.R().
+		SetResult(&pb).
+		Get(fmt.Sprintf("v1/integration/%s/resync-request", stateKey))
+	if err != nil {
+		return nil, err
+	}
+	if !pb.OK {
+		return nil, fmt.Errorf("failed to get integration resync request, got: %s", resp.Body())
+	}
+	return pb.Request, nil
 }
 
 func (c *PortClient) DeleteIntegration(stateKey string) error {
@@ -82,10 +116,23 @@ func (c *PortClient) PatchIntegration(stateKey string, integration *port.Integra
 }
 
 func (c *PortClient) PostIntegrationKindExample(stateKey string, kind string, examples []interface{}) error {
+	jsonBytes, err := json.Marshal(examples)
+	if err != nil {
+		return fmt.Errorf("failed to marshal examples: %w", err)
+	}
+
+	// Deserialize into public interface{} structure
+	var jsonData interface{}
+	if err := json.Unmarshal(jsonBytes, &jsonData); err != nil {
+		return fmt.Errorf("failed to unmarshal examples: %w", err)
+	}
+
+	maskedExamples := parsers.ParseSensitiveData(jsonData)
+
 	pb := &port.ResponseBody{}
 	resp, err := c.Client.R().
 		SetBody(map[string]interface{}{
-			"examples": parsers.ParseSensitiveData(examples),
+			"examples": maskedExamples,
 		}).
 		SetResult(&pb).
 		Post(fmt.Sprintf("v1/integration/%s/kinds/%s/examples", url.QueryEscape(stateKey), url.QueryEscape(kind)))

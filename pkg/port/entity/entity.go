@@ -146,7 +146,7 @@ func newEntityRequest(obj interface{}, mapping port.EntityMapping) (*port.Entity
 	}
 	if mapping.Team != nil {
 		if reflect.TypeOf(mapping.Team).Kind() == reflect.String {
-			entity.Team, err = jq.ParseString(mapping.Team.(string), obj)
+			entity.Team, err = jq.ParseStringOrStringArray(mapping.Team.(string), obj)
 		} else if reflect.TypeOf(mapping.Team).Kind() == reflect.Map {
 			entity.Team, err = jq.ParseMapRecursively(mapping.Team.(map[string]interface{}), obj)
 		} else {

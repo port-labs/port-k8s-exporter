@@ -315,8 +315,9 @@ type EntityMappings struct {
 }
 
 type Port struct {
-	Entity       EntityMappings `json:"entity" yaml:"entity"`
-	ItemsToParse string         `json:"itemsToParse,omitempty" yaml:"itemsToParse"`
+	Entity           EntityMappings `json:"entity" yaml:"entity"`
+	ItemsToParse     string         `json:"itemsToParse,omitempty" yaml:"itemsToParse"`
+	ItemsToParseName string         `json:"itemsToParseName,omitempty" yaml:"itemsToParseName"`
 }
 
 type Selector struct {
@@ -344,18 +345,25 @@ type AggregatedResource struct {
 }
 
 type IntegrationAppConfig struct {
-	DeleteDependents             bool       `json:"deleteDependents,omitempty" yaml:"deleteDependents,omitempty"`
-	CreateMissingRelatedEntities bool       `json:"createMissingRelatedEntities,omitempty" yaml:"createMissingRelatedEntities,omitempty"`
-	Resources                    []Resource `json:"resources,omitempty" yaml:"resources,omitempty"`
-	CRDSToDiscover               string     `json:"crdsToDiscover,omitempty"`
-	OverwriteCRDsActions         bool       `json:"overwriteCrdsActions,omitempty"`
-	UpdateEntityOnlyOnDiff       *bool      `json:"updateEntityOnlyOnDiff,omitempty"`
-	SendRawDataExamples          *bool      `json:"sendRawDataExamples,omitempty"`
+	DeleteDependents                 bool       `json:"deleteDependents,omitempty" yaml:"deleteDependents,omitempty"`
+	CreateMissingRelatedEntities     bool       `json:"createMissingRelatedEntities,omitempty" yaml:"createMissingRelatedEntities,omitempty"`
+	Resources                        []Resource `json:"resources,omitempty" yaml:"resources,omitempty"`
+	CRDSToDiscover                   string     `json:"crdsToDiscover,omitempty"`
+	OverwriteCRDsActions             bool       `json:"overwriteCrdsActions,omitempty"`
+	UpdateEntityOnlyOnDiff           *bool      `json:"updateEntityOnlyOnDiff,omitempty"`
+	SendRawDataExamples              *bool      `json:"sendRawDataExamples,omitempty"`
+	AllowAllEnvironmentVariablesInJQ bool       `json:"allowAllEnvironmentVariablesInJQ,omitempty" yaml:"allowAllEnvironmentVariablesInJQ,omitempty"`
+	AllowedEnvironmentVariablesInJQ  []string   `json:"allowedEnvironmentVariablesInJQ,omitempty" yaml:"allowedEnvironmentVariablesInJQ,omitempty"`
 }
 
 const (
-	OrgUseProvisionedDefaultsFeatureFlag = "USE_PROVISIONED_DEFAULTS"
+	OrgUseProvisionedDefaultsFeatureFlag                     = "USE_PROVISIONED_DEFAULTS"
+	OrgKafkaIntegrationResyncRequestsTopicEnabledFeatureFlag = "OCEAN_KAFKA_INTEGRATION_RESYNC_REQUESTS_TOPIC_ENABLED"
 )
+
+type IntegrationResyncTriggerRequest struct {
+	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
+}
 
 type CreatePortResourcesOrigin string
 
@@ -372,11 +380,13 @@ type Config struct {
 	CreatePortResourcesOrigin       CreatePortResourcesOrigin `yaml:"createPortResourcesOrigin,omitempty"`
 	OverwriteConfigurationOnRestart bool                      `yaml:"overwriteConfigurationOnRestart,omitempty"`
 	// These Configurations are used only for setting up the Integration on installation or when using OverwriteConfigurationOnRestart flag.
-	Resources                    []Resource `yaml:"resources,omitempty"`
-	CRDSToDiscover               string     `yaml:"crdsToDiscover,omitempty"`
-	OverwriteCRDsActions         bool       `yaml:"overwriteCrdsActions,omitempty"`
-	DeleteDependents             bool       `yaml:"deleteDependents,omitempty"`
-	CreateMissingRelatedEntities bool       `yaml:"createMissingRelatedEntities,omitempty"`
+	Resources                        []Resource `yaml:"resources,omitempty"`
+	CRDSToDiscover                   string     `yaml:"crdsToDiscover,omitempty"`
+	OverwriteCRDsActions             bool       `yaml:"overwriteCrdsActions,omitempty"`
+	DeleteDependents                 bool       `yaml:"deleteDependents,omitempty"`
+	CreateMissingRelatedEntities     bool       `yaml:"createMissingRelatedEntities,omitempty"`
+	AllowAllEnvironmentVariablesInJQ bool       `yaml:"allowAllEnvironmentVariablesInJQ,omitempty"`
+	AllowedEnvironmentVariablesInJQ  []string   `yaml:"allowedEnvironmentVariablesInJQ,omitempty"`
 }
 
 type Team struct {

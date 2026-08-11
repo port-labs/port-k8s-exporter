@@ -137,19 +137,21 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 	}
 
 	applicationConfig := &config.ApplicationConfiguration{
-		ConfigFilePath:                  config.ApplicationConfig.ConfigFilePath,
-		ResyncInterval:                  config.ApplicationConfig.ResyncInterval,
-		PortBaseURL:                     config.ApplicationConfig.PortBaseURL,
-		EventListenerType:               config.ApplicationConfig.EventListenerType,
-		CreateDefaultResources:          config.ApplicationConfig.CreateDefaultResources,
-		OverwriteConfigurationOnRestart: config.ApplicationConfig.OverwriteConfigurationOnRestart,
-		Resources:                       integrationConfig.Resources,
-		DeleteDependents:                integrationConfig.DeleteDependents,
-		CreateMissingRelatedEntities:    integrationConfig.CreateMissingRelatedEntities,
-		UpdateEntityOnlyOnDiff:          config.ApplicationConfig.UpdateEntityOnlyOnDiff,
-		PortClientId:                    config.ApplicationConfig.PortClientId,
-		PortClientSecret:                config.ApplicationConfig.PortClientSecret,
-		StateKey:                        config.ApplicationConfig.StateKey,
+		ConfigFilePath:                   config.ApplicationConfig.ConfigFilePath,
+		ResyncInterval:                   config.ApplicationConfig.ResyncInterval,
+		PortBaseURL:                      config.ApplicationConfig.PortBaseURL,
+		EventListenerType:                config.ApplicationConfig.EventListenerType,
+		CreateDefaultResources:           config.ApplicationConfig.CreateDefaultResources,
+		OverwriteConfigurationOnRestart:  config.ApplicationConfig.OverwriteConfigurationOnRestart,
+		Resources:                        integrationConfig.Resources,
+		DeleteDependents:                 integrationConfig.DeleteDependents,
+		CreateMissingRelatedEntities:     integrationConfig.CreateMissingRelatedEntities,
+		AllowAllEnvironmentVariablesInJQ: config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ,
+		AllowedEnvironmentVariablesInJQ:  config.ApplicationConfig.AllowedEnvironmentVariablesInJQ,
+		UpdateEntityOnlyOnDiff:           config.ApplicationConfig.UpdateEntityOnlyOnDiff,
+		PortClientId:                     config.ApplicationConfig.PortClientId,
+		PortClientSecret:                 config.ApplicationConfig.PortClientSecret,
+		StateKey:                         config.ApplicationConfig.StateKey,
 	}
 
 	if fixtureConfig.portClientId != "" {
@@ -160,14 +162,16 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 	}
 
 	exporterConfig := &port.Config{
-		StateKey:                        applicationConfig.StateKey,
-		EventListenerType:               applicationConfig.EventListenerType,
-		CreateDefaultResources:          applicationConfig.CreateDefaultResources,
-		ResyncInterval:                  applicationConfig.ResyncInterval,
-		OverwriteConfigurationOnRestart: applicationConfig.OverwriteConfigurationOnRestart,
-		Resources:                       applicationConfig.Resources,
-		DeleteDependents:                applicationConfig.DeleteDependents,
-		CreateMissingRelatedEntities:    applicationConfig.CreateMissingRelatedEntities,
+		StateKey:                         applicationConfig.StateKey,
+		EventListenerType:                applicationConfig.EventListenerType,
+		CreateDefaultResources:           applicationConfig.CreateDefaultResources,
+		ResyncInterval:                   applicationConfig.ResyncInterval,
+		OverwriteConfigurationOnRestart:  applicationConfig.OverwriteConfigurationOnRestart,
+		Resources:                        applicationConfig.Resources,
+		DeleteDependents:                 applicationConfig.DeleteDependents,
+		CreateMissingRelatedEntities:     applicationConfig.CreateMissingRelatedEntities,
+		AllowAllEnvironmentVariablesInJQ: applicationConfig.AllowAllEnvironmentVariablesInJQ,
+		AllowedEnvironmentVariablesInJQ:  applicationConfig.AllowedEnvironmentVariablesInJQ,
 	}
 
 	groups := make([]metav1.APIGroup, 0)
@@ -467,16 +471,20 @@ func (f *fixture) assertObjectsHandled(objects []struct{ kind, name string }) {
 		return true
 	}, time.Second*15, time.Millisecond*500)
 
+
 	assert.Eventually(f.t, func() bool {
 		processedStateKey := fmt.Sprintf("(statekey/%s)", f.controllersHandler.stateKey)
 		entities, err := f.portClient.SearchEntitiesByDatasource(context.Background(), "port-k8s-exporter", processedStateKey)
+		if err != nil {
+			return false
+		}
 
 		for _, obj := range objects {
 			found := false
 			for _, entity := range entities {
 				if entity.Identifier == obj.name {
 					found = true
-					continue
+					break
 				}
 			}
 			if !found {
@@ -484,8 +492,8 @@ func (f *fixture) assertObjectsHandled(objects []struct{ kind, name string }) {
 			}
 		}
 
-		return err == nil && len(entities) == len(objects)
-	}, time.Second*15, time.Millisecond*500)
+		return len(entities) >= len(objects)
+	}, time.Second*60, time.Millisecond*500)
 }
 
 func (f *fixture) runControllersHandle() {

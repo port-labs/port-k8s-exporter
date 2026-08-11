@@ -19,7 +19,6 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/port/integration"
 	_ "github.com/port-labs/port-k8s-exporter/test_utils"
 	testUtils "github.com/port-labs/port-k8s-exporter/test_utils"
-	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -268,6 +267,7 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 		t.Errorf("error initializing integration: %v", err)
 	}
 
+	metrics.RegisterMetrics()
 	return &fixture{
 		t:          t,
 		k8sClient:  k8sClient,
@@ -437,9 +437,9 @@ func validateMetrics(
 	}
 
 	defaultSuccessMetrics := map[[2]string]float64{
-		{metrics.MetricKindResync, metrics.MetricPhaseResync}:         0,
-		{metrics.MetricKindReconciliation, metrics.MetricPhaseDelete}: 0,
-		{kind, metrics.MetricPhaseResync}:                             0,
+		{metrics.MetricKindResync, metrics.MetricPhaseResync}:         float64(metrics.PhaseFailed),
+		{metrics.MetricKindReconciliation, metrics.MetricPhaseDelete}: float64(metrics.PhaseFailed),
+		{kind, metrics.MetricPhaseResync}:                             float64(metrics.PhaseFailed),
 	}
 
 	for defaultMetric, defaultMetricValue := range defaultObjectCountMetrics {
@@ -447,9 +447,13 @@ func validateMetrics(
 		if val, ok := expectedObjectCountMetrics[[2]string{defaultMetric[1], defaultMetric[2]}]; ok {
 			expectedValue = val
 		}
-		gauge, err := metrics.GetObjectCountGauge(defaultMetric[0], defaultMetric[1], defaultMetric[2])
+		val, err := metrics.GetMetricValue(metrics.MetricObjectCountName, map[metrics.PortMetricLabel]string{
+			metrics.MetricLabelKind:            defaultMetric[0],
+			metrics.MetricLabelObjectCountType: defaultMetric[1],
+			metrics.MetricLabelPhase:           defaultMetric[2],
+		})
 		assert.NoError(t, err)
-		assert.Equal(t, expectedValue, testutil.ToFloat64(gauge), fmt.Sprintf("kind: %s, phase: %s", defaultMetric[0], defaultMetric[1]))
+		assert.Equal(t, expectedValue, val, fmt.Sprintf("metric: %s, kind: %s, object_count_type: %s, phase: %s", metrics.MetricObjectCountName, defaultMetric[0], defaultMetric[1], defaultMetric[2]))
 	}
 
 	for defaultMetric, defaultMetricValue := range defaultSuccessMetrics {
@@ -457,9 +461,12 @@ func validateMetrics(
 		if val, ok := expectedSuccessMetrics[defaultMetric]; ok {
 			expectedValue = val
 		}
-		successGauge, err := metrics.GetSuccessGauge(defaultMetric[0], defaultMetric[1])
+		val, err := metrics.GetMetricValue(metrics.MetricSuccessName, map[metrics.PortMetricLabel]string{
+			metrics.MetricLabelKind:  defaultMetric[0],
+			metrics.MetricLabelPhase: defaultMetric[1],
+		})
 		assert.NoError(t, err)
-		assert.Equal(t, expectedValue, testutil.ToFloat64(successGauge), fmt.Sprintf("kind: %s, phase: %s", defaultMetric[0], defaultMetric[1]))
+		assert.Equal(t, expectedValue, val, fmt.Sprintf("metric: %s, kind: %s, phase: %s", metrics.MetricSuccessName, defaultMetric[0], defaultMetric[1]))
 	}
 }
 
@@ -489,9 +496,9 @@ func TestMetricsPopulation_SuccessfullResync(t *testing.T) {
 		{metrics.MetricLoadedResult, metrics.MetricPhaseLoad}:          2,
 	}
 	expectedSuccessMetrics := map[[2]string]float64{
-		{metrics.MetricKindResync, metrics.MetricPhaseResync}:         1,
-		{metrics.MetricKindReconciliation, metrics.MetricPhaseDelete}: 1,
-		{deploymentKind, metrics.MetricPhaseResync}:                   1,
+		{metrics.MetricKindResync, metrics.MetricPhaseResync}:         float64(metrics.PhaseSucceeded),
+		{metrics.MetricKindReconciliation, metrics.MetricPhaseDelete}: float64(metrics.PhaseSucceeded),
+		{deploymentKind, metrics.MetricPhaseResync}:                   float64(metrics.PhaseSucceeded),
 	}
 	for i := 0; i < 2; i++ {
 		validateMetrics(t, deploymentKind, &i, expectedObjectCountMetrics, expectedSuccessMetrics)
@@ -520,9 +527,9 @@ func TestMetricsPopulation_Selector(t *testing.T) {
 	handlers.RunResync(&port.Config{StateKey: stateKey}, f.k8sClient, f.portClient, handlers.INITIAL_RESYNC)
 
 	expectedSuccessMetrics := map[[2]string]float64{
-		{metrics.MetricKindResync, metrics.MetricPhaseResync}:         1,
-		{metrics.MetricKindReconciliation, metrics.MetricPhaseDelete}: 1,
-		{daemonSetKind, metrics.MetricPhaseResync}:                    1,
+		{metrics.MetricKindResync, metrics.MetricPhaseResync}:         float64(metrics.PhaseSucceeded),
+		{metrics.MetricKindReconciliation, metrics.MetricPhaseDelete}: float64(metrics.PhaseSucceeded),
+		{daemonSetKind, metrics.MetricPhaseResync}:                    float64(metrics.PhaseSucceeded),
 	}
 	firstDaemonSetKindIndex := 0
 	validateMetrics(t, daemonSetKind, &firstDaemonSetKindIndex, map[[2]string]float64{
@@ -562,9 +569,9 @@ func TestMetricsPopulation_ItemsToParse(t *testing.T) {
 
 	firstDaemonSetKindIndex := 0
 	expectedSuccessMetrics := map[[2]string]float64{
-		{metrics.MetricKindResync, metrics.MetricPhaseResync}:         1,
-		{metrics.MetricKindReconciliation, metrics.MetricPhaseDelete}: 1,
-		{deploymentKind, metrics.MetricPhaseResync}:                   1,
+		{metrics.MetricKindResync, metrics.MetricPhaseResync}:         float64(metrics.PhaseSucceeded),
+		{metrics.MetricKindReconciliation, metrics.MetricPhaseDelete}: float64(metrics.PhaseSucceeded),
+		{deploymentKind, metrics.MetricPhaseResync}:                   float64(metrics.PhaseSucceeded),
 	}
 	validateMetrics(t, deploymentKind, &firstDaemonSetKindIndex, map[[2]string]float64{
 		{metrics.MetricRawExtractedResult, metrics.MetricPhaseExtract}: 3,
@@ -606,9 +613,9 @@ func TestMetricsPopulation_Delete(t *testing.T) {
 	handlers.RunResync(&port.Config{StateKey: stateKey}, f.k8sClient, f.portClient, handlers.MAPPING_CHANGED)
 
 	expectedSuccessMetrics := map[[2]string]float64{
-		{metrics.MetricKindResync, metrics.MetricPhaseResync}:         1,
-		{metrics.MetricKindReconciliation, metrics.MetricPhaseDelete}: 1,
-		{daemonSetKind, metrics.MetricPhaseResync}:                    1,
+		{metrics.MetricKindResync, metrics.MetricPhaseResync}:         float64(metrics.PhaseSucceeded),
+		{metrics.MetricKindReconciliation, metrics.MetricPhaseDelete}: float64(metrics.PhaseSucceeded),
+		{daemonSetKind, metrics.MetricPhaseResync}:                    float64(metrics.PhaseSucceeded),
 	}
 	firstDaemonSetKindIndex := 0
 	validateMetrics(t, daemonSetKind, &firstDaemonSetKindIndex, map[[2]string]float64{
@@ -645,7 +652,9 @@ func TestMetricsPopulation_InvalidSelectorMapping(t *testing.T) {
 	validateMetrics(t, daemonSetKind, &firstDaemonSetKindIndex, map[[2]string]float64{
 		{metrics.MetricRawExtractedResult, metrics.MetricPhaseExtract}: 3,
 		{metrics.MetricFailedResult, metrics.MetricPhaseTransform}:     3,
-	}, map[[2]string]float64{})
+	}, map[[2]string]float64{
+		{metrics.MetricKindReconciliation, metrics.MetricPhaseDelete}: float64(metrics.PhaseSkipped),
+	})
 
 	secondDaemonSetKindIndex := 1
 	validateMetrics(t, daemonSetKind, &secondDaemonSetKindIndex, map[[2]string]float64{
@@ -653,7 +662,9 @@ func TestMetricsPopulation_InvalidSelectorMapping(t *testing.T) {
 		{metrics.MetricTransformResult, metrics.MetricPhaseTransform}:   2,
 		{metrics.MetricFilteredOutResult, metrics.MetricPhaseTransform}: 1,
 		{metrics.MetricLoadedResult, metrics.MetricPhaseLoad}:           2,
-	}, map[[2]string]float64{})
+	}, map[[2]string]float64{
+		{metrics.MetricKindReconciliation, metrics.MetricPhaseDelete}: float64(metrics.PhaseSkipped),
+	})
 }
 
 func TestMetricsPopulation_InvalidIdentifierMapping(t *testing.T) {
@@ -678,7 +689,9 @@ func TestMetricsPopulation_InvalidIdentifierMapping(t *testing.T) {
 	validateMetrics(t, daemonSetKind, &firstDaemonSetKindIndex, map[[2]string]float64{
 		{metrics.MetricRawExtractedResult, metrics.MetricPhaseExtract}: 3,
 		{metrics.MetricFailedResult, metrics.MetricPhaseTransform}:     3,
-	}, map[[2]string]float64{})
+	}, map[[2]string]float64{
+		{metrics.MetricKindReconciliation, metrics.MetricPhaseDelete}: float64(metrics.PhaseSkipped),
+	})
 }
 
 func TestMetricsPopulation_NonExistBlueprintMapping(t *testing.T) {
@@ -704,5 +717,7 @@ func TestMetricsPopulation_NonExistBlueprintMapping(t *testing.T) {
 		{metrics.MetricRawExtractedResult, metrics.MetricPhaseExtract}: 3,
 		{metrics.MetricTransformResult, metrics.MetricPhaseTransform}:  3,
 		{metrics.MetricFailedResult, metrics.MetricPhaseLoad}:          3,
-	}, map[[2]string]float64{})
+	}, map[[2]string]float64{
+		{metrics.MetricKindReconciliation, metrics.MetricPhaseDelete}: float64(metrics.PhaseSkipped),
+	})
 }

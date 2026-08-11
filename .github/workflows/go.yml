@@ -3,7 +3,7 @@ name: Go
 on:
   push:
     branches: [ "main" ]
-  pull_request:
+  pull_request_target:
     branches: [ "main" ]
 
 jobs:
@@ -11,13 +11,25 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    # SECURITY: Always checkout the base branch first for trusted setup
+    - name: Checkout base branch
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.base.sha || github.sha }}
 
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: 1.24.4
+        go-version: 1.24.13
         cache: true
+
+    # SECURITY: Only now checkout the PR code for testing
+    - name: Checkout PR code
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        # Clean checkout to avoid any potential security issues
+        clean: true
 
     - name: Build
       run: go build -v ./...
@@ -68,7 +80,7 @@ jobs:
         CODE_COVERAGE_ARTIFACT_URL: ${{ steps.upload-coverage.outputs.artifact-url }}
         PR_NUMBER: ${{ steps.pr-number.outputs.PR_NUMBER }}
       with:
-        github-token: ${{ secrets.GITHUB_TOKEN }}
+        github-token: ${{ secrets.PORT_MACHINE_USER_GITHUB_TOKEN }}
         script: |
           const output = `#### Code Coverage Artifact 📈: ${{ env.CODE_COVERAGE_ARTIFACT_URL }}
           #### Code Coverage Total Percentage: \`${{ steps.set-stmts-coverage.outputs.STMTS_COVERAGE }}%\``;
@@ -99,7 +111,7 @@ jobs:
         CURRENT_COVERAGE: ${{ steps.set-current-coverage.outputs.CURRENT_COVERAGE }}
         NEW_COVERAGE: ${{ steps.set-stmts-coverage.outputs.STMTS_COVERAGE }}
       with:
-        github-token: ${{ secrets.GITHUB_TOKEN }}
+        github-token: ${{ secrets.PORT_MACHINE_USER_GITHUB_TOKEN }}
         script: |
           const output = `🚨 The new code coverage percentage is lower than the current one. Current coverage: \`${{ env.CURRENT_COVERAGE }}\`\n While the new one is: \`${{ env.NEW_COVERAGE }}\``;
           github.rest.issues.createComment({

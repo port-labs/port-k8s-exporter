@@ -44,6 +44,29 @@ func NewBool(v *bool, key string, defaultValue bool, description string) {
 	flag.BoolVar(v, key, value, description)
 }
 
+func NewStringSlice(v *[]string, key string, defaultValue []string, description string) {
+	envValue := goutils.GetStringEnvOrDefault(prepareEnvKey(key), "")
+	var value []string
+	if envValue != "" {
+		value = strings.Split(envValue, ",")
+		// Trim whitespace from each element
+		for i, s := range value {
+			value[i] = strings.TrimSpace(s)
+		}
+	} else {
+		value = defaultValue
+	}
+	flag.Func(key, description, func(s string) error {
+		*v = strings.Split(s, ",")
+		// Trim whitespace from each element
+		for i, str := range *v {
+			(*v)[i] = strings.TrimSpace(str)
+		}
+		return nil
+	})
+	*v = value
+}
+
 func NewCreatePortResourcesOrigin(target *port.CreatePortResourcesOrigin, key, defaultValue, description string) {
 	var value string
 	flag.StringVar(&value, key, defaultValue, description)

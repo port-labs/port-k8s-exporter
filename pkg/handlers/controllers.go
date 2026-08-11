@@ -6,9 +6,13 @@ import (
 	"fmt"
 	"sync"
 
+	guuid "github.com/google/uuid"
+	"go.uber.org/zap"
+	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/crd"
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
+	"github.com/port-labs/port-k8s-exporter/pkg/image"
 	"github.com/port-labs/port-k8s-exporter/pkg/k8s"
 	"github.com/port-labs/port-k8s-exporter/pkg/logger"
 	"github.com/port-labs/port-k8s-exporter/pkg/metrics"
@@ -50,6 +54,14 @@ func NewControllersHandler(exporterConfig *port.Config, portConfig *port.Integra
 
 	crd.AutodiscoverCRDsToActions(portConfig, k8sClient.ApiExtensionClient, portClient)
 
+	// Set up image OS enricher if enabled
+	var imageEnricher *image.Enricher
+	if config.ApplicationConfig.ImageOsDetectionEnabled {
+		detector := image.NewDetector(authn.DefaultKeychain, config.ApplicationConfig.ImageOsDetectionConcurrency)
+		imageEnricher = image.NewEnricher(detector, true)
+		logger.Info("Image OS detection enabled")
+	}
+
 	aggResources := make(map[string][]port.KindConfig)
 	for _, resource := range portConfig.Resources {
 		kindConfig := port.KindConfig{Selector: resource.Selector, Port: resource.Port}
@@ -71,7 +83,7 @@ func NewControllersHandler(exporterConfig *port.Config, portConfig *port.Integra
 		}
 
 		informer := informersFactory.ForResource(gvr)
-		controller := k8s.NewController(port.AggregatedResource{Kind: kind, KindConfigs: kindConfigs}, informer, portConfig, config.ApplicationConfig)
+		controller := k8s.NewController(port.AggregatedResource{Kind: kind, KindConfigs: kindConfigs}, informer, portConfig, config.ApplicationConfig, imageEnricher)
 		controllers = append(controllers, controller)
 	}
 
@@ -88,13 +100,14 @@ func NewControllersHandler(exporterConfig *port.Config, portConfig *port.Integra
 }
 
 func (c *ControllersHandler) Handle(resyncType ResyncType) {
-	logger.Infow(fmt.Sprintf("Starting resync due to %s", resyncType), "stateKey", c.stateKey)
-	logger.Info("Starting informers")
+	eventLogger := logger.GetEventLogger(guuid.NewString())
+	eventLogger.Infow(fmt.Sprintf("Starting resync due to %s", resyncType), "stateKey", c.stateKey)
+	eventLogger.Infow("Starting informers")
 	c.informersFactory.Start(c.stopCh)
 
-	resyncResults, err := syncAllControllers(c)
+	resyncResults, err := syncAllControllers(c, eventLogger)
 	if err != nil {
-		logger.Errorw("Error syncing controllers", "resyncType", resyncType, "error", err.Error())
+		eventLogger.Errorw("Error syncing controllers", "resyncType", resyncType, "error", err.Error())
 		return
 	}
 
@@ -106,13 +119,17 @@ func (c *ControllersHandler) Handle(resyncType ResyncType) {
 	}()
 
 	if resyncResults.ShouldDeleteStaleEntities {
-		logger.Info("Deleting stale entities")
-		c.runDeleteStaleEntities(ctx, resyncResults.EntitiesSets)
-		logger.Info("Done deleting stale entities")
-	} else {
-		logger.Warning("Skipping delete of stale entities due to a failure in getting all current entities from k8s")
+		eventLogger.Infow("Deleting stale entities")
+		err := c.runDeleteStaleEntities(ctx, resyncResults.EntitiesSets, eventLogger)
+		if err != nil {
+			eventLogger.Errorw("Error deleting stale entities", "error", err.Error())
+		}
+		eventLogger.Infow("Done deleting stale entities")
+		metrics.SetSuccessStatusConditionally(metrics.MetricKindReconciliation, metrics.MetricPhaseDelete, err == nil)
+		return
 	}
-	metrics.SetSuccessStatusConditionally(metrics.MetricKindReconciliation, metrics.MetricPhaseDelete, resyncResults.ShouldDeleteStaleEntities)
+
+	eventLogger.Warnw("Skipping delete of stale entities due to a failure in getting all current entities from k8s")
 }
 
 func RunResync(exporterConfig *port.Config, k8sClient *k8s.Client, portClient *cli.PortClient, resyncType ResyncType) error {
@@ -130,7 +147,12 @@ func RunResync(exporterConfig *port.Config, k8sClient *k8s.Client, portClient *c
 			metrics.SetSuccessStatus(metrics.MetricKindResync, metrics.MetricPhaseResync, metrics.PhaseFailed)
 			return nil, errors.New("integration config is nil")
 		}
-
+		if !i.Config.AllowAllEnvironmentVariablesInJQ {
+			config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = i.Config.AllowAllEnvironmentVariablesInJQ
+		}
+		if i.Config.AllowedEnvironmentVariablesInJQ != nil {
+			config.ApplicationConfig.AllowedEnvironmentVariablesInJQ = i.Config.AllowedEnvironmentVariablesInJQ
+		}
 		newHandler := NewControllersHandler(exporterConfig, i.Config, k8sClient, portClient)
 		newHandler.Handle(resyncType)
 		return newHandler, nil
@@ -140,7 +162,7 @@ func RunResync(exporterConfig *port.Config, k8sClient *k8s.Client, portClient *c
 	return resyncErr
 }
 
-func syncAllControllers(c *ControllersHandler) (*FullResyncResults, error) {
+func syncAllControllers(c *ControllersHandler, eventLogger *zap.SugaredLogger) (*FullResyncResults, error) {
 	return metrics.MeasureDuration(metrics.MetricKindResync, metrics.MetricPhaseResync, func(phase string) (*FullResyncResults, error) {
 		currentEntitiesSets := make([]map[string]interface{}, 0)
 		shouldDeleteStaleEntities := true
@@ -153,10 +175,11 @@ func syncAllControllers(c *ControllersHandler) (*FullResyncResults, error) {
 				controller.Shutdown()
 			}()
 
+			metrics.InitializeMetricsForController(&controller.Resource)
 			metrics.MeasureDuration(metrics.GetKindLabel(controller.Resource.Kind, nil), metrics.MetricPhaseExtract, func(phase string) (struct{}, error) {
-				logger.Infof("Waiting for informer cache to sync for resource '%s'", controller.Resource.Kind)
+				eventLogger.Infow(fmt.Sprintf("Waiting for informer cache to sync for resource '%s'", controller.Resource.Kind))
 				if err := controller.WaitForCacheSync(c.stopCh); err != nil {
-					logger.Errorw("Error while waiting for informer cache sync", "error", err.Error())
+					eventLogger.Errorw("Error while waiting for informer cache sync", "error", err.Error())
 				}
 				// For compatibility to other object kind metrics, we add
 				// this metric per kind and not once per resource
@@ -170,13 +193,13 @@ func syncAllControllers(c *ControllersHandler) (*FullResyncResults, error) {
 				syncWg.Add(1)
 				go func() {
 					defer syncWg.Done()
-					controllerEntitiesSet, controllerShouldDeleteStaleEntities := syncController(controller, c)
+					controllerEntitiesSet, controllerShouldDeleteStaleEntities := syncController(controller, c, eventLogger)
 					currentEntitiesSets = append(currentEntitiesSets, controllerEntitiesSet)
 					shouldDeleteStaleEntities = shouldDeleteStaleEntities && controllerShouldDeleteStaleEntities
 				}()
 				continue
 			}
-			controllerEntitiesSet, controllerShouldDeleteStaleEntities := syncController(controller, c)
+			controllerEntitiesSet, controllerShouldDeleteStaleEntities := syncController(controller, c, eventLogger)
 			currentEntitiesSets = append(currentEntitiesSets, controllerEntitiesSet)
 			shouldDeleteStaleEntities = shouldDeleteStaleEntities && controllerShouldDeleteStaleEntities
 		}
@@ -190,16 +213,15 @@ func syncAllControllers(c *ControllersHandler) (*FullResyncResults, error) {
 	})
 }
 
-func syncController(controller *k8s.Controller, c *ControllersHandler) (map[string]interface{}, bool) {
-	logger.Infof("Starting full initial resync for resource '%s'", controller.Resource.Kind)
-	metrics.InitializeMetricsForController(&controller.Resource)
-	initialSyncResult := controller.RunInitialSync()
-	logger.Infof("Done full initial resync, starting live events sync for resource '%s'", controller.Resource.Kind)
+func syncController(controller *k8s.Controller, c *ControllersHandler, eventLogger *zap.SugaredLogger) (map[string]interface{}, bool) {
+	eventLogger.Infow(fmt.Sprintf("Starting full initial resync for resource '%s'", controller.Resource.Kind))
+	initialSyncResult := controller.RunInitialSync(eventLogger)
+	eventLogger.Infow(fmt.Sprintf("Done full initial resync, starting live events sync for resource '%s'", controller.Resource.Kind))
 	controller.RunEventsSync(1, c.stopCh)
 	if len(initialSyncResult.RawDataExamples) > 0 {
 		err := integration.PostIntegrationKindExample(c.portClient, c.stateKey, controller.Resource.Kind, initialSyncResult.RawDataExamples)
 		if err != nil {
-			logger.Warningf("failed to post integration kind example: %s", err.Error())
+			eventLogger.Warnw(fmt.Sprintf("failed to post integration kind example: %s", err.Error()))
 		}
 	}
 	if initialSyncResult.EntitiesSet != nil {
@@ -209,14 +231,16 @@ func syncController(controller *k8s.Controller, c *ControllersHandler) (map[stri
 	return map[string]interface{}{}, initialSyncResult.ShouldDeleteStaleEntities
 }
 
-func (c *ControllersHandler) runDeleteStaleEntities(ctx context.Context, currentEntitiesSet []map[string]interface{}) {
-	metrics.MeasureDuration(metrics.MetricKindReconciliation, metrics.MetricPhaseDelete, func(phase string) (struct{}, error) {
+func (c *ControllersHandler) runDeleteStaleEntities(ctx context.Context, currentEntitiesSet []map[string]interface{}, eventLogger *zap.SugaredLogger) error {
+	_, err := metrics.MeasureDuration(metrics.MetricKindReconciliation, metrics.MetricPhaseDelete, func(phase string) (struct{}, error) {
 		err := c.portClient.DeleteStaleEntities(ctx, c.stateKey, goutils.MergeMaps(currentEntitiesSet...))
 		if err != nil {
-			logger.Errorw("error deleting stale entities", "error", err.Error())
+			eventLogger.Errorw("error deleting stale entities", "error", err.Error())
+			return struct{}{}, err
 		}
 		return struct{}{}, nil
 	})
+	return err
 }
 
 func (c *ControllersHandler) Stop() {

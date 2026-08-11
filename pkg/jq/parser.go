@@ -1,12 +1,14 @@
 package jq
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"reflect"
 	"strings"
 
 	"github.com/itchyny/gojq"
+	"github.com/port-labs/port-k8s-exporter/pkg/config"
 	"github.com/port-labs/port-k8s-exporter/pkg/goutils"
 	"github.com/port-labs/port-k8s-exporter/pkg/logger"
 )
@@ -20,6 +22,27 @@ func runJQQuery(jqQuery string, obj interface{}) (interface{}, error) {
 	code, err := gojq.Compile(
 		query,
 		gojq.WithEnvironLoader(func() []string {
+			envQuery := fmt.Sprintf("def modified_env: [%s | .[] | split(\"=\")] | map({\"key\": .[0], \"value\": .[1]}) | from_entries; def patterns: %s | map(\"(\" + . + \")\") | join(\"|\"); if %t then modified_env else if ((patterns | length) > 0) then modified_env | with_entries(select(.key | test(patterns))) else {} end end | to_entries | map([.key,.value]) | [ .[] | join(\"=\")]", getSerializedEnvironmentVariables(), getAllowedEnvironmentVariables(), config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ)
+			parsedEnvQuery, err := gojq.Parse(envQuery)
+			if err != nil {
+				logger.Warningf("failed to parse environment variables jq query: %s", err)
+				return os.Environ()
+			}
+			env, ok := parsedEnvQuery.Run(map[string]any{}).Next()
+			if !ok {
+				return os.Environ()
+			}
+			if err, ok := env.(error); ok {
+				logger.Warningf("failed to run environment variables jq query: %s", err)
+				return os.Environ()
+			}
+			if result, ok := env.([]interface{}); ok {
+				resultStrings := make([]string, len(result))
+				for i, v := range result {
+					resultStrings[i] = v.(string)
+				}
+				return resultStrings
+			}
 			return os.Environ()
 		}),
 	)
@@ -57,6 +80,32 @@ func ParseBool(jqQuery string, obj interface{}) (bool, error) {
 	return boolean, nil
 }
 
+func trimJQStringLiteral(s string) string {
+	return strings.Trim(s, "\"")
+}
+
+// stringOrStringArrayFromJQValue interprets a jq result as either a JSON string or a JSON array of strings.
+func stringOrStringArrayFromJQValue(queryRes interface{}, jqQuery string) (interface{}, error) {
+	switch v := queryRes.(type) {
+	case string:
+		return trimJQStringLiteral(v), nil
+	case []interface{}:
+		out := make([]interface{}, len(v))
+		for i, el := range v {
+			s, ok := el.(string)
+			if !ok {
+				logger.Errorw(fmt.Sprintf("string element expected in jq array result for query: '%#v', but got: %#v at index %d", jqQuery, el, i), "jqQuery", jqQuery, "element", el, "index", i)
+				return nil, fmt.Errorf("jq array result must contain only strings")
+			}
+			out[i] = trimJQStringLiteral(s)
+		}
+		return out, nil
+	default:
+		logger.Errorw(fmt.Sprintf("string or string array result expected from query: '%#v', but got: %#v", jqQuery, queryRes), "jqQuery", jqQuery, "queryRes", queryRes)
+		return nil, fmt.Errorf("jq must evaluate to string or array of strings, got %T", queryRes)
+	}
+}
+
 func ParseString(jqQuery string, obj interface{}) (string, error) {
 	queryRes, err := runJQQuery(jqQuery, obj)
 	if err != nil {
@@ -69,7 +118,17 @@ func ParseString(jqQuery string, obj interface{}) (string, error) {
 		return "", fmt.Errorf("failed to parse string with jq")
 	}
 
-	return strings.Trim(str, "\""), nil
+	return trimJQStringLiteral(str), nil
+}
+
+// ParseStringOrStringArray runs jq and accepts either a JSON string or a JSON array of strings.
+// Trimming of string values matches ParseString. Use when a mapped field accepts either shape.
+func ParseStringOrStringArray(jqQuery string, obj interface{}) (interface{}, error) {
+	queryRes, err := runJQQuery(jqQuery, obj)
+	if err != nil {
+		return nil, err
+	}
+	return stringOrStringArrayFromJQValue(queryRes, jqQuery)
 }
 
 func ParseInterface(jqQuery string, obj interface{}) (interface{}, error) {
@@ -163,4 +222,29 @@ func ParseMapRecursively(jqQueries map[string]interface{}, obj interface{}) (map
 	}
 
 	return mapInterface, nil
+}
+
+func getAllowedEnvironmentVariables() string {
+	return getSerializedVariablesArray(config.ApplicationConfig.AllowedEnvironmentVariablesInJQ, "failed to marshal allowed environment variables")
+}
+
+func getSerializedEnvironmentVariables() string {
+	return getSerializedVariablesArray(os.Environ(), "failed to marshal environment variables")
+}
+
+func getSerializedVariablesArray(input []string, errorMessage string) string {
+	escapedInput := make([]string, len(input))
+	for i, v := range input {
+		// Escape backslashes first, then double quotes
+		escaped := strings.ReplaceAll(v, `\`, `\\`)
+		escaped = strings.ReplaceAll(escaped, `"`, `\"`)
+		escapedInput[i] = escaped
+	}
+	jsonBytes, err := json.Marshal(escapedInput)
+	if err != nil {
+		logger.Warningf("%s: %v", errorMessage, err)
+		return "[]"
+	}
+
+	return string(jsonBytes)
 }

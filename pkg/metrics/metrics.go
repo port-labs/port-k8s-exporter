@@ -12,13 +12,20 @@ import (
 	"go.uber.org/zap"
 )
 
+type PortMetric string
+type PortMetricLabel string
 type PhaseSuccessStatus float64
 
 const (
 	// Metric names
-	MetricDurationName    = "port_k8s_exporter_duration_seconds"
-	MetricObjectCountName = "port_k8s_exporter_object_count"
-	MetricSuccessName     = "port_k8s_exporter_success"
+	MetricDurationName    PortMetric = "port_k8s_exporter_duration_seconds"
+	MetricObjectCountName PortMetric = "port_k8s_exporter_object_count"
+	MetricSuccessName     PortMetric = "port_k8s_exporter_success"
+
+	// Metrics labels
+	MetricLabelKind            PortMetricLabel = "kind"
+	MetricLabelPhase           PortMetricLabel = "phase"
+	MetricLabelObjectCountType PortMetricLabel = "object_count_type"
 
 	// Metric kinds
 	MetricKindResync         = "__resync__"
@@ -48,30 +55,31 @@ const (
 	MetricFailedResult                    = "failed"
 	PhaseSucceeded     PhaseSuccessStatus = 1.0
 	PhaseFailed        PhaseSuccessStatus = 0.0
+	PhaseSkipped       PhaseSuccessStatus = -1.0
 )
 
 var (
 	registerOnce    sync.Once
 	durationSeconds = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: MetricDurationName,
+			Name: string(MetricDurationName),
 			Help: "duration description",
 		},
-		[]string{"kind", "phase"},
+		[]string{string(MetricLabelKind), string(MetricLabelPhase)},
 	)
 	objectCount = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: MetricObjectCountName,
+			Name: string(MetricObjectCountName),
 			Help: "object_count description",
 		},
-		[]string{"kind", "object_count_type", "phase"},
+		[]string{string(MetricLabelKind), string(MetricLabelObjectCountType), string(MetricLabelPhase)},
 	)
 	success = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: MetricSuccessName,
+			Name: string(MetricSuccessName),
 			Help: "success description",
 		},
-		[]string{"kind", "phase"},
+		[]string{string(MetricLabelKind), string(MetricLabelPhase)},
 	)
 
 	aggregatedMetricsInstance *AggregatedMetrics
@@ -112,28 +120,47 @@ func flushMetrics(am *AggregatedMetrics) {
 	aggregatedMetricsInstance = nil
 }
 
+func RegisterMetrics() {
+	registerOnce.Do(func() {
+		prometheus.MustRegister(durationSeconds)
+		prometheus.MustRegister(objectCount)
+		prometheus.MustRegister(success)
+	})
+}
+
 func StartMetricsServer(logger *zap.SugaredLogger, port int) {
 	go func() {
 		logger.Infof("Starting metrics server on port %d", port)
-		registerOnce.Do(func() {
-			prometheus.MustRegister(durationSeconds)
-			prometheus.MustRegister(objectCount)
-			prometheus.MustRegister(success)
-		})
+		RegisterMetrics()
 		http.Handle("/metrics", promhttp.Handler())
 		_ = http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
 	}()
 }
 
 func InitializeMetricsForController(aggregatedResources *port.AggregatedResource) {
+	// Initialize object count metric for each kind
 	for kindIndex := range aggregatedResources.KindConfigs {
 		kindLabel := GetKindLabel(aggregatedResources.Kind, &kindIndex)
+		AddObjectCount(kindLabel, MetricFailedResult, MetricPhaseExtract, 0)
 		AddObjectCount(kindLabel, MetricTransformResult, MetricPhaseTransform, 0)
 		AddObjectCount(kindLabel, MetricFilteredOutResult, MetricPhaseTransform, 0)
 		AddObjectCount(kindLabel, MetricFailedResult, MetricPhaseTransform, 0)
 		AddObjectCount(kindLabel, MetricLoadedResult, MetricPhaseLoad, 0)
 		AddObjectCount(kindLabel, MetricFailedResult, MetricPhaseLoad, 0)
+		AddObjectCount(MetricKindReconciliation, MetricDeletedResult, MetricPhaseDelete, 0)
+		AddObjectCount(MetricKindReconciliation, MetricFailedResult, MetricPhaseDelete, 0)
 	}
+
+	kindLabel := GetKindLabel(aggregatedResources.Kind, nil)
+
+	// Initialize success status metric for each phase
+	addDuration(kindLabel, MetricPhaseExtract, 0)
+	addDuration(kindLabel, MetricPhaseTransform, 0)
+	addDuration(kindLabel, MetricPhaseLoad, 0)
+	addDuration(MetricKindReconciliation, MetricPhaseDelete, 0)
+
+	// Initialize success status metric for each phase
+	SetSuccessStatus(MetricKindReconciliation, MetricPhaseDelete, PhaseSkipped)
 }
 
 func GetKindLabel(kind string, kindIndex *int) string {
@@ -150,14 +177,20 @@ func MeasureResync[T any](resyncFn func() (T, error)) (T, error) {
 	return res, err
 }
 
+func addDuration(kind string, phase string, duration float64) {
+	if aggregatedMetricsInstance == nil {
+		return
+	}
+
+	aggregatedMetricsInstance.mu.Lock()
+	defer aggregatedMetricsInstance.mu.Unlock()
+	aggregatedMetricsInstance.DurationSeconds[[2]string{kind, phase}] += duration
+}
+
 func MeasureDuration[T any](kind string, phase string, fn func(phase string) (T, error)) (T, error) {
 	start := time.Now()
 	result, err := fn(phase)
-	if aggregatedMetricsInstance != nil {
-		aggregatedMetricsInstance.mu.Lock()
-		defer aggregatedMetricsInstance.mu.Unlock()
-		aggregatedMetricsInstance.DurationSeconds[[2]string{kind, phase}] += time.Since(start).Seconds()
-	}
+	addDuration(kind, phase, time.Since(start).Seconds())
 
 	return result, err
 }
@@ -194,14 +227,46 @@ func SetSuccessStatus(kind string, phase string, successVal PhaseSuccessStatus) 
 // (e.g., metrics_test) to read current gauge values without importing
 // unexported variables and creating import cycles.
 
-func GetDurationGauge(kind string, phase string) (prometheus.Gauge, error) {
-	return durationSeconds.GetMetricWithLabelValues(kind, phase)
-}
+func GetMetricValue(metricName PortMetric, expectedLabels map[PortMetricLabel]string) (float64, error) {
+	metricFamilies, err := prometheus.DefaultGatherer.Gather()
+	if err != nil {
+		return 0, fmt.Errorf("could not gather: %v", err)
+	}
 
-func GetObjectCountGauge(kind string, objectCountType string, phase string) (prometheus.Gauge, error) {
-	return objectCount.GetMetricWithLabelValues(kind, objectCountType, phase)
-}
+	for _, mf := range metricFamilies {
+		if mf.GetName() != string(metricName) {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			labels := map[string]string{}
+			for _, lp := range m.GetLabel() {
+				labels[string(lp.GetName())] = lp.GetValue()
+			}
 
-func GetSuccessGauge(kind string, phase string) (prometheus.Gauge, error) {
-	return success.GetMetricWithLabelValues(kind, phase)
+			// Check if all expected labels match
+			allMatch := true
+			for k, v := range expectedLabels {
+				if labels[string(k)] != v {
+					allMatch = false
+					break
+				}
+			}
+			if !allMatch {
+				continue
+			}
+
+			// Handle different metric types
+			switch {
+			case m.Gauge != nil:
+				return m.GetGauge().GetValue(), nil
+			case m.Counter != nil:
+				return m.GetCounter().GetValue(), nil
+			case m.Untyped != nil:
+				return m.GetUntyped().GetValue(), nil
+			default:
+				return 0, fmt.Errorf("unsupported metric type for %s", metricName)
+			}
+		}
+	}
+	return 0, fmt.Errorf("metric %s with labels (%v) has not been populated", metricName, expectedLabels)
 }
