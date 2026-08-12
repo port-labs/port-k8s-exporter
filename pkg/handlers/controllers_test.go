@@ -233,7 +233,10 @@ func newFixture(t *testing.T, fixtureConfig *fixtureConfig) *fixture {
 	cacheClient := memory.NewMemCacheClient(fakeD)
 	discoveryMapper := restmapper.NewDeferredDiscoveryRESTMapper(cacheClient)
 	k8sClient := &k8s.Client{DiscoveryClient: discoveryClient, DynamicClient: dynamicClient, DiscoveryMapper: discoveryMapper, ApiExtensionClient: apiExtensionsClient}
-	portClient := cli.New(applicationConfig)
+	portClient := cli.New(applicationConfig,
+		cli.WithDeleteDependents(applicationConfig.DeleteDependents),
+		cli.WithCreateMissingRelatedEntities(applicationConfig.CreateMissingRelatedEntities),
+	)
 	blueprintIdentifier := getBlueprintId(exporterConfig.StateKey)
 
 	blueprintRaw := port.Blueprint{

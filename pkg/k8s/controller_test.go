@@ -451,7 +451,7 @@ func (f *fixture) runControllerInitialSync(expectedResult *SyncResult) {
 }
 
 func (f *fixture) runControllerEventsSync() {
-	f.controller.RunEventsSync(1, signal.SetupSignalHandler())
+	f.controller.RunEventsSync(1, logger.GetEventLogger("test-event-id"), signal.SetupSignalHandler())
 }
 
 func TestSuccessfulRunInitialSync(t *testing.T) {
