@@ -82,22 +82,17 @@ func (f *Fixture) Consume(handler JsonHandler) {
 	<-readyChan
 }
 
-type MockJsonHandler struct {
-	CapturedValue []byte
-}
-
-func (m *MockJsonHandler) HandleJson(value []byte) {
-	m.CapturedValue = value
-}
-
 func TestConsumer_HandleJson(t *testing.T) {
 	f := NewFixture(t)
-	mockHandler := &MockJsonHandler{}
-
-	f.Consume(mockHandler.HandleJson)
+	got := make(chan []byte, 1)
 
 	f.Produce(t, []byte("test-value"))
-	assert.Eventually(t, func() bool {
-		return len(mockHandler.CapturedValue) > 0
-	}, time.Second*5, time.Millisecond*100)
+	f.Consume(func(value []byte) { got <- value })
+
+	select {
+	case value := <-got:
+		assert.Equal(t, []byte("test-value"), value)
+	case <-time.After(time.Second * 5):
+		t.Fatal("did not receive message")
+	}
 }
