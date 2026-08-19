@@ -122,6 +122,7 @@ func New(applicationConfig *config.ApplicationConfiguration, opts ...Option) *Po
 	// partially-cleared Authorization header on the shared resty.Client.
 	c.Client.OnBeforeRequest(func(client *resty.Client, request *resty.Request) error {
 		if request.Method == "POST" && strings.Contains(request.URL, AuthTokenEndpoint) {
+			request.SetAuthToken("")
 			return nil
 		}
 		if c.Authenticator == nil {
