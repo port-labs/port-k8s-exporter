@@ -39,14 +39,12 @@ func NewAuthenticator(clientID, clientSecret string) *Authenticator {
 func (a *Authenticator) AuthenticateClient(ctx context.Context, client *PortClient) (string, int, error) {
 	a.AuthMutex.Lock()
 	defer a.AuthMutex.Unlock()
-	client.ClearAuthToken()
 	if time.Since(a.LastRefresh) > time.Duration(a.ExpiresIn)*time.Second {
 		_, _, err := a.refreshAccessToken(ctx, client)
 		if err != nil {
 			return "", 0, err
 		}
 	}
-	client.Client.SetAuthToken(a.AccessToken)
 	return a.AccessToken, a.ExpiresIn, nil
 }
 
@@ -120,16 +118,22 @@ func New(applicationConfig *config.ApplicationConfiguration, opts ...Option) *Po
 			}),
 	}
 
-	// Add pre-request hook to wait for Ready state
+	// Token is set per-request so concurrent goroutines never observe a
+	// partially-cleared Authorization header on the shared resty.Client.
 	c.Client.OnBeforeRequest(func(client *resty.Client, request *resty.Request) error {
 		if request.Method == "POST" && strings.Contains(request.URL, AuthTokenEndpoint) {
+			request.SetAuthToken("")
 			return nil
 		}
 		if c.Authenticator == nil {
 			c.Authenticator = NewAuthenticator(c.ClientID, c.ClientSecret)
 		}
-		_, _, err := c.Authenticator.AuthenticateClient(context.Background(), c)
-		return err
+		token, _, err := c.Authenticator.AuthenticateClient(context.Background(), c)
+		if err != nil {
+			return err
+		}
+		request.SetAuthToken(token)
+		return nil
 	})
 
 	WithClientID(applicationConfig.PortClientId)(c)
@@ -141,11 +145,6 @@ func New(applicationConfig *config.ApplicationConfiguration, opts ...Option) *Po
 	}
 
 	return c
-}
-
-func (c *PortClient) ClearAuthToken() {
-	// Setting an empty token will remove the Authorization header from the request (see pkg/mod/github.com/go-resty/resty/v2@v2.7.0/middleware.go:255)
-	c.Client.SetAuthToken("")
 }
 
 func WithHeader(key, val string) Option {

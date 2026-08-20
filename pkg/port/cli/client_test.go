@@ -398,6 +398,44 @@ func TestBulkUpsert_PartialSuccess207(t *testing.T) {
 	}
 }
 
+func TestPortClient_ConcurrentRequestsKeepValidAuthToken(t *testing.T) {
+	const goroutines = 50
+
+	var mu sync.Mutex
+	var malformedHeaders []string
+
+	server := newBulkTestServer(func(w http.ResponseWriter, r *http.Request) {
+		if auth := r.Header.Get("Authorization"); auth != "Bearer test-token" {
+			mu.Lock()
+			malformedHeaders = append(malformedHeaders, auth)
+			mu.Unlock()
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(port.ResponseBody{
+			OK:     true,
+			Entity: port.Entity{Identifier: "e", Blueprint: "bp"},
+		})
+	})
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for range goroutines {
+		go func() {
+			defer wg.Done()
+			_, err := client.CreateEntity(context.Background(),
+				&port.EntityRequest{Identifier: "e", Blueprint: "bp"}, "", false)
+			assert.NoError(t, err)
+		}()
+	}
+	wg.Wait()
+
+	assert.Empty(t, malformedHeaders,
+		"no request should carry an empty or stale Authorization header")
+}
+
 func TestBulkUpsert_NetworkErrorIsRetryable(t *testing.T) {
 	server := newBulkTestServer(func(w http.ResponseWriter, r *http.Request) {})
 	server.Close()

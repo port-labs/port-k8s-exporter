@@ -264,7 +264,7 @@ func SetHttpWriterParametersAndStart(url string, authFunc func() (string, int, e
 		if err != nil {
 			return err
 		}
-		httpWriter.Client.SetAuthToken(token)
+		r.SetAuthToken(token)
 		return nil
 	})
 	httpWriter.URL = url
