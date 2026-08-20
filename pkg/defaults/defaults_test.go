@@ -149,6 +149,7 @@ func Test_InitIntegration_PageExists(t *testing.T) {
 	if err := page.CreatePage(f.portClient, port.Page{
 		Identifier: "workload_overview_dashboard",
 		Title:      "Workload Overview Dashboard",
+		Type:       "dashboard",
 	}); err != nil {
 		t.Errorf("Error creating Port page: %s", err.Error())
 	}
