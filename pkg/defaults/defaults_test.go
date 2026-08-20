@@ -150,6 +150,30 @@ func Test_InitIntegration_PageExists(t *testing.T) {
 		Identifier: "workload_overview_dashboard",
 		Title:      "Workload Overview Dashboard",
 		Type:       "dashboard",
+		Widgets: []interface{}{
+			map[string]interface{}{
+				"type": "dashboard-widget",
+				"layout": []interface{}{
+					map[string]interface{}{
+						"height": 400,
+						"columns": []interface{}{
+							map[string]interface{}{
+								"id":   "placeholder",
+								"size": 12,
+							},
+						},
+					},
+				},
+				"widgets": []interface{}{
+					map[string]interface{}{
+						"id":       "placeholder",
+						"type":     "markdown",
+						"title":    "Placeholder",
+						"markdown": "test",
+					},
+				},
+			},
+		},
 	}); err != nil {
 		t.Errorf("Error creating Port page: %s", err.Error())
 	}
