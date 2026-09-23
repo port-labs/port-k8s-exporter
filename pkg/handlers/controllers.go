@@ -32,6 +32,7 @@ type ControllersHandler struct {
 	stopCh           chan struct{}
 	isStopped        bool
 	portConfig       *port.IntegrationAppConfig
+	skipIntegration  bool
 }
 
 type FullResyncResults struct {
@@ -94,6 +95,7 @@ func NewControllersHandler(exporterConfig *port.Config, portConfig *port.Integra
 		portClient:       portClient,
 		stopCh:           signal.SetupSignalHandler(),
 		portConfig:       portConfig,
+		skipIntegration:  exporterConfig.SkipIntegration,
 	}
 
 	return controllersHandler
@@ -132,28 +134,40 @@ func (c *ControllersHandler) Handle(resyncType ResyncType) {
 	eventLogger.Warnw("Skipping delete of stale entities due to a failure in getting all current entities from k8s")
 }
 
+func resolveIntegrationAppConfig(exporterConfig *port.Config, portClient *cli.PortClient) (*port.IntegrationAppConfig, error) {
+	if exporterConfig.SkipIntegration {
+		logger.Info("Skipping Port integration API, using local configuration for resync")
+		return exporterConfig.ToIntegrationAppConfig(), nil
+	}
+
+	i, err := integration.GetIntegration(portClient, exporterConfig.StateKey)
+	if err != nil {
+		return nil, fmt.Errorf("error getting Port integration: %v", err)
+	}
+	if i.Config == nil {
+		return nil, errors.New("integration config is nil")
+	}
+	if !i.Config.AllowAllEnvironmentVariablesInJQ {
+		config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = i.Config.AllowAllEnvironmentVariablesInJQ
+	}
+	if i.Config.AllowedEnvironmentVariablesInJQ != nil {
+		config.ApplicationConfig.AllowedEnvironmentVariablesInJQ = i.Config.AllowedEnvironmentVariablesInJQ
+	}
+	return i.Config, nil
+}
+
 func RunResync(exporterConfig *port.Config, k8sClient *k8s.Client, portClient *cli.PortClient, resyncType ResyncType) error {
 	if controllerHandler != (*ControllersHandler)(nil) {
 		controllerHandler.Stop()
 	}
 
 	newControllersHandler, resyncErr := metrics.MeasureResync(func() (*ControllersHandler, error) {
-		i, err := integration.GetIntegration(portClient, exporterConfig.StateKey)
+		portConfig, err := resolveIntegrationAppConfig(exporterConfig, portClient)
 		if err != nil {
 			metrics.SetSuccessStatus(metrics.MetricKindResync, metrics.MetricPhaseResync, metrics.PhaseFailed)
-			return nil, fmt.Errorf("error getting Port integration: %v", err)
+			return nil, err
 		}
-		if i.Config == nil {
-			metrics.SetSuccessStatus(metrics.MetricKindResync, metrics.MetricPhaseResync, metrics.PhaseFailed)
-			return nil, errors.New("integration config is nil")
-		}
-		if !i.Config.AllowAllEnvironmentVariablesInJQ {
-			config.ApplicationConfig.AllowAllEnvironmentVariablesInJQ = i.Config.AllowAllEnvironmentVariablesInJQ
-		}
-		if i.Config.AllowedEnvironmentVariablesInJQ != nil {
-			config.ApplicationConfig.AllowedEnvironmentVariablesInJQ = i.Config.AllowedEnvironmentVariablesInJQ
-		}
-		newHandler := NewControllersHandler(exporterConfig, i.Config, k8sClient, portClient)
+		newHandler := NewControllersHandler(exporterConfig, portConfig, k8sClient, portClient)
 		newHandler.Handle(resyncType)
 		return newHandler, nil
 	})
@@ -218,7 +232,7 @@ func syncController(controller *k8s.Controller, c *ControllersHandler, eventLogg
 	initialSyncResult := controller.RunInitialSync(eventLogger)
 	eventLogger.Infow(fmt.Sprintf("Done full initial resync, starting live events sync for resource '%s'", controller.Resource.Kind))
 	controller.RunEventsSync(1, eventLogger, c.stopCh)
-	if len(initialSyncResult.RawDataExamples) > 0 {
+	if len(initialSyncResult.RawDataExamples) > 0 && !c.skipIntegration {
 		err := integration.PostIntegrationKindExample(c.portClient, c.stateKey, controller.Resource.Kind, initialSyncResult.RawDataExamples)
 		if err != nil {
 			eventLogger.Warnw(fmt.Sprintf("failed to post integration kind example: %s", err.Error()))

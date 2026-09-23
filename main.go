@@ -39,13 +39,26 @@ func main() {
 	}
 	portClient := cli.New(config.ApplicationConfig)
 
-	if err := defaults.InitIntegration(portClient, applicationConfig, Version, false); err != nil {
+	if applicationConfig.SkipIntegration {
+		logger.Info("Skipping Port integration initialization (skip-integration is enabled)")
+		if applicationConfig.EventListenerType == "KAFKA" {
+			logger.Warning("Kafka event listener requires Port organization APIs and is not available when skip-integration is enabled; falling back to scheduled resyncs only")
+		}
+		if config.ApplicationConfig.HTTPLoggingEnabled {
+			logger.Warning("Shipping logs to Port requires the integration API and is unavailable when skip-integration is enabled; logs will only be written to stdout")
+		}
+	} else if err := defaults.InitIntegration(portClient, applicationConfig, Version, false); err != nil {
 		logger.Fatalf("Error initializing Port integration: %s", err.Error())
 	}
 
-	eventListener, err := event_handler.CreateEventListener(applicationConfig.StateKey, applicationConfig.EventListenerType, portClient)
-	if err != nil {
-		logger.Fatalf("Error creating event listener: %s", err.Error())
+	var eventListener event_handler.IListener
+	if applicationConfig.SkipIntegration {
+		eventListener = event_handler.NewScheduledListener()
+	} else {
+		eventListener, err = event_handler.CreateEventListener(applicationConfig.StateKey, applicationConfig.EventListenerType, portClient)
+		if err != nil {
+			logger.Fatalf("Error creating event listener: %s", err.Error())
+		}
 	}
 
 	if config.ApplicationConfig.ResyncInterval > 0 {
