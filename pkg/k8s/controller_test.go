@@ -1007,14 +1007,22 @@ func TestCreateDeploymentWithTeamString(t *testing.T) {
 	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
 	defer tearDownFixture(t, f)
 
+	client := f.controller.portClient
+	upsertTeamEntityForIntegrationTest(t, client, exampleTeamName)
+	t.Cleanup(func() {
+		tryDeleteTeamEntityForIntegrationTest(t, client, exampleTeamName)
+	})
+
 	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprintId, id): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
 
-	entity, err := f.controller.portClient.ReadEntity(context.Background(), id, blueprintId)
-	if err != nil {
-		t.Errorf("error reading entity: %v", err)
-	}
-	teamArray := entity.Team.([]interface{})
-	teamValue := teamArray[0].(string)
+	entity, err := client.ReadEntity(context.Background(), id, blueprintId)
+	require.NoError(t, err)
+
+	teamArray, ok := entity.Team.([]interface{})
+	require.Truef(t, ok, "entity.Team should be []interface{}, got %T", entity.Team)
+	require.NotEmpty(t, teamArray)
+	teamValue, ok := teamArray[0].(string)
+	require.Truef(t, ok, "team[0] should be string, got %T", teamArray[0])
 	assert.Equal(t, exampleTeamName, teamValue)
 }
 
@@ -1150,6 +1158,7 @@ func TestCreateDeploymentWithMultiTeamSearch(t *testing.T) {
 	id := guuid.NewString()
 	exampleTeamName := "example_team"
 	searchTeamName := "search_team"
+	teams := []string{exampleTeamName, searchTeamName}
 	d := newDeployment(stateKey)
 	ud := newUnstructured(d)
 
@@ -1167,51 +1176,24 @@ func TestCreateDeploymentWithMultiTeamSearch(t *testing.T) {
 	}
 	item := EventItem{Key: getKey(d, t), ActionType: CreateAction}
 	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
-	// Create test team
-	teamEntityBody := &port.Entity{
-		Blueprint:  "_team",
-		Identifier: searchTeamName,
-		Title:      searchTeamName,
-		Properties: map[string]any{},
-		Relations:  map[string]any{},
-	}
-	pb := &port.ResponseBody{}
-	resp, err := f.controller.portClient.Client.R().
-		SetBody(teamEntityBody).
-		SetHeader("Accept", "application/json").
-		SetResult(&pb).
-		SetPathParam("blueprint_id", "_team").
-		SetQueryParam("upsert", "true").
-		Post("v1/blueprints/{blueprint_id}/entities")
-	if err != nil {
-		t.Errorf("error creating team: %v", err)
-	}
-	if !pb.OK {
-		t.Errorf("failed to create team, got: %s", resp.Body())
-	}
 	defer tearDownFixture(t, f)
+
+	client := f.controller.portClient
+	for _, teamID := range teams {
+		upsertTeamEntityForIntegrationTest(t, client, teamID)
+	}
+	t.Cleanup(func() {
+		for _, teamID := range teams {
+			tryDeleteTeamEntityForIntegrationTest(t, client, teamID)
+		}
+	})
 
 	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprintId, id): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
 
-	entity, err := f.controller.portClient.ReadEntity(context.Background(), id, blueprintId)
-	if err != nil {
-		t.Errorf("error reading entity: %v", err)
-	}
-	expectedTeams := []string{exampleTeamName, searchTeamName}
-	teamsArray := entity.Team.([]interface{})
-	assert.ElementsMatch(t, expectedTeams, teamsArray)
+	entity, err := client.ReadEntity(context.Background(), id, blueprintId)
+	require.NoError(t, err)
 
-	// Cleanup test team
-	pc := &port.ResponseBody{}
-	res, err := f.controller.portClient.Client.R().
-		SetHeader("Accept", "application/json").
-		SetResult(&pc).
-		SetPathParam("name", searchTeamName).
-		Delete("v1/teams/{name}")
-	if err != nil {
-		t.Errorf("error deleting team: %v", err)
-	}
-	if !pc.OK {
-		t.Errorf("failed to delete team, got: %s", res.Body())
-	}
+	teamsArray, ok := entity.Team.([]interface{})
+	require.Truef(t, ok, "entity.Team should be []interface{}, got %T", entity.Team)
+	assert.ElementsMatch(t, teams, teamsArray)
 }
