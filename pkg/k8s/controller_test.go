@@ -1007,14 +1007,22 @@ func TestCreateDeploymentWithTeamString(t *testing.T) {
 	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
 	defer tearDownFixture(t, f)
 
+	client := f.controller.portClient
+	upsertTeamEntityForIntegrationTest(t, client, exampleTeamName)
+	t.Cleanup(func() {
+		tryDeleteTeamEntityForIntegrationTest(t, client, exampleTeamName)
+	})
+
 	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{fmt.Sprintf("%s;%s", blueprintId, id): nil}, RawDataExamples: []interface{}{ud.Object}, ShouldDeleteStaleEntities: true}, false)
 
-	entity, err := f.controller.portClient.ReadEntity(context.Background(), id, blueprintId)
-	if err != nil {
-		t.Errorf("error reading entity: %v", err)
-	}
-	teamArray := entity.Team.([]interface{})
-	teamValue := teamArray[0].(string)
+	entity, err := client.ReadEntity(context.Background(), id, blueprintId)
+	require.NoError(t, err)
+
+	teamArray, ok := entity.Team.([]interface{})
+	require.Truef(t, ok, "entity.Team should be []interface{}, got %T", entity.Team)
+	require.NotEmpty(t, teamArray)
+	teamValue, ok := teamArray[0].(string)
+	require.Truef(t, ok, "team[0] should be string, got %T", teamArray[0])
 	assert.Equal(t, exampleTeamName, teamValue)
 }
 
