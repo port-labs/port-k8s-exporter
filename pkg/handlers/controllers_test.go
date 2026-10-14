@@ -633,3 +633,26 @@ func TestControllersHandler_RunResyncNotOverlaps(t *testing.T) {
 	assert.True(t, firstControllersHandler.isStopped)
 	assert.False(t, secondControllersHandler.isStopped)
 }
+
+func TestResolveIntegrationAppConfig_SkipIntegration(t *testing.T) {
+	exporterConfig := &port.Config{
+		SkipIntegration:              true,
+		Resources:                    []port.Resource{getBaseResource(guuid.NewString(), deploymentKind)},
+		CRDSToDiscover:               "true",
+		OverwriteCRDsActions:         true,
+		DeleteDependents:             true,
+		CreateMissingRelatedEntities: true,
+	}
+
+	resolved, err := resolveIntegrationAppConfig(exporterConfig, nil)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, resolved)
+	assert.Equal(t, exporterConfig.Resources, resolved.Resources)
+	assert.Equal(t, exporterConfig.CRDSToDiscover, resolved.CRDSToDiscover)
+	assert.Equal(t, exporterConfig.OverwriteCRDsActions, resolved.OverwriteCRDsActions)
+	assert.Equal(t, exporterConfig.DeleteDependents, resolved.DeleteDependents)
+	assert.Equal(t, exporterConfig.CreateMissingRelatedEntities, resolved.CreateMissingRelatedEntities)
+	assert.NotNil(t, resolved.SendRawDataExamples)
+	assert.True(t, *resolved.SendRawDataExamples)
+}

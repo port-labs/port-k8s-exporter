@@ -379,6 +379,7 @@ type Config struct {
 	CreateDefaultResources          bool                      `yaml:"createDefaultResources,omitempty"`
 	CreatePortResourcesOrigin       CreatePortResourcesOrigin `yaml:"createPortResourcesOrigin,omitempty"`
 	OverwriteConfigurationOnRestart bool                      `yaml:"overwriteConfigurationOnRestart,omitempty"`
+	SkipIntegration                 bool                      `yaml:"skipIntegration,omitempty"`
 	// These Configurations are used only for setting up the Integration on installation or when using OverwriteConfigurationOnRestart flag.
 	Resources                        []Resource `yaml:"resources,omitempty"`
 	CRDSToDiscover                   string     `yaml:"crdsToDiscover,omitempty"`
@@ -391,4 +392,21 @@ type Config struct {
 
 type Team struct {
 	Name string `json:"name"`
+}
+
+// ToIntegrationAppConfig builds the effective exporter configuration from the
+// local Config. It is used when the Port integration API is skipped, so the
+// local configuration file becomes the source of truth for the sync mappings.
+func (c *Config) ToIntegrationAppConfig() *IntegrationAppConfig {
+	sendRawDataExamples := true
+	return &IntegrationAppConfig{
+		DeleteDependents:                 c.DeleteDependents,
+		CreateMissingRelatedEntities:     c.CreateMissingRelatedEntities,
+		Resources:                        c.Resources,
+		CRDSToDiscover:                   c.CRDSToDiscover,
+		OverwriteCRDsActions:             c.OverwriteCRDsActions,
+		SendRawDataExamples:              &sendRawDataExamples,
+		AllowAllEnvironmentVariablesInJQ: c.AllowAllEnvironmentVariablesInJQ,
+		AllowedEnvironmentVariablesInJQ:  c.AllowedEnvironmentVariablesInJQ,
+	}
 }

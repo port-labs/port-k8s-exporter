@@ -42,6 +42,8 @@ func Init() {
 
 	NewBool(&ApplicationConfig.OverwriteConfigurationOnRestart, "overwrite-configuration-on-restart", false, "Overwrite the configuration in port on restarting the exporter. Optional.")
 
+	NewBool(&ApplicationConfig.SkipIntegration, "skip-integration", false, "Skip Port integration management (create/patch/delete/get) and run using the local configuration only. Required when using a non-admin Port token. Optional.")
+
 	// Deprecated
 	NewBool(&ApplicationConfig.DeleteDependents, "delete-dependents", false, "Delete dependents. Optional.")
 	NewBool(&ApplicationConfig.CreateMissingRelatedEntities, "create-missing-related-entities", false, "Create missing related entities. Optional.")
@@ -83,6 +85,7 @@ func NewConfiguration() (*port.Config, error) {
 		CreatePortResourcesOrigin:        ApplicationConfig.CreatePortResourcesOrigin,
 		ResyncInterval:                   ApplicationConfig.ResyncInterval,
 		OverwriteConfigurationOnRestart:  ApplicationConfig.OverwriteConfigurationOnRestart,
+		SkipIntegration:                  ApplicationConfig.SkipIntegration,
 		CreateMissingRelatedEntities:     ApplicationConfig.CreateMissingRelatedEntities,
 		DeleteDependents:                 ApplicationConfig.DeleteDependents,
 		AllowAllEnvironmentVariablesInJQ: ApplicationConfig.AllowAllEnvironmentVariablesInJQ,
