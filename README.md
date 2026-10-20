@@ -13,3 +13,20 @@ Port is the Developer Platform meant to supercharge your DevOps and Developers, 
 ## Usage
 
 See [Helm Chart](https://github.com/port-labs/helm-charts/tree/main/charts/port-k8s-exporter) to deploy `Port K8s Exporter` in your K8s Cluster.
+
+### Running without admin permissions
+
+By default the exporter uses the Port integration API (`v1/integration`) to register itself, read its
+mapping configuration, detect configuration changes and ship logs. Those endpoints require an admin
+Port token.
+
+Set `--skip-integration` (or the `SKIP_INTEGRATION=true` environment variable) to run the exporter
+with a non-admin token. In this mode:
+
+- The integration object is neither read nor written, and the local `config.yaml` is the source of truth for the sync mappings.
+- Configuration changes made in Port are not detected automatically; resyncs run on startup and on the configured `--resync-interval` only.
+- Shipping logs to Port and posting raw-data examples are disabled.
+- The Kafka event listener is not available; use the polling (scheduled) mode.
+
+All other functionality (syncing entities, CRD discovery, creating blueprints/actions) keeps working.
+

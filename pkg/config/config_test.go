@@ -338,3 +338,50 @@ func TestInit_FlagsAreSet(t *testing.T) {
 	assert.NotEmpty(t, ApplicationConfig.PortBaseURL)
 	assert.NotZero(t, PollingListenerRate)
 }
+
+func TestNewConfiguration_SkipIntegrationFromApplicationConfig(t *testing.T) {
+	originalConfigFilePath := ApplicationConfig.ConfigFilePath
+	originalSkipIntegration := ApplicationConfig.SkipIntegration
+	defer func() {
+		ApplicationConfig.ConfigFilePath = originalConfigFilePath
+		ApplicationConfig.SkipIntegration = originalSkipIntegration
+	}()
+
+	ApplicationConfig.ConfigFilePath = "non-existent-file.yaml"
+	ApplicationConfig.SkipIntegration = true
+
+	config, err := NewConfiguration()
+
+	assert.NoError(t, err)
+	assert.NotNil(t, config)
+	assert.True(t, config.SkipIntegration)
+}
+
+func TestNewConfiguration_SkipIntegrationFromYAML(t *testing.T) {
+	tempDir := t.TempDir()
+	configFile := filepath.Join(tempDir, "skip-integration-config.yaml")
+
+	configContent := `
+stateKey: "skip-integration-key"
+skipIntegration: true
+`
+
+	err := os.WriteFile(configFile, []byte(configContent), 0644)
+	require.NoError(t, err)
+
+	originalConfigFilePath := ApplicationConfig.ConfigFilePath
+	originalSkipIntegration := ApplicationConfig.SkipIntegration
+	defer func() {
+		ApplicationConfig.ConfigFilePath = originalConfigFilePath
+		ApplicationConfig.SkipIntegration = originalSkipIntegration
+	}()
+
+	ApplicationConfig.ConfigFilePath = configFile
+	ApplicationConfig.SkipIntegration = false
+
+	config, err := NewConfiguration()
+
+	assert.NoError(t, err)
+	assert.NotNil(t, config)
+	assert.True(t, config.SkipIntegration)
+}
