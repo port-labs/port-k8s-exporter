@@ -242,7 +242,7 @@ func (bc *BatchCollector) ProcessBatch(controller *Controller, workqueue workque
 				for _, result := range bulkResponse.Entities {
 					successCountWithKind[entityIdToKind[result.Identifier]]++
 					successCount++
-					eventLogger.Infow("Successfully upserted entity", "blueprint", blueprint, "identifier", result.Identifier)
+					eventLogger.Debugw("Successfully upserted entity", "blueprint", blueprint, "identifier", result.Identifier)
 					mockEntity := &port.Entity{
 						Identifier: result.Identifier,
 						Blueprint:  blueprint,
