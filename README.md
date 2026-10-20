@@ -12,4 +12,4 @@ Port is the Developer Platform meant to supercharge your DevOps and Developers, 
 
 ## Usage
 
-See [Helm Chart](https://github.com/port-labs/helm-charts/tree/main/charts/port-k8s-exporter) to deploy `Port K8s Exporter` in your K8s Cluster.
+See [Helm Chart](https://github.com/port-labs/helm-charts/tree/main/charts/port-k8s-exporter) to deploy `Port K8s Exporter` in your K8s Cluster..
