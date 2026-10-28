@@ -618,6 +618,8 @@ func TestDeleteDeploymentSameOwner(t *testing.T) {
 }
 
 func TestSelectorQueryFilterDeployment(t *testing.T) {
+	// Delete of an object that never matched the selector should still attempt
+	// delete-by-identifier; ownership miss is harmless when the entity was never created.
 	stateKey := guuid.NewString()
 	blueprintId := getBlueprintId(stateKey)
 	d := newDeployment(stateKey)
@@ -625,13 +627,233 @@ func TestSelectorQueryFilterDeployment(t *testing.T) {
 	resource := newResource(fmt.Sprintf(".metadata.name != \"%s\"", blueprintId), []port.EntityMapping{
 		{
 			Identifier: ".metadata.name",
-			Blueprint:  fmt.Sprintf("\"wrong-%s\"", blueprintId),
+			Blueprint:  fmt.Sprintf("\"%s\"", blueprintId),
 		},
 	})
 	item := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
 	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
 	defer tearDownFixture(t, f)
 	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{}, RawDataExamples: []interface{}{}, ShouldDeleteStaleEntities: true}, false)
+}
+
+func TestUpdateMatchToNonMatchDeletesEntity(t *testing.T) {
+	stateKey := guuid.NewString()
+	blueprintId := getBlueprintId(stateKey)
+	id := guuid.NewString()
+	d := newDeployment(stateKey)
+	d.Labels = map[string]string{"export": "yes"}
+	ud := newUnstructured(d)
+	resource := newResource(`.metadata.labels.export == "yes"`, []port.EntityMapping{
+		{
+			Identifier: fmt.Sprintf("\"%s\"", id),
+			Blueprint:  fmt.Sprintf("\"%s\"", blueprintId),
+		},
+	})
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
+	defer tearDownFixture(t, f)
+
+	createItem := EventItem{Key: getKey(d, t), ActionType: CreateAction}
+	f.runControllerSyncHandler(createItem, &SyncResult{
+		EntitiesSet:               map[string]interface{}{fmt.Sprintf("%s;%s", blueprintId, id): nil},
+		RawDataExamples:           []interface{}{ud.Object},
+		ShouldDeleteStaleEntities: true,
+	}, false)
+
+	_, err := f.controller.portClient.ReadEntity(context.Background(), id, blueprintId)
+	require.NoError(t, err)
+
+	d.Labels["export"] = "no"
+	udNonMatch := newUnstructured(d)
+	updateItem := EventItem{Key: getKey(d, t), ActionType: UpdateAction}
+	result, syncErr := f.controller.objectHandler(udNonMatch, updateItem, logger.GetEventLogger("test-event-id"))
+	require.NoError(t, syncErr)
+	f.assertSyncResult(result, &SyncResult{
+		EntitiesSet:               map[string]interface{}{},
+		RawDataExamples:           []interface{}{},
+		ShouldDeleteStaleEntities: true,
+	})
+
+	_, err = f.controller.portClient.ReadEntity(context.Background(), id, blueprintId)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "was not found")
+}
+
+func TestDeleteNonMatchingFinalStateDeletesEntity(t *testing.T) {
+	stateKey := guuid.NewString()
+	blueprintId := getBlueprintId(stateKey)
+	id := guuid.NewString()
+	d := newDeployment(stateKey)
+	ud := newUnstructured(d)
+	matchSelector := fmt.Sprintf(".metadata.name == \"%s\"", d.Name)
+	resource := newResource(matchSelector, []port.EntityMapping{
+		{
+			Identifier: fmt.Sprintf("\"%s\"", id),
+			Blueprint:  fmt.Sprintf("\"%s\"", blueprintId),
+		},
+	})
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
+	defer tearDownFixture(t, f)
+
+	createItem := EventItem{Key: getKey(d, t), ActionType: CreateAction}
+	f.runControllerSyncHandler(createItem, &SyncResult{
+		EntitiesSet:               map[string]interface{}{fmt.Sprintf("%s;%s", blueprintId, id): nil},
+		RawDataExamples:           []interface{}{ud.Object},
+		ShouldDeleteStaleEntities: true,
+	}, false)
+
+	// Change selector so current object no longer matches; delete must still remove the entity.
+	f.controller.Resource.KindConfigs[0].Selector.Query = fmt.Sprintf(".metadata.name != \"%s\"", d.Name)
+	deleteItem := EventItem{Key: getKey(d, t), ActionType: DeleteAction}
+	result, syncErr := f.controller.objectHandler(ud, deleteItem, logger.GetEventLogger("test-event-id"))
+	require.NoError(t, syncErr)
+	f.assertSyncResult(result, &SyncResult{
+		EntitiesSet:               map[string]interface{}{},
+		RawDataExamples:           []interface{}{},
+		ShouldDeleteStaleEntities: true,
+	})
+
+	_, err := f.controller.portClient.ReadEntity(context.Background(), id, blueprintId)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "was not found")
+}
+
+func TestDeleteTombstoneStillDeletesEntity(t *testing.T) {
+	stateKey := guuid.NewString()
+	blueprintId := getBlueprintId(stateKey)
+	id := guuid.NewString()
+	d := newDeployment(stateKey)
+	ud := newUnstructured(d)
+	resource := newResource("", []port.EntityMapping{
+		{
+			Identifier: fmt.Sprintf("\"%s\"", id),
+			Blueprint:  fmt.Sprintf("\"%s\"", blueprintId),
+		},
+	})
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
+	defer tearDownFixture(t, f)
+
+	createItem := EventItem{Key: getKey(d, t), ActionType: CreateAction}
+	f.runControllerSyncHandler(createItem, &SyncResult{
+		EntitiesSet:               map[string]interface{}{fmt.Sprintf("%s;%s", blueprintId, id): nil},
+		RawDataExamples:           []interface{}{ud.Object},
+		ShouldDeleteStaleEntities: true,
+	}, false)
+
+	tombstone := cache.DeletedFinalStateUnknown{Key: getKey(d, t), Obj: ud}
+	unwrapped := unwrapDeletedObject(tombstone)
+	deleteItem := EventItem{Key: getKey(d, t), ActionType: DeleteAction, EventSource: port.LiveEventsSource}
+	result, syncErr := f.controller.objectHandler(unwrapped, deleteItem, logger.GetEventLogger("test-event-id"))
+	require.NoError(t, syncErr)
+	f.assertSyncResult(result, &SyncResult{
+		EntitiesSet:               map[string]interface{}{},
+		RawDataExamples:           []interface{}{ud.Object},
+		ShouldDeleteStaleEntities: true,
+	})
+
+	_, err := f.controller.portClient.ReadEntity(context.Background(), id, blueprintId)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "was not found")
+}
+
+func TestCreateExcludedBySelectorDoesNotUpsertOrDelete(t *testing.T) {
+	stateKey := guuid.NewString()
+	blueprintId := getBlueprintId(stateKey)
+	id := guuid.NewString()
+	d := newDeployment(stateKey)
+	ud := newUnstructured(d)
+	resource := newResource(fmt.Sprintf(".metadata.name != \"%s\"", d.Name), []port.EntityMapping{
+		{
+			Identifier: fmt.Sprintf("\"%s\"", id),
+			Blueprint:  fmt.Sprintf("\"%s\"", blueprintId),
+		},
+	})
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
+	defer tearDownFixture(t, f)
+
+	createItem := EventItem{Key: getKey(d, t), ActionType: CreateAction}
+	f.runControllerSyncHandler(createItem, &SyncResult{
+		EntitiesSet:               map[string]interface{}{},
+		RawDataExamples:           []interface{}{},
+		ShouldDeleteStaleEntities: true,
+	}, false)
+
+	_, err := f.controller.portClient.ReadEntity(context.Background(), id, blueprintId)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "was not found")
+}
+
+func TestUnwrapDeletedObject(t *testing.T) {
+	stateKey := guuid.NewString()
+	ud := newUnstructured(newDeployment(stateKey))
+
+	assert.Equal(t, ud, unwrapDeletedObject(ud))
+
+	tombstone := cache.DeletedFinalStateUnknown{Key: "ns/name", Obj: ud}
+	assert.Equal(t, ud, unwrapDeletedObject(tombstone))
+}
+
+func TestGetObjectEntitiesMapsExcludedWhenSelectorFails(t *testing.T) {
+	sendExamples := true
+	controller := &Controller{
+		Resource: port.AggregatedResource{Kind: "apps/v1/deployments"},
+		integrationConfig: &port.IntegrationAppConfig{
+			SendRawDataExamples: &sendExamples,
+		},
+	}
+	d := newDeployment(guuid.NewString())
+	d.Labels = map[string]string{"export": "no"}
+	ud := newUnstructured(d)
+	mappings := []port.EntityMapping{
+		{
+			Identifier: ".metadata.name",
+			Blueprint:  `"k8s_deployment"`,
+		},
+	}
+
+	matched, err := controller.getObjectEntities(ud, port.Selector{Query: `.metadata.labels.export == "yes"`}, mappings, "", "", 0, logger.GetLogger())
+	require.NoError(t, err)
+	assert.Empty(t, matched.Entities)
+	assert.Empty(t, matched.RawDataExamples)
+	require.Len(t, matched.ExcludedEntities, 1)
+	assert.Equal(t, d.Name, matched.ExcludedEntities[0].Identifier)
+	assert.Equal(t, "k8s_deployment", matched.ExcludedEntities[0].Blueprint)
+
+	d.Labels["export"] = "yes"
+	udMatch := newUnstructured(d)
+	passed, err := controller.getObjectEntities(udMatch, port.Selector{Query: `.metadata.labels.export == "yes"`}, mappings, "", "", 0, logger.GetLogger())
+	require.NoError(t, err)
+	require.Len(t, passed.Entities, 1)
+	assert.Empty(t, passed.ExcludedEntities)
+	assert.Equal(t, d.Name, passed.Entities[0].Identifier)
+}
+
+func TestGetObjectEntitiesIgnoresMappingErrorsForExcludedObjects(t *testing.T) {
+	sendExamples := true
+	controller := &Controller{
+		Resource: port.AggregatedResource{Kind: "apps/v1/deployments"},
+		integrationConfig: &port.IntegrationAppConfig{
+			SendRawDataExamples: &sendExamples,
+		},
+	}
+	d := newDeployment(guuid.NewString())
+	d.Labels = map[string]string{"export": "no"}
+	mappings := []port.EntityMapping{
+		{
+			Identifier: ".metadata.name",
+			Blueprint:  `"k8s_deployment"`,
+			Properties: map[string]string{"text": "bad-jq"},
+		},
+	}
+	selector := port.Selector{Query: `.metadata.labels.export == "yes"`}
+
+	excluded, err := controller.getObjectEntities(newUnstructured(d), selector, mappings, "", "", 0, logger.GetLogger())
+	require.NoError(t, err)
+	assert.Empty(t, excluded.Entities)
+	assert.Empty(t, excluded.ExcludedEntities)
+
+	d.Labels["export"] = "yes"
+	_, err = controller.getObjectEntities(newUnstructured(d), selector, mappings, "", "", 0, logger.GetLogger())
+	assert.Error(t, err)
 }
 
 func TestFailPortAuth(t *testing.T) {

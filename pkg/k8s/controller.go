@@ -67,8 +67,16 @@ type Controller struct {
 }
 
 type TransformResult struct {
-	Entities        []port.EntityRequest
-	RawDataExamples []interface{}
+	Entities         []port.EntityRequest // selector passed
+	ExcludedEntities []port.EntityRequest // selector failed, still mapped for cleanup
+	RawDataExamples  []interface{}        // matched only
+}
+
+func unwrapDeletedObject(obj interface{}) interface{} {
+	if tombstone, ok := obj.(cache.DeletedFinalStateUnknown); ok {
+		return tombstone.Obj
+	}
+	return obj
 }
 
 func (c *Controller) enqueueEventItems(workqueue workqueue.RateLimitingInterface, item EventItem) {
@@ -156,6 +164,7 @@ func NewController(resource port.AggregatedResource, informer informers.GenericI
 				return
 			}
 
+			obj = unwrapDeletedObject(obj)
 			eventLogger.Debugw("Sending the item to object handler", "item", item.Key, "obj", obj)
 			_, err = controller.objectHandler(obj, item, eventLogger)
 			if err != nil {
@@ -375,24 +384,26 @@ func (c *Controller) processWorkqueueObjectWithBatching(workqueue workqueue.Rate
 		}
 		eventLogger.Infow(fmt.Sprintf("Processing item %s from workqueue.", item.Key), "numRequeues", numRequeues, "controller", c.Resource.Kind, "eventSource", item.EventSource, "key", item.Key)
 
-		k8sObj, exists, err := c.informer.GetIndexer().GetByKey(item.Key)
-		if err != nil {
-			eventLogger.Errorw(fmt.Sprintf("Error fetching object %s from informer cache. Error: %s", item.Key, err.Error()), "key", item.Key, "controller", c.Resource.Kind, "error", err, "eventSource", item.EventSource)
-
+		failItem := func(cause error, action string) (*SyncResult, int, error) {
 			if numRequeues >= MaxNumRequeues {
-				eventLogger.Debugw("Removing object from workqueue because it's been requeued too many times", "error", err.Error(), "key", item.Key, "controller", c.Resource.Kind, "eventSource", item.EventSource)
+				eventLogger.Debugw("Removing object from workqueue because it's been requeued too many times", "error", cause.Error(), "key", item.Key, "controller", c.Resource.Kind, "eventSource", item.EventSource)
 				completion = workItemComplete
-				return nil, requeueCounterDiff, fmt.Errorf("error fetching object '%s'. giving up", item.Key)
+				return nil, requeueCounterDiff, fmt.Errorf("%s for object '%s'. Out of retries", action, item.Key)
 			}
-
 			if numRequeues == 0 {
 				requeueCounterDiff = 1
 			} else {
 				requeueCounterDiff = 0
 			}
-			eventLogger.Debugw("Requeuing object with rate limiting", "error", err.Error(), "key", item.Key, "controller", c.Resource.Kind, "eventSource", item.EventSource)
+			eventLogger.Debugw("Requeuing object with rate limiting", "error", cause.Error(), "key", item.Key, "controller", c.Resource.Kind, "eventSource", item.EventSource)
 			completion = workItemRequeue
-			return nil, requeueCounterDiff, fmt.Errorf("error fetching object '%s'. requeuing", item.Key)
+			return nil, requeueCounterDiff, fmt.Errorf("%s for object '%s'. Requeuing", action, item.Key)
+		}
+
+		k8sObj, exists, err := c.informer.GetIndexer().GetByKey(item.Key)
+		if err != nil {
+			eventLogger.Errorw(fmt.Sprintf("Error fetching object %s from informer cache. Error: %s", item.Key, err.Error()), "key", item.Key, "controller", c.Resource.Kind, "error", err, "eventSource", item.EventSource)
+			return failItem(err, "error fetching object")
 		}
 
 		if !exists {
@@ -404,37 +415,31 @@ func (c *Controller) processWorkqueueObjectWithBatching(workqueue workqueue.Rate
 		rawDataExamples := make([]interface{}, 0)
 		kindConfig := c.Resource.KindConfigs[item.KindIndex]
 		kindLabel := metrics.GetKindLabel(c.Resource.Kind, &item.KindIndex)
-		portEntities, rawDataExamplesForObj, err := c.getObjectEntities(k8sObj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, kindConfig.Port.ItemsToParseName, item.KindIndex, eventLogger)
+		transformResult, err := c.getObjectEntities(k8sObj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, kindConfig.Port.ItemsToParseName, item.KindIndex, eventLogger)
 		if err != nil {
 			eventLogger.Errorw(fmt.Sprintf("Error getting entities for object %s. Error: %s", item.Key, err.Error()), "key", item.Key, "controller", c.Resource.Kind, "error", err, "eventSource", item.EventSource, "kindIndex", item.KindIndex)
-			eventLogger.Debugw("Marking batch collector as having errors", "controller", c.Resource.Kind)
 			batchCollector.MarkError()
-
 			if numRequeues >= MaxNumRequeues {
-				eventLogger.Debugw("Removing object from workqueue because it's been requeued too many times", "error", err.Error(), "key", item.Key, "controller", c.Resource.Kind, "eventSource", item.EventSource)
-				completion = workItemComplete
 				metrics.AddObjectCount(kindLabel, metrics.MetricFailedResult, metrics.MetricPhaseTransform, 1)
-				return nil, requeueCounterDiff, fmt.Errorf("error getting entities for object '%s'. Out of retries - object will not be processed", item.Key)
 			}
-
-			if numRequeues == 0 {
-				requeueCounterDiff = 1
-			} else {
-				requeueCounterDiff = 0
-			}
-			eventLogger.Debugw("Requeuing object with rate limiting", "error", err.Error(), "key", item.Key, "controller", c.Resource.Kind, "eventSource", item.EventSource)
-			completion = workItemRequeue
-			return nil, requeueCounterDiff, fmt.Errorf("error getting entities for object '%s'. Requeuing", item.Key)
+			return failItem(err, "error getting entities for object")
 		}
 
 		if len(rawDataExamples) < MaxRawDataExamplesToSend {
 			eventLogger.Debugw("Adding raw data examples to batch collector", "numRawDataExamples", len(rawDataExamples), "maxRawDataExamplesToSend", MaxRawDataExamplesToSend)
-			amountToAdd := min(len(rawDataExamplesForObj), MaxRawDataExamplesToSend-len(rawDataExamples))
-			rawDataExamples = append(rawDataExamples, rawDataExamplesForObj[:amountToAdd]...)
+			amountToAdd := min(len(transformResult.RawDataExamples), MaxRawDataExamplesToSend-len(rawDataExamples))
+			rawDataExamples = append(rawDataExamples, transformResult.RawDataExamples[:amountToAdd]...)
 		}
 
-		if len(portEntities) == 0 {
-			eventLogger.Debugw("No entities produced for object. removing from workqueue", "key", item.Key, "controller", c.Resource.Kind, "eventSource", item.EventSource, "kindIndex", item.KindIndex)
+		if item.ActionType == UpdateAction {
+			if err := c.deleteExcludedEntities(transformResult.ExcludedEntities, item.EventSource, eventLogger); err != nil {
+				batchCollector.MarkError()
+				return failItem(err, "error deleting selector-excluded entity")
+			}
+		}
+
+		if len(transformResult.Entities) == 0 {
+			eventLogger.Debugw("No matched entities produced for object. removing from workqueue", "key", item.Key, "controller", c.Resource.Kind, "eventSource", item.EventSource, "kindIndex", item.KindIndex, "excludedCount", len(transformResult.ExcludedEntities))
 			completion = workItemComplete
 			return &SyncResult{
 				EntitiesSet:               make(map[string]interface{}),
@@ -443,7 +448,7 @@ func (c *Controller) processWorkqueueObjectWithBatching(workqueue workqueue.Rate
 			}, requeueCounterDiff, nil
 		}
 
-		for _, portEntity := range portEntities {
+		for _, portEntity := range transformResult.Entities {
 			eventLogger.Debugw("Adding entity to batch collector", "identifier", portEntity.Identifier, "blueprint", portEntity.Blueprint, "kindIndex", item.KindIndex)
 			batchCollector.AddEntity(portEntity, kindLabel, obj)
 		}
@@ -504,7 +509,7 @@ func (c *Controller) objectHandler(obj interface{}, item EventItem, eventLogger 
 
 	for kindIndex, kindConfig := range c.Resource.KindConfigs {
 		eventLogger.Debugw("Getting entities for object", "key", item.Key, "resource", c.Resource.Kind, "eventSource", item.EventSource)
-		portEntities, rawDataExamples, err := c.getObjectEntities(obj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, kindConfig.Port.ItemsToParseName, kindIndex, eventLogger)
+		transformResult, err := c.getObjectEntities(obj, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, kindConfig.Port.ItemsToParseName, kindIndex, eventLogger)
 		if err != nil {
 			eventLogger.Errorw(fmt.Sprintf("error getting entities. Error: %s", err.Error()), "key", item.Key, "resource", c.Resource.Kind, "error", err, "eventSource", item.EventSource)
 			entitiesSet = nil
@@ -513,19 +518,31 @@ func (c *Controller) objectHandler(obj interface{}, item EventItem, eventLogger 
 		}
 
 		if rawDataExamplesToReturn != nil {
-			amountOfExamplesToAdd := min(len(rawDataExamples), MaxRawDataExamplesToSend-len(rawDataExamplesToReturn))
-			rawDataExamplesToReturn = append(rawDataExamplesToReturn, rawDataExamples[:amountOfExamplesToAdd]...)
+			amountOfExamplesToAdd := min(len(transformResult.RawDataExamples), MaxRawDataExamplesToSend-len(rawDataExamplesToReturn))
+			rawDataExamplesToReturn = append(rawDataExamplesToReturn, transformResult.RawDataExamples[:amountOfExamplesToAdd]...)
 		}
 
-		for _, portEntity := range portEntities {
+		entitiesToHandle := transformResult.Entities
+		if item.ActionType == DeleteAction {
+			entitiesToHandle = append(append([]port.EntityRequest{}, transformResult.Entities...), transformResult.ExcludedEntities...)
+		}
+
+		for _, portEntity := range entitiesToHandle {
 			handledEntity, err := c.entityHandler(portEntity, item.ActionType, item.EventSource, eventLogger)
 			if err != nil {
 				errors = append(errors, err)
 				entitiesSet = nil
 			}
 
-			if entitiesSet != nil && item.ActionType != DeleteAction {
+			if entitiesSet != nil && item.ActionType != DeleteAction && handledEntity != nil {
 				entitiesSet[c.portClient.GetEntityIdentifierKey(handledEntity)] = nil
+			}
+		}
+
+		if item.ActionType == UpdateAction {
+			if err := c.deleteExcludedEntities(transformResult.ExcludedEntities, item.EventSource, eventLogger); err != nil {
+				errors = append(errors, err)
+				entitiesSet = nil
 			}
 		}
 	}
@@ -545,6 +562,16 @@ func (c *Controller) objectHandler(obj interface{}, item EventItem, eventLogger 
 	}, finalErr
 }
 
+func (c *Controller) deleteExcludedEntities(entities []port.EntityRequest, eventSource port.EventSource, eventLogger *zap.SugaredLogger) error {
+	for _, excludedEntity := range entities {
+		eventLogger.Debugw("Deleting selector-excluded entity", "identifier", excludedEntity.Identifier, "blueprint", excludedEntity.Blueprint, "eventSource", eventSource)
+		if _, err := c.entityHandler(excludedEntity, DeleteAction, eventSource, eventLogger); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func isPassSelector(obj interface{}, selector port.Selector) (bool, error) {
 	if selector.Query == "" {
 		return true, nil
@@ -559,13 +586,13 @@ func isPassSelector(obj interface{}, selector port.Selector) (bool, error) {
 	return selectorResult, err
 }
 
-func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, mappings []port.EntityMapping, itemsToParse string, itemsToParseName string, kindIndex int, eventLogger *zap.SugaredLogger) ([]port.EntityRequest, []interface{}, error) {
+func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, mappings []port.EntityMapping, itemsToParse string, itemsToParseName string, kindIndex int, eventLogger *zap.SugaredLogger) (*TransformResult, error) {
 	// Set default value for itemsToParseName if empty
 	if itemsToParseName == "" {
 		itemsToParseName = "item"
 	}
 
-	transformResult, err := metrics.MeasureDuration(metrics.GetKindLabel(c.Resource.Kind, nil), metrics.MetricPhaseTransform, func(phase string) (*TransformResult, error) {
+	return metrics.MeasureDuration(metrics.GetKindLabel(c.Resource.Kind, nil), metrics.MetricPhaseTransform, func(phase string) (*TransformResult, error) {
 		kindLabel := metrics.GetKindLabel(c.Resource.Kind, &kindIndex)
 		var result TransformResult
 		unstructuredObj, ok := obj.(*unstructured.Unstructured)
@@ -583,6 +610,7 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 			}
 		}
 		entities := make([]port.EntityRequest, 0, len(mappings))
+		excludedEntities := make([]port.EntityRequest, 0)
 		objectsToMap := make([]interface{}, 0)
 
 		if itemsToParse == "" {
@@ -618,28 +646,36 @@ func (c *Controller) getObjectEntities(obj interface{}, selector port.Selector, 
 				eventLogger.Errorw(fmt.Sprintf("error checking if object passes selector. Error: %s", err.Error()), "object", objectToMap, "selector", selector.Query, "error", err)
 				return &result, err
 			}
+
+			eventLogger.Debugw("Mapping entities", "object", objectToMap, "selectorPassed", selectorResult)
+			currentEntities, err := entity.MapEntities(objectToMap, mappings)
+
 			if !selectorResult {
 				metrics.AddObjectCount(kindLabel, metrics.MetricFilteredOutResult, phase, 1)
+				// Mappings are often written for matching objects only, so a failure here must not fail the transform.
+				if err != nil {
+					eventLogger.Debugw("Skipping selector-excluded object that failed mapping", "selector", selector.Query, "error", err)
+					continue
+				}
+				excludedEntities = append(excludedEntities, currentEntities...)
 				continue
+			}
+			if err != nil {
+				return &result, err
 			}
 			eventLogger.Debugw("Object passes selector. adding to raw data examples", "object", objectToMap, "selector", selector.Query)
 			if *c.integrationConfig.SendRawDataExamples && len(rawDataExamples) < MaxRawDataExamplesToSend {
 				rawDataExamples = append(rawDataExamples, objectToMap)
 			}
-			eventLogger.Debugw("Mapping entities", "object", objectToMap)
-			currentEntities, err := entity.MapEntities(objectToMap, mappings)
-			if err != nil {
-				return &result, err
-			}
 			entities = append(entities, currentEntities...)
 		}
 		metrics.AddObjectCount(kindLabel, metrics.MetricTransformResult, phase, float64(len(entities)))
 		return &TransformResult{
-			Entities:        entities,
-			RawDataExamples: rawDataExamples,
+			Entities:         entities,
+			ExcludedEntities: excludedEntities,
+			RawDataExamples:  rawDataExamples,
 		}, nil
 	})
-	return transformResult.Entities, transformResult.RawDataExamples, err
 }
 
 func (c *Controller) entityHandler(portEntity port.EntityRequest, action EventActionType, eventSource port.EventSource, eventLogger *zap.SugaredLogger) (*port.Entity, error) {
@@ -684,22 +720,23 @@ func (c *Controller) shouldSendUpdateEvent(old interface{}, new interface{}, upd
 		return true
 	}
 	for kindIndex, kindConfig := range c.Resource.KindConfigs {
-		oldEntities, _, err := c.getObjectEntities(old, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, kindConfig.Port.ItemsToParseName, kindIndex, logger.GetLogger())
+		oldResult, err := c.getObjectEntities(old, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, kindConfig.Port.ItemsToParseName, kindIndex, logger.GetLogger())
 		if err != nil {
 			logger.Errorf("Error getting old entities: %v", err)
 			return true
 		}
-		newEntities, _, err := c.getObjectEntities(new, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, kindConfig.Port.ItemsToParseName, kindIndex, logger.GetLogger())
+		newResult, err := c.getObjectEntities(new, kindConfig.Selector, kindConfig.Port.Entity.Mappings, kindConfig.Port.ItemsToParse, kindConfig.Port.ItemsToParseName, kindIndex, logger.GetLogger())
 		if err != nil {
 			logger.Errorf("Error getting new entities: %v", err)
 			return true
 		}
-		oldEntitiesHash, err := entity.HashAllEntities(oldEntities)
+		// Hash matched entities only so match→non-match still queues an update for cleanup.
+		oldEntitiesHash, err := entity.HashAllEntities(oldResult.Entities)
 		if err != nil {
 			logger.Errorf("Error hashing old entities: %v", err)
 			return true
 		}
-		newEntitiesHash, err := entity.HashAllEntities(newEntities)
+		newEntitiesHash, err := entity.HashAllEntities(newResult.Entities)
 		if err != nil {
 			logger.Errorf("Error hashing new entities: %v", err)
 			return true
