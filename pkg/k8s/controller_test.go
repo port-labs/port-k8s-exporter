@@ -636,8 +636,18 @@ func TestSelectorQueryFilterDeployment(t *testing.T) {
 	f.runControllerSyncHandler(item, &SyncResult{EntitiesSet: map[string]interface{}{}, RawDataExamples: []interface{}{}, ShouldDeleteStaleEntities: true}, false)
 }
 
+// useGlobalStateKey aligns the global state key with the fixture's, since the delete
+// ownership check reads config.ApplicationConfig.StateKey.
+func useGlobalStateKey(t *testing.T, stateKey string) {
+	t.Helper()
+	original := config.ApplicationConfig.StateKey
+	config.ApplicationConfig.StateKey = stateKey
+	t.Cleanup(func() { config.ApplicationConfig.StateKey = original })
+}
+
 func TestUpdateMatchToNonMatchDeletesEntity(t *testing.T) {
 	stateKey := guuid.NewString()
+	useGlobalStateKey(t, stateKey)
 	blueprintId := getBlueprintId(stateKey)
 	id := guuid.NewString()
 	d := newDeployment(stateKey)
@@ -680,6 +690,7 @@ func TestUpdateMatchToNonMatchDeletesEntity(t *testing.T) {
 
 func TestDeleteNonMatchingFinalStateDeletesEntity(t *testing.T) {
 	stateKey := guuid.NewString()
+	useGlobalStateKey(t, stateKey)
 	blueprintId := getBlueprintId(stateKey)
 	id := guuid.NewString()
 	d := newDeployment(stateKey)
@@ -719,6 +730,7 @@ func TestDeleteNonMatchingFinalStateDeletesEntity(t *testing.T) {
 
 func TestDeleteTombstoneStillDeletesEntity(t *testing.T) {
 	stateKey := guuid.NewString()
+	useGlobalStateKey(t, stateKey)
 	blueprintId := getBlueprintId(stateKey)
 	id := guuid.NewString()
 	d := newDeployment(stateKey)
