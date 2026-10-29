@@ -868,6 +868,139 @@ func TestGetObjectEntitiesIgnoresMappingErrorsForExcludedObjects(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestUpdatePhaseRunningToSucceededDeletesEntity(t *testing.T) {
+	stateKey := guuid.NewString()
+	useGlobalStateKey(t, stateKey)
+	blueprintId := getBlueprintId(stateKey)
+	id := guuid.NewString()
+	d := newDeployment(stateKey)
+	ud := newUnstructured(d)
+	require.NoError(t, unstructured.SetNestedField(ud.Object, "Running", "status", "phase"))
+
+	resource := newResource(`.status.phase == "Running"`, []port.EntityMapping{
+		{
+			Identifier: fmt.Sprintf("\"%s\"", id),
+			Blueprint:  fmt.Sprintf("\"%s\"", blueprintId),
+		},
+	})
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
+	defer tearDownFixture(t, f)
+
+	createItem := EventItem{Key: getKey(d, t), ActionType: CreateAction}
+	f.runControllerSyncHandler(createItem, &SyncResult{
+		EntitiesSet:               map[string]interface{}{fmt.Sprintf("%s;%s", blueprintId, id): nil},
+		RawDataExamples:           []interface{}{ud.Object},
+		ShouldDeleteStaleEntities: true,
+	}, false)
+
+	_, err := f.controller.portClient.ReadEntity(context.Background(), id, blueprintId)
+	require.NoError(t, err)
+
+	udSucceeded := ud.DeepCopy()
+	require.NoError(t, unstructured.SetNestedField(udSucceeded.Object, "Succeeded", "status", "phase"))
+	updateItem := EventItem{Key: getKey(d, t), ActionType: UpdateAction}
+	result, syncErr := f.controller.objectHandler(udSucceeded, updateItem, logger.GetEventLogger("test-event-id"))
+	require.NoError(t, syncErr)
+	f.assertSyncResult(result, &SyncResult{
+		EntitiesSet:               map[string]interface{}{},
+		RawDataExamples:           []interface{}{},
+		ShouldDeleteStaleEntities: true,
+	})
+
+	_, err = f.controller.portClient.ReadEntity(context.Background(), id, blueprintId)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "was not found")
+}
+
+func TestUpdateMatchToNonMatchDoesNotDeleteDifferentOwner(t *testing.T) {
+	ownerStateKey := guuid.NewString()
+	otherStateKey := guuid.NewString()
+	useGlobalStateKey(t, ownerStateKey)
+	blueprintId := getBlueprintId(ownerStateKey)
+	id := guuid.NewString()
+	d := newDeployment(ownerStateKey)
+	d.Labels = map[string]string{"export": "yes"}
+	ud := newUnstructured(d)
+	resource := newResource(`.metadata.labels.export == "yes"`, []port.EntityMapping{
+		{
+			Identifier: fmt.Sprintf("\"%s\"", id),
+			Blueprint:  fmt.Sprintf("\"%s\"", blueprintId),
+		},
+	})
+	f := newFixture(t, &fixtureConfig{stateKey: ownerStateKey, resource: resource, existingObjects: []runtime.Object{ud}})
+	defer tearDownFixture(t, f)
+
+	createItem := EventItem{Key: getKey(d, t), ActionType: CreateAction}
+	f.runControllerSyncHandler(createItem, &SyncResult{
+		EntitiesSet:               map[string]interface{}{fmt.Sprintf("%s;%s", blueprintId, id): nil},
+		RawDataExamples:           []interface{}{ud.Object},
+		ShouldDeleteStaleEntities: true,
+	}, false)
+
+	_, err := f.controller.portClient.ReadEntity(context.Background(), id, blueprintId)
+	require.NoError(t, err)
+
+	// Ownership check reads the global state key; point it at a different exporter.
+	config.ApplicationConfig.StateKey = otherStateKey
+
+	d.Labels["export"] = "no"
+	udNonMatch := newUnstructured(d)
+	updateItem := EventItem{Key: getKey(d, t), ActionType: UpdateAction}
+	result, syncErr := f.controller.objectHandler(udNonMatch, updateItem, logger.GetEventLogger("test-event-id"))
+	require.NoError(t, syncErr)
+	f.assertSyncResult(result, &SyncResult{
+		EntitiesSet:               map[string]interface{}{},
+		RawDataExamples:           []interface{}{},
+		ShouldDeleteStaleEntities: true,
+	})
+
+	_, err = f.controller.portClient.ReadEntity(context.Background(), id, blueprintId)
+	require.NoError(t, err, "entity owned by a different stateKey must not be deleted")
+}
+
+func TestObjectHandlerBadMappingOnlyFailsWhenSelectorMatches(t *testing.T) {
+	stateKey := guuid.NewString()
+	blueprintId := getBlueprintId(stateKey)
+	id := guuid.NewString()
+	d := newDeployment(stateKey)
+	d.Labels = map[string]string{"export": "no"}
+	ud := newUnstructured(d)
+	resource := newResource(`.metadata.labels.export == "yes"`, []port.EntityMapping{
+		{
+			Identifier: fmt.Sprintf("\"%s\"", id),
+			Blueprint:  fmt.Sprintf("\"%s\"", blueprintId),
+			Properties: map[string]string{"text": "bad-jq"},
+		},
+	})
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
+	defer tearDownFixture(t, f)
+
+	createItem := EventItem{Key: getKey(d, t), ActionType: CreateAction}
+	f.runControllerSyncHandler(createItem, &SyncResult{
+		EntitiesSet:               map[string]interface{}{},
+		RawDataExamples:           []interface{}{},
+		ShouldDeleteStaleEntities: true,
+	}, false)
+
+	updateItem := EventItem{Key: getKey(d, t), ActionType: UpdateAction}
+	result, syncErr := f.controller.objectHandler(ud, updateItem, logger.GetEventLogger("test-event-id"))
+	require.NoError(t, syncErr)
+	f.assertSyncResult(result, &SyncResult{
+		EntitiesSet:               map[string]interface{}{},
+		RawDataExamples:           []interface{}{},
+		ShouldDeleteStaleEntities: true,
+	})
+
+	_, err := f.controller.portClient.ReadEntity(context.Background(), id, blueprintId)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "was not found")
+
+	d.Labels["export"] = "yes"
+	udMatch := newUnstructured(d)
+	_, syncErr = f.controller.objectHandler(udMatch, updateItem, logger.GetEventLogger("test-event-id"))
+	require.Error(t, syncErr)
+}
+
 func TestFailPortAuth(t *testing.T) {
 	stateKey := guuid.NewString()
 	blueprintId := getBlueprintId(stateKey)
