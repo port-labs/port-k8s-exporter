@@ -997,8 +997,11 @@ func TestObjectHandlerBadMappingOnlyFailsWhenSelectorMatches(t *testing.T) {
 
 	d.Labels["export"] = "yes"
 	udMatch := newUnstructured(d)
-	_, syncErr = f.controller.objectHandler(udMatch, updateItem, logger.GetEventLogger("test-event-id"))
-	require.Error(t, syncErr)
+	// objectHandler logs transform errors and continues; it returns EntitiesSet=nil rather than err.
+	matchResult, syncErr := f.controller.objectHandler(udMatch, updateItem, logger.GetEventLogger("test-event-id"))
+	require.NoError(t, syncErr)
+	assert.Nil(t, matchResult.EntitiesSet)
+	assert.False(t, matchResult.ShouldDeleteStaleEntities)
 }
 
 func TestFailPortAuth(t *testing.T) {
