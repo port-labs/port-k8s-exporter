@@ -788,7 +788,7 @@ func TestDeleteNonMatchingFinalStateDeletesEntity(t *testing.T) {
 	assert.Contains(t, err.Error(), "was not found")
 }
 
-func TestDeleteTombstoneStillDeletesEntity(t *testing.T) {
+func TestDeleteDeletedFinalStateUnknownStillDeletesEntity(t *testing.T) {
 	stateKey := guuid.NewString()
 	useGlobalStateKey(t, stateKey)
 	blueprintId := getBlueprintId(stateKey)
@@ -811,8 +811,8 @@ func TestDeleteTombstoneStillDeletesEntity(t *testing.T) {
 		ShouldDeleteStaleEntities: true,
 	}, false)
 
-	tombstone := cache.DeletedFinalStateUnknown{Key: getKey(d, t), Obj: ud}
-	unwrapped := unwrapDeletedObject(tombstone)
+	deletedUnknown := cache.DeletedFinalStateUnknown{Key: getKey(d, t), Obj: ud}
+	unwrapped := unwrapDeletedObject(deletedUnknown)
 	deleteItem := EventItem{Key: getKey(d, t), ActionType: DeleteAction, EventSource: port.LiveEventsSource}
 	result, syncErr := f.controller.objectHandler(unwrapped, deleteItem, logger.GetEventLogger("test-event-id"))
 	require.NoError(t, syncErr)
@@ -860,8 +860,8 @@ func TestUnwrapDeletedObject(t *testing.T) {
 
 	assert.Equal(t, ud, unwrapDeletedObject(ud))
 
-	tombstone := cache.DeletedFinalStateUnknown{Key: "ns/name", Obj: ud}
-	assert.Equal(t, ud, unwrapDeletedObject(tombstone))
+	deletedUnknown := cache.DeletedFinalStateUnknown{Key: "ns/name", Obj: ud}
+	assert.Equal(t, ud, unwrapDeletedObject(deletedUnknown))
 }
 
 func TestDeleteEntitiesSendsOneBulkRequestPerBlueprint(t *testing.T) {
