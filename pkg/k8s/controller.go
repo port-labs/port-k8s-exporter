@@ -72,6 +72,9 @@ type TransformResult struct {
 	RawDataExamples  []interface{}        // matched only
 }
 
+// unwrapDeletedObject returns the underlying object when the informer delivers a
+// cache.DeletedFinalStateUnknown ("tombstone") — i.e. the delete was missed and
+// only a stale cached object is available.
 func unwrapDeletedObject(obj interface{}) interface{} {
 	if tombstone, ok := obj.(cache.DeletedFinalStateUnknown); ok {
 		return tombstone.Obj
@@ -517,10 +520,8 @@ func (c *Controller) objectHandler(obj interface{}, item EventItem, eventLogger 
 			continue
 		}
 
-		if rawDataExamplesToReturn != nil {
-			amountOfExamplesToAdd := min(len(transformResult.RawDataExamples), MaxRawDataExamplesToSend-len(rawDataExamplesToReturn))
-			rawDataExamplesToReturn = append(rawDataExamplesToReturn, transformResult.RawDataExamples[:amountOfExamplesToAdd]...)
-		}
+		amountOfExamplesToAdd := min(len(transformResult.RawDataExamples), MaxRawDataExamplesToSend-len(rawDataExamplesToReturn))
+		rawDataExamplesToReturn = append(rawDataExamplesToReturn, transformResult.RawDataExamples[:amountOfExamplesToAdd]...)
 
 		entitiesToHandle := transformResult.Entities
 		if item.ActionType == DeleteAction {
