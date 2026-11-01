@@ -73,11 +73,11 @@ type TransformResult struct {
 }
 
 // unwrapDeletedObject returns the underlying object when the informer delivers a
-// cache.DeletedFinalStateUnknown ("tombstone") — i.e. the delete was missed and
-// only a stale cached object is available.
+// cache.DeletedFinalStateUnknown — i.e. the delete was missed and only a stale
+// cached object is available.
 func unwrapDeletedObject(obj interface{}) interface{} {
-	if tombstone, ok := obj.(cache.DeletedFinalStateUnknown); ok {
-		return tombstone.Obj
+	if deletedUnknown, ok := obj.(cache.DeletedFinalStateUnknown); ok {
+		return deletedUnknown.Obj
 	}
 	return obj
 }
