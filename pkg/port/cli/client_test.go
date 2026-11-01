@@ -448,3 +448,138 @@ func TestBulkUpsert_NetworkErrorIsRetryable(t *testing.T) {
 	require.Error(t, err)
 	assert.False(t, IsBulkNonRetryableError(err), "network errors should be retryable")
 }
+
+func newIdentifiers(count int) []string {
+	ids := make([]string, count)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("e%d", i)
+	}
+	return ids
+}
+
+// bulkDeleteRecorder records the batches of concurrent bulk delete requests by blueprint.
+type bulkDeleteRecorder struct {
+	mu      sync.Mutex
+	batches map[string][][]string
+}
+
+func (rec *bulkDeleteRecorder) record(t *testing.T, r *http.Request) []string {
+	var body port.BulkDeleteRequest
+	require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if rec.batches == nil {
+		rec.batches = make(map[string][][]string)
+	}
+	blueprint := strings.Split(r.URL.Path, "/")[3]
+	rec.batches[blueprint] = append(rec.batches[blueprint], body.Entities)
+	return body.Entities
+}
+
+func TestBulkDelete_BatchesEachBlueprint(t *testing.T) {
+	rec := &bulkDeleteRecorder{}
+	server := newBulkTestServer(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "true", r.URL.Query().Get("delete_dependents"))
+		assert.Equal(t, "true", r.URL.Query().Get("allow_partial_success"))
+		identifiers := rec.record(t, r)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(port.BulkDeleteResponse{OK: true, DeletedEntities: identifiers})
+	})
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+	deleted, err := client.BulkDeleteEntities(context.Background(), map[string][]string{
+		"bp-a": newIdentifiers(101),
+		"bp-b": {"x"},
+	}, true)
+
+	require.NoError(t, err)
+	assert.Equal(t, 102, deleted)
+	require.Len(t, rec.batches["bp-a"], 2)
+	assert.ElementsMatch(t, []int{100, 1}, []int{len(rec.batches["bp-a"][0]), len(rec.batches["bp-a"][1])})
+	assert.Equal(t, [][]string{{"x"}}, rec.batches["bp-b"])
+}
+
+func TestBulkDelete_PartialSuccessIsNotAnError(t *testing.T) {
+	server := newBulkTestServer(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMultiStatus)
+		json.NewEncoder(w).Encode(port.BulkDeleteResponse{
+			OK:              true,
+			DeletedEntities: []string{"e1"},
+			Errors:          []port.BulkEntityError{{Identifier: "e2", StatusCode: 403, Message: "has dependents"}},
+		})
+	})
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+	deleted, err := client.BulkDeleteEntities(context.Background(), map[string][]string{"bp": {"e1", "e2"}}, false)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, deleted)
+}
+
+func TestBulkDelete_FailedBatchDoesNotStopOtherBatches(t *testing.T) {
+	rec := &bulkDeleteRecorder{}
+	server := newBulkTestServer(func(w http.ResponseWriter, r *http.Request) {
+		identifiers := rec.record(t, r)
+		w.Header().Set("Content-Type", "application/json")
+		if identifiers[0] == "e0" {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(`{"ok": false, "message": "error"}`))
+			return
+		}
+		json.NewEncoder(w).Encode(port.BulkDeleteResponse{OK: true, DeletedEntities: identifiers})
+	})
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+	deleted, err := client.BulkDeleteEntities(context.Background(), map[string][]string{"bp": newIdentifiers(101)}, false)
+
+	require.Error(t, err)
+	assert.Len(t, rec.batches["bp"], 2)
+	assert.Equal(t, 1, deleted)
+}
+
+func TestBulkDelete_EmptyInputSendsNoRequest(t *testing.T) {
+	server := newBulkTestServer(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("should not call API for empty input")
+	})
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+	deleted, err := client.BulkDeleteEntities(context.Background(), nil, false)
+
+	require.NoError(t, err)
+	assert.Zero(t, deleted)
+}
+
+func TestDeleteStaleEntities_BulkDeletesOnlyStaleEntities(t *testing.T) {
+	rec := &bulkDeleteRecorder{}
+	server := newBulkTestServer(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/datasource-entities"):
+			json.NewEncoder(w).Encode(port.ResponseBody{OK: true, Entities: []port.Entity{
+				{Identifier: "a-stale", Blueprint: "bp-a"},
+				{Identifier: "a-kept", Blueprint: "bp-a"},
+				{Identifier: "b-stale-1", Blueprint: "bp-b"},
+				{Identifier: "b-stale-2", Blueprint: "bp-b"},
+			}})
+		case strings.HasSuffix(r.URL.Path, "/bulk/entities/delete"):
+			json.NewEncoder(w).Encode(port.BulkDeleteResponse{OK: true, DeletedEntities: rec.record(t, r)})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	})
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+	err := client.DeleteStaleEntities(context.Background(), "test-state-key", map[string]interface{}{"bp-a;a-kept": nil})
+
+	require.NoError(t, err)
+	assert.Equal(t, map[string][][]string{
+		"bp-a": {{"a-stale"}},
+		"bp-b": {{"b-stale-1", "b-stale-2"}},
+	}, rec.batches)
+}

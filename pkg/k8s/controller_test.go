@@ -2,9 +2,13 @@ package k8s
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -688,6 +692,62 @@ func TestUpdateMatchToNonMatchDeletesEntity(t *testing.T) {
 	assert.Contains(t, err.Error(), "was not found")
 }
 
+func TestUpdateMatchToNonMatchBulkDeletesMultipleEntities(t *testing.T) {
+	stateKey := guuid.NewString()
+	useGlobalStateKey(t, stateKey)
+	blueprintId := getBlueprintId(stateKey)
+	id1 := guuid.NewString()
+	id2 := guuid.NewString()
+	d := newDeployment(stateKey)
+	d.Labels = map[string]string{"export": "yes"}
+	ud := newUnstructured(d)
+	resource := newResource(`.metadata.labels.export == "yes"`, []port.EntityMapping{
+		{
+			Identifier: fmt.Sprintf("\"%s\"", id1),
+			Blueprint:  fmt.Sprintf("\"%s\"", blueprintId),
+		},
+		{
+			Identifier: fmt.Sprintf("\"%s\"", id2),
+			Blueprint:  fmt.Sprintf("\"%s\"", blueprintId),
+		},
+	})
+	f := newFixture(t, &fixtureConfig{stateKey: stateKey, resource: resource, existingObjects: []runtime.Object{ud}})
+	defer tearDownFixture(t, f)
+
+	createItem := EventItem{Key: getKey(d, t), ActionType: CreateAction}
+	f.runControllerSyncHandler(createItem, &SyncResult{
+		EntitiesSet: map[string]interface{}{
+			fmt.Sprintf("%s;%s", blueprintId, id1): nil,
+			fmt.Sprintf("%s;%s", blueprintId, id2): nil,
+		},
+		RawDataExamples:           []interface{}{ud.Object},
+		ShouldDeleteStaleEntities: true,
+	}, false)
+
+	_, err := f.controller.portClient.ReadEntity(context.Background(), id1, blueprintId)
+	require.NoError(t, err)
+	_, err = f.controller.portClient.ReadEntity(context.Background(), id2, blueprintId)
+	require.NoError(t, err)
+
+	d.Labels["export"] = "no"
+	udNonMatch := newUnstructured(d)
+	updateItem := EventItem{Key: getKey(d, t), ActionType: UpdateAction}
+	result, syncErr := f.controller.objectHandler(udNonMatch, updateItem, logger.GetEventLogger("test-event-id"))
+	require.NoError(t, syncErr)
+	f.assertSyncResult(result, &SyncResult{
+		EntitiesSet:               map[string]interface{}{},
+		RawDataExamples:           []interface{}{},
+		ShouldDeleteStaleEntities: true,
+	})
+
+	_, err = f.controller.portClient.ReadEntity(context.Background(), id1, blueprintId)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "was not found")
+	_, err = f.controller.portClient.ReadEntity(context.Background(), id2, blueprintId)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "was not found")
+}
+
 func TestDeleteNonMatchingFinalStateDeletesEntity(t *testing.T) {
 	stateKey := guuid.NewString()
 	useGlobalStateKey(t, stateKey)
@@ -802,6 +862,52 @@ func TestUnwrapDeletedObject(t *testing.T) {
 
 	tombstone := cache.DeletedFinalStateUnknown{Key: "ns/name", Obj: ud}
 	assert.Equal(t, ud, unwrapDeletedObject(tombstone))
+}
+
+func TestDeleteEntitiesSendsOneBulkRequestPerBlueprint(t *testing.T) {
+	useGlobalStateKey(t, "bulk-delete-test-state")
+
+	var mu sync.Mutex
+	deletedByBlueprint := make(map[string][]string)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/v1/auth/access_token":
+			json.NewEncoder(w).Encode(port.AccessTokenResponse{AccessToken: "test-token", ExpiresIn: 3600})
+		case r.URL.Path == "/v1/entities/search":
+			json.NewEncoder(w).Encode(port.ResponseBody{OK: true, Entities: []port.Entity{{Identifier: "owned"}}})
+		case strings.HasSuffix(r.URL.Path, "/bulk/entities/delete"):
+			blueprint := strings.Split(r.URL.Path, "/")[3]
+			var body port.BulkDeleteRequest
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			mu.Lock()
+			deletedByBlueprint[blueprint] = append(deletedByBlueprint[blueprint], body.Entities...)
+			mu.Unlock()
+			json.NewEncoder(w).Encode(port.BulkDeleteResponse{OK: true, DeletedEntities: body.Entities})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	portClient := cli.New(&config.ApplicationConfiguration{
+		PortBaseURL:      server.URL,
+		PortClientId:     "test-client-id",
+		PortClientSecret: "test-client-secret",
+	})
+	controller := &Controller{portClient: portClient}
+
+	err := controller.deleteEntities([]port.EntityRequest{
+		{Identifier: "e1", Blueprint: "bp-a"},
+		{Identifier: "e2", Blueprint: "bp-a"},
+		{Identifier: "e3", Blueprint: "bp-b"},
+	}, port.ResyncSource, logger.GetEventLogger("test-event-id"))
+
+	require.NoError(t, err)
+	assert.Equal(t, map[string][]string{
+		"bp-a": {"e1", "e2"},
+		"bp-b": {"e3"},
+	}, deletedByBlueprint)
 }
 
 func TestGetObjectEntitiesMapsExcludedWhenSelectorFails(t *testing.T) {

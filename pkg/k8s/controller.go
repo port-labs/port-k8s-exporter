@@ -3,7 +3,7 @@ package k8s
 import (
 	"context"
 	"fmt"
-	"reflect"
+	"slices"
 	"sync"
 	"time"
 
@@ -435,7 +435,7 @@ func (c *Controller) processWorkqueueObjectWithBatching(workqueue workqueue.Rate
 		}
 
 		if item.ActionType == UpdateAction {
-			if err := c.deleteExcludedEntities(transformResult.ExcludedEntities, item.EventSource, eventLogger); err != nil {
+			if err := c.deleteEntities(transformResult.ExcludedEntities, item.EventSource, eventLogger); err != nil {
 				batchCollector.MarkError()
 				return failItem(err, "error deleting selector-excluded entity")
 			}
@@ -523,25 +523,28 @@ func (c *Controller) objectHandler(obj interface{}, item EventItem, eventLogger 
 		amountOfExamplesToAdd := min(len(transformResult.RawDataExamples), MaxRawDataExamplesToSend-len(rawDataExamplesToReturn))
 		rawDataExamplesToReturn = append(rawDataExamplesToReturn, transformResult.RawDataExamples[:amountOfExamplesToAdd]...)
 
-		entitiesToHandle := transformResult.Entities
 		if item.ActionType == DeleteAction {
-			entitiesToHandle = append(append([]port.EntityRequest{}, transformResult.Entities...), transformResult.ExcludedEntities...)
+			if err := c.deleteEntities(slices.Concat(transformResult.Entities, transformResult.ExcludedEntities), item.EventSource, eventLogger); err != nil {
+				errors = append(errors, err)
+				entitiesSet = nil
+			}
+			continue
 		}
 
-		for _, portEntity := range entitiesToHandle {
+		for _, portEntity := range transformResult.Entities {
 			handledEntity, err := c.entityHandler(portEntity, item.ActionType, item.EventSource, eventLogger)
 			if err != nil {
 				errors = append(errors, err)
 				entitiesSet = nil
 			}
 
-			if entitiesSet != nil && item.ActionType != DeleteAction && handledEntity != nil {
+			if entitiesSet != nil && handledEntity != nil {
 				entitiesSet[c.portClient.GetEntityIdentifierKey(handledEntity)] = nil
 			}
 		}
 
 		if item.ActionType == UpdateAction {
-			if err := c.deleteExcludedEntities(transformResult.ExcludedEntities, item.EventSource, eventLogger); err != nil {
+			if err := c.deleteEntities(transformResult.ExcludedEntities, item.EventSource, eventLogger); err != nil {
 				errors = append(errors, err)
 				entitiesSet = nil
 			}
@@ -563,13 +566,35 @@ func (c *Controller) objectHandler(obj interface{}, item EventItem, eventLogger 
 	}, finalErr
 }
 
-func (c *Controller) deleteExcludedEntities(entities []port.EntityRequest, eventSource port.EventSource, eventLogger *zap.SugaredLogger) error {
-	for _, excludedEntity := range entities {
-		eventLogger.Debugw("Deleting selector-excluded entity", "identifier", excludedEntity.Identifier, "blueprint", excludedEntity.Blueprint, "eventSource", eventSource)
-		if _, err := c.entityHandler(excludedEntity, DeleteAction, eventSource, eventLogger); err != nil {
-			return err
+// deleteEntities bulk deletes the given entities that this exporter owns.
+func (c *Controller) deleteEntities(entities []port.EntityRequest, eventSource port.EventSource, eventLogger *zap.SugaredLogger) error {
+	ownedByBlueprint := make(map[string][]string)
+	for _, portEntity := range entities {
+		identifier, ok := portEntity.Identifier.(string)
+		if !ok {
+			continue
 		}
+		owned, err := entity.CheckIfOwnEntity(portEntity, c.portClient, eventSource)
+		if err != nil {
+			eventLogger.Errorw(fmt.Sprintf("error checking if entity %s of blueprint %s is owned by this exporter. Error: %s", identifier, portEntity.Blueprint, err.Error()), "identifier", identifier, "blueprint", portEntity.Blueprint, "eventSource", eventSource, "error", err)
+			return fmt.Errorf("error checking if entity is owned by this exporter")
+		}
+		if !*owned {
+			eventLogger.Warnw(fmt.Sprintf("trying to delete entity but didn't find it in port with this exporter ownership (statekey: %s), entity id: %s, blueprint: %s", config.ApplicationConfig.StateKey, identifier, portEntity.Blueprint), "identifier", identifier, "blueprint", portEntity.Blueprint, "eventSource", eventSource)
+			continue
+		}
+		ownedByBlueprint[portEntity.Blueprint] = append(ownedByBlueprint[portEntity.Blueprint], identifier)
 	}
+
+	if len(ownedByBlueprint) == 0 {
+		return nil
+	}
+	deletedCount, err := c.portClient.BulkDeleteEntities(context.Background(), ownedByBlueprint, c.portClient.DeleteDependents)
+	if err != nil {
+		eventLogger.Errorw(fmt.Sprintf("error deleting Port entities. Error: %s", err.Error()), "eventSource", eventSource, "error", err)
+		return fmt.Errorf("error deleting Port entities")
+	}
+	eventLogger.Infow(fmt.Sprintf("Deleted %d Port entities", deletedCount), "eventSource", eventSource)
 	return nil
 }
 
@@ -689,27 +714,6 @@ func (c *Controller) entityHandler(portEntity port.EntityRequest, action EventAc
 		}
 		eventLogger.Debugw(fmt.Sprintf("Successfully upserted entity %s of blueprint %s", upsertedEntity.Identifier, upsertedEntity.Blueprint), "identifier", upsertedEntity.Identifier, "blueprint", upsertedEntity.Blueprint)
 		return upsertedEntity, nil
-	case DeleteAction:
-		if reflect.TypeOf(portEntity.Identifier).Kind() != reflect.String {
-			return nil, nil
-		}
-
-		result, err := entity.CheckIfOwnEntity(portEntity, c.portClient, eventSource)
-		if err != nil {
-			eventLogger.Errorw(fmt.Sprintf("error checking if entity %s of blueprint %s is owned by this exporter. Error: %s", portEntity.Identifier, portEntity.Blueprint, err.Error()), "identifier", portEntity.Identifier, "blueprint", portEntity.Blueprint, "eventSource", eventSource, "error", err)
-			return nil, fmt.Errorf("error checking if entity is owned by this exporter")
-		}
-
-		if *result {
-			err := c.portClient.DeleteEntity(context.Background(), portEntity.Identifier.(string), portEntity.Blueprint, c.portClient.DeleteDependents)
-			if err != nil {
-				eventLogger.Errorw(fmt.Sprintf("error deleting Port entity %s of blueprint %s. Error: %s", portEntity.Identifier, portEntity.Blueprint, err.Error()), "identifier", portEntity.Identifier, "blueprint", portEntity.Blueprint, "eventSource", eventSource, "error", err)
-				return nil, fmt.Errorf("error deleting Port entity")
-			}
-			eventLogger.Infow(fmt.Sprintf("Successfully deleted entity %s of blueprint %s", portEntity.Identifier, portEntity.Blueprint), "identifier", portEntity.Identifier, "blueprint", portEntity.Blueprint, "eventSource", eventSource)
-		} else {
-			eventLogger.Warnw(fmt.Sprintf("trying to delete entity but didn't find it in port with this exporter ownership (statekey: %s), entity id: %s, blueprint: %s", config.ApplicationConfig.StateKey, portEntity.Identifier, portEntity.Blueprint), "identifier", portEntity.Identifier, "blueprint", portEntity.Blueprint, "eventSource", eventSource)
-		}
 	}
 
 	return nil, nil

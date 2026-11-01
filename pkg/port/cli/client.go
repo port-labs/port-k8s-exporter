@@ -125,9 +125,6 @@ func New(applicationConfig *config.ApplicationConfiguration, opts ...Option) *Po
 			request.SetAuthToken("")
 			return nil
 		}
-		if c.Authenticator == nil {
-			c.Authenticator = NewAuthenticator(c.ClientID, c.ClientSecret)
-		}
 		token, _, err := c.Authenticator.AuthenticateClient(context.Background(), c)
 		if err != nil {
 			return err
@@ -143,6 +140,7 @@ func New(applicationConfig *config.ApplicationConfiguration, opts ...Option) *Po
 	for _, opt := range opts {
 		opt(c)
 	}
+	c.Authenticator = NewAuthenticator(c.ClientID, c.ClientSecret)
 
 	return c
 }
