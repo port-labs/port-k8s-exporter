@@ -8,7 +8,7 @@ Port is the Developer Platform meant to supercharge your DevOps and Developers, 
 
 ### Docs
 
-- [Port Docs](https://docs.getport.io)
+- [Port Docs](https://docs.port.io/)
 
 ## Usage
 
