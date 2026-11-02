@@ -568,22 +568,26 @@ func (c *Controller) objectHandler(obj interface{}, item EventItem, eventLogger 
 
 // deleteEntities bulk deletes the given entities that this exporter owns.
 func (c *Controller) deleteEntities(entities []port.EntityRequest, eventSource port.EventSource, eventLogger *zap.SugaredLogger) error {
-	ownedByBlueprint := make(map[string][]string)
+	ownedByBlueprint, err := entity.FilterOwnedIdentifiers(entities, c.portClient, eventSource)
+	if err != nil {
+		eventLogger.Errorw(fmt.Sprintf("error checking entity ownership. Error: %s", err.Error()), "eventSource", eventSource, "error", err)
+		return fmt.Errorf("error checking if entities are owned by this exporter")
+	}
+
+	ownedKeys := make(map[string]struct{})
+	for blueprint, identifiers := range ownedByBlueprint {
+		for _, id := range identifiers {
+			ownedKeys[blueprint+";"+id] = struct{}{}
+		}
+	}
 	for _, portEntity := range entities {
 		identifier, ok := portEntity.Identifier.(string)
 		if !ok {
 			continue
 		}
-		owned, err := entity.CheckIfOwnEntity(portEntity, c.portClient, eventSource)
-		if err != nil {
-			eventLogger.Errorw(fmt.Sprintf("error checking if entity %s of blueprint %s is owned by this exporter. Error: %s", identifier, portEntity.Blueprint, err.Error()), "identifier", identifier, "blueprint", portEntity.Blueprint, "eventSource", eventSource, "error", err)
-			return fmt.Errorf("error checking if entity is owned by this exporter")
-		}
-		if !*owned {
+		if _, owned := ownedKeys[portEntity.Blueprint+";"+identifier]; !owned {
 			eventLogger.Warnw(fmt.Sprintf("trying to delete entity but didn't find it in port with this exporter ownership (statekey: %s), entity id: %s, blueprint: %s", config.ApplicationConfig.StateKey, identifier, portEntity.Blueprint), "identifier", identifier, "blueprint", portEntity.Blueprint, "eventSource", eventSource)
-			continue
 		}
-		ownedByBlueprint[portEntity.Blueprint] = append(ownedByBlueprint[portEntity.Blueprint], identifier)
 	}
 
 	if len(ownedByBlueprint) == 0 {

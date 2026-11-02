@@ -121,6 +121,7 @@ func New(applicationConfig *config.ApplicationConfiguration, opts ...Option) *Po
 	// Token is set per-request so concurrent goroutines never observe a
 	// partially-cleared Authorization header on the shared resty.Client.
 	c.Client.OnBeforeRequest(func(client *resty.Client, request *resty.Request) error {
+		// Auth token endpoint must not send a Bearer header — credentials go in the body.
 		if request.Method == "POST" && strings.Contains(request.URL, AuthTokenEndpoint) {
 			request.SetAuthToken("")
 			return nil
@@ -140,6 +141,8 @@ func New(applicationConfig *config.ApplicationConfiguration, opts ...Option) *Po
 	for _, opt := range opts {
 		opt(c)
 	}
+	// Create after opts so ClientID/ClientSecret from WithClientID/WithClientSecret
+	// are used, and Authenticator is never nil under concurrent OnBeforeRequest.
 	c.Authenticator = NewAuthenticator(c.ClientID, c.ClientSecret)
 
 	return c

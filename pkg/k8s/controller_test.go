@@ -869,13 +869,20 @@ func TestDeleteEntitiesSendsOneBulkRequestPerBlueprint(t *testing.T) {
 
 	var mu sync.Mutex
 	deletedByBlueprint := make(map[string][]string)
+	searchCalls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.URL.Path == "/v1/auth/access_token":
 			json.NewEncoder(w).Encode(port.AccessTokenResponse{AccessToken: "test-token", ExpiresIn: 3600})
 		case r.URL.Path == "/v1/entities/search":
-			json.NewEncoder(w).Encode(port.ResponseBody{OK: true, Entities: []port.Entity{{Identifier: "owned"}}})
+			mu.Lock()
+			searchCalls++
+			mu.Unlock()
+			var body port.SearchBody
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			entities := entitiesFromIdentifierInRule(t, body)
+			json.NewEncoder(w).Encode(port.ResponseBody{OK: true, Entities: entities})
 		case strings.HasSuffix(r.URL.Path, "/bulk/entities/delete"):
 			blueprint := strings.Split(r.URL.Path, "/")[3]
 			var body port.BulkDeleteRequest
@@ -904,10 +911,81 @@ func TestDeleteEntitiesSendsOneBulkRequestPerBlueprint(t *testing.T) {
 	}, port.ResyncSource, logger.GetEventLogger("test-event-id"))
 
 	require.NoError(t, err)
+	assert.Equal(t, 2, searchCalls, "ownership should be one batched search per blueprint, not per entity")
 	assert.Equal(t, map[string][]string{
 		"bp-a": {"e1", "e2"},
 		"bp-b": {"e3"},
 	}, deletedByBlueprint)
+}
+
+func TestDeleteEntitiesSkipsEntitiesNotOwned(t *testing.T) {
+	useGlobalStateKey(t, "bulk-delete-unowned-test-state")
+
+	var mu sync.Mutex
+	var deleted []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/v1/auth/access_token":
+			json.NewEncoder(w).Encode(port.AccessTokenResponse{AccessToken: "test-token", ExpiresIn: 3600})
+		case r.URL.Path == "/v1/entities/search":
+			json.NewEncoder(w).Encode(port.ResponseBody{OK: true, Entities: []port.Entity{
+				{Identifier: "owned", Blueprint: "bp"},
+			}})
+		case strings.HasSuffix(r.URL.Path, "/bulk/entities/delete"):
+			var body port.BulkDeleteRequest
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			mu.Lock()
+			deleted = append(deleted, body.Entities...)
+			mu.Unlock()
+			json.NewEncoder(w).Encode(port.BulkDeleteResponse{OK: true, DeletedEntities: body.Entities})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	portClient := cli.New(&config.ApplicationConfiguration{
+		PortBaseURL:      server.URL,
+		PortClientId:     "test-client-id",
+		PortClientSecret: "test-client-secret",
+	})
+	controller := &Controller{portClient: portClient}
+
+	err := controller.deleteEntities([]port.EntityRequest{
+		{Identifier: "owned", Blueprint: "bp"},
+		{Identifier: "foreign", Blueprint: "bp"},
+	}, port.ResyncSource, logger.GetEventLogger("test-event-id"))
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"owned"}, deleted)
+}
+
+// entitiesFromIdentifierInRule rebuilds Port entities from the ownership search "in" rule.
+func entitiesFromIdentifierInRule(t *testing.T, body port.SearchBody) []port.Entity {
+	t.Helper()
+	for _, rule := range body.Rules {
+		if rule.Property != "$identifier" || rule.Operator != "in" {
+			continue
+		}
+		raw, err := json.Marshal(rule.Value)
+		require.NoError(t, err)
+		var identifiers []string
+		require.NoError(t, json.Unmarshal(raw, &identifiers))
+		blueprint := ""
+		for _, r := range body.Rules {
+			if r.Property == "$blueprint" {
+				blueprint, _ = r.Value.(string)
+			}
+		}
+		entities := make([]port.Entity, 0, len(identifiers))
+		for _, id := range identifiers {
+			entities = append(entities, port.Entity{Identifier: id, Blueprint: blueprint})
+		}
+		return entities
+	}
+	t.Fatalf("ownership search missing $identifier in rule: %+v", body)
+	return nil
 }
 
 func TestGetObjectEntitiesMapsExcludedWhenSelectorFails(t *testing.T) {

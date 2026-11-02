@@ -298,9 +298,9 @@ func newTestClient(serverURL string) *PortClient {
 
 func TestBulkUpsert_ReturnsTypedErrorWithStatusCode(t *testing.T) {
 	tests := []struct {
-		name           string
-		statusCode     int
-		nonRetryable   bool
+		name         string
+		statusCode   int
+		nonRetryable bool
 	}{
 		{"404 returns non-retryable BulkUpsertError", 404, true},
 		{"422 returns non-retryable BulkUpsertError", 422, true},
@@ -503,7 +503,7 @@ func TestBulkDelete_BatchesEachBlueprint(t *testing.T) {
 func TestBulkDelete_PartialSuccessIsNotAnError(t *testing.T) {
 	server := newBulkTestServer(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusMultiStatus)
+		w.WriteHeader(http.StatusMultiStatus) // 207
 		json.NewEncoder(w).Encode(port.BulkDeleteResponse{
 			OK:              true,
 			DeletedEntities: []string{"e1"},
@@ -517,6 +517,22 @@ func TestBulkDelete_PartialSuccessIsNotAnError(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, deleted)
+}
+
+func TestBulkDelete_NonSuccessStatusIsAnError(t *testing.T) {
+	server := newBulkTestServer(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"ok": false, "message": "boom"}`))
+	})
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+	deleted, err := client.BulkDeleteEntities(context.Background(), map[string][]string{"bp": {"e1"}}, false)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "status 500")
+	assert.Zero(t, deleted)
 }
 
 func TestBulkDelete_FailedBatchDoesNotStopOtherBatches(t *testing.T) {

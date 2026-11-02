@@ -240,8 +240,10 @@ func (c *PortClient) bulkDeleteBatch(ctx context.Context, blueprint string, iden
 	if err != nil {
 		return 0, err
 	}
-	if !pb.OK {
-		return 0, fmt.Errorf("failed to bulk delete entities of blueprint '%s', got: %s", blueprint, resp.Body())
+	// 207 Multi-Status is success when allow_partial_success=true (some deletes
+	// skipped); match BulkUpsertEntities and do not treat it as a hard failure.
+	if resp.StatusCode() != 200 && resp.StatusCode() != 207 {
+		return 0, fmt.Errorf("failed to bulk delete entities of blueprint '%s', got status %d: %s", blueprint, resp.StatusCode(), resp.Body())
 	}
 	for _, entityErr := range pb.Errors {
 		logger.Warningf("Could not delete Port entity '%s' of blueprint '%s': %s", entityErr.Identifier, blueprint, entityErr.Message)
