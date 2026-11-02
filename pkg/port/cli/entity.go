@@ -5,11 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"slices"
 	"strconv"
+	"sync/atomic"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/logger"
 	"github.com/port-labs/port-k8s-exporter/pkg/metrics"
 	"github.com/port-labs/port-k8s-exporter/pkg/port"
+	"golang.org/x/sync/errgroup"
 )
 
 func (c *PortClient) SearchEntities(ctx context.Context, body port.SearchBody) ([]port.Entity, error) {
@@ -122,24 +125,23 @@ func (c *PortClient) DeleteStaleEntities(ctx context.Context, stateKey string, e
 		return fmt.Errorf("error searching Port entities: %v", err)
 	}
 
-	successCount := 0
-	failedCount := 0
+	staleByBlueprint := make(map[string][]string)
+	staleCount := 0
 	for _, portEntity := range portEntities {
-		_, ok := existingEntitiesSet[c.GetEntityIdentifierKey(&portEntity)]
-		if !ok {
-			err := c.DeleteEntity(ctx, portEntity.Identifier, portEntity.Blueprint, c.DeleteDependents)
-			if err != nil {
-				logger.Errorf("error deleting Port entity '%s' of blueprint '%s': %v", portEntity.Identifier, portEntity.Blueprint, err)
-				failedCount++
-				continue
-			}
-			successCount++
-			logger.Infof("Successfully deleted entity '%s' of blueprint '%s'", portEntity.Identifier, portEntity.Blueprint)
+		if _, ok := existingEntitiesSet[c.GetEntityIdentifierKey(&portEntity)]; !ok {
+			staleByBlueprint[portEntity.Blueprint] = append(staleByBlueprint[portEntity.Blueprint], portEntity.Identifier)
+			staleCount++
 		}
 	}
 
-	metrics.AddObjectCount(metrics.MetricKindReconciliation, metrics.MetricDeletedResult, metrics.MetricPhaseDelete, float64(successCount))
-	metrics.AddObjectCount(metrics.MetricKindReconciliation, metrics.MetricFailedResult, metrics.MetricPhaseDelete, float64(failedCount))
+	deletedCount, err := c.BulkDeleteEntities(ctx, staleByBlueprint, c.DeleteDependents)
+	if err != nil {
+		logger.Errorf("error deleting stale entities: %v", err)
+	}
+	logger.Infof("Deleted %d/%d stale entities", deletedCount, staleCount)
+
+	metrics.AddObjectCount(metrics.MetricKindReconciliation, metrics.MetricDeletedResult, metrics.MetricPhaseDelete, float64(deletedCount))
+	metrics.AddObjectCount(metrics.MetricKindReconciliation, metrics.MetricFailedResult, metrics.MetricPhaseDelete, float64(staleCount-deletedCount))
 	return nil
 }
 
@@ -197,4 +199,54 @@ func (c *PortClient) BulkUpsertEntities(ctx context.Context, blueprint string, e
 		return nil, &BulkUpsertError{StatusCode: resp.StatusCode(), Body: string(resp.Body())}
 	}
 	return pb, nil
+}
+
+const (
+	// maxBulkDeleteBatchSize is the Port API limit on identifiers per bulk delete request.
+	maxBulkDeleteBatchSize   = 100
+	maxConcurrentBulkDeletes = 10
+)
+
+// BulkDeleteEntities deletes the identifiers of each blueprint in concurrent batches and returns how many were deleted.
+// Every batch is attempted and the first batch error is returned. Entities Port could not delete
+// (e.g. already gone or protected by dependents) are logged and don't fail the call.
+func (c *PortClient) BulkDeleteEntities(ctx context.Context, identifiersByBlueprint map[string][]string, deleteDependents bool) (int, error) {
+	var g errgroup.Group
+	g.SetLimit(maxConcurrentBulkDeletes)
+	var deleted atomic.Int64
+	for blueprint, identifiers := range identifiersByBlueprint {
+		for batch := range slices.Chunk(identifiers, maxBulkDeleteBatchSize) {
+			g.Go(func() error {
+				n, err := c.bulkDeleteBatch(ctx, blueprint, batch, deleteDependents)
+				deleted.Add(int64(n))
+				return err
+			})
+		}
+	}
+	err := g.Wait()
+	return int(deleted.Load()), err
+}
+
+func (c *PortClient) bulkDeleteBatch(ctx context.Context, blueprint string, identifiers []string, deleteDependents bool) (int, error) {
+	pb := &port.BulkDeleteResponse{}
+	resp, err := c.Client.R().
+		SetContext(ctx).
+		SetBody(port.BulkDeleteRequest{Entities: identifiers}).
+		SetPathParam("blueprint_identifier", blueprint).
+		SetQueryParam("delete_dependents", strconv.FormatBool(deleteDependents)).
+		SetQueryParam("allow_partial_success", "true").
+		SetResult(pb).
+		Post("v1/blueprints/{blueprint_identifier}/bulk/entities/delete")
+	if err != nil {
+		return 0, err
+	}
+	// 207 Multi-Status is success when allow_partial_success=true (some deletes
+	// skipped); match BulkUpsertEntities and do not treat it as a hard failure.
+	if resp.StatusCode() != 200 && resp.StatusCode() != 207 {
+		return 0, fmt.Errorf("failed to bulk delete entities of blueprint '%s', got status %d: %s", blueprint, resp.StatusCode(), resp.Body())
+	}
+	for _, entityErr := range pb.Errors {
+		logger.Warningf("Could not delete Port entity '%s' of blueprint '%s': %s", entityErr.Identifier, blueprint, entityErr.Message)
+	}
+	return len(pb.DeletedEntities), nil
 }

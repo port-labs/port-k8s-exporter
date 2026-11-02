@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"reflect"
+	"slices"
 	"strconv"
 
 	"github.com/port-labs/port-k8s-exporter/pkg/config"
@@ -15,18 +16,61 @@ import (
 	"github.com/port-labs/port-k8s-exporter/pkg/port/cli"
 )
 
-func CheckIfOwnEntity(entity port.EntityRequest, portClient *cli.PortClient, eventSource port.EventSource) (*bool, error) {
-	portEntities, err := portClient.SearchEntities(context.Background(), port.SearchBody{
+// ownershipSearchBatchSize caps identifiers per ownership search (Port "in" query).
+const ownershipSearchBatchSize = 50
+
+// FilterOwnedIdentifiers returns the subset of entities this exporter owns,
+// grouped by blueprint. Ownership is checked with batched entity searches
+// (one request per blueprint batch) instead of one search per entity.
+func FilterOwnedIdentifiers(entities []port.EntityRequest, portClient *cli.PortClient, eventSource port.EventSource) (map[string][]string, error) {
+	byBlueprint := make(map[string][]string)
+	for _, e := range entities {
+		identifier, ok := e.Identifier.(string)
+		if !ok || identifier == "" {
+			continue
+		}
+		byBlueprint[e.Blueprint] = append(byBlueprint[e.Blueprint], identifier)
+	}
+
+	ownedByBlueprint := make(map[string][]string)
+	for blueprint, identifiers := range byBlueprint {
+		for batch := range slices.Chunk(identifiers, ownershipSearchBatchSize) {
+			ownedIDs, err := searchOwnedIdentifiers(portClient, blueprint, batch, "port-k8s-exporter")
+			if err != nil {
+				return nil, err
+			}
+			if eventSource == port.LiveEventsSource {
+				autoOwned, err := searchOwnedIdentifiers(portClient, blueprint, batch, "port-auto-k8s-exporter")
+				if err != nil {
+					return nil, err
+				}
+				for id := range autoOwned {
+					ownedIDs[id] = struct{}{}
+				}
+			}
+			for _, id := range batch {
+				if _, ok := ownedIDs[id]; ok {
+					ownedByBlueprint[blueprint] = append(ownedByBlueprint[blueprint], id)
+				}
+			}
+		}
+	}
+	return ownedByBlueprint, nil
+}
+
+func searchOwnedIdentifiers(portClient *cli.PortClient, blueprint string, identifiers []string, datasourcePrefix string) (map[string]struct{}, error) {
+	entities, err := portClient.SearchEntities(context.Background(), port.SearchBody{
+		Combinator: "and",
 		Rules: []port.Rule{
 			{
 				Property: "$datasource",
 				Operator: "contains",
-				Value:    "port-k8s-exporter",
+				Value:    datasourcePrefix,
 			},
 			{
 				Property: "$identifier",
-				Operator: "=",
-				Value:    entity.Identifier,
+				Operator: "in",
+				Value:    identifiers,
 			},
 			{
 				Property: "$datasource",
@@ -36,53 +80,18 @@ func CheckIfOwnEntity(entity port.EntityRequest, portClient *cli.PortClient, eve
 			{
 				Property: "$blueprint",
 				Operator: "=",
-				Value:    entity.Blueprint,
+				Value:    blueprint,
 			},
 		},
-		Combinator: "and",
 	})
 	if err != nil {
 		return nil, err
 	}
-
-	if eventSource == port.LiveEventsSource {
-		portAutoEntities, err := portClient.SearchEntities(context.Background(), port.SearchBody{
-			Rules: []port.Rule{
-				{
-					Property: "$datasource",
-					Operator: "contains",
-					Value:    "port-auto-k8s-exporter",
-				},
-				{
-					Property: "$identifier",
-					Operator: "=",
-					Value:    entity.Identifier,
-				},
-				{
-					Property: "$datasource",
-					Operator: "contains",
-					Value:    fmt.Sprintf("(statekey/%s)", config.ApplicationConfig.StateKey),
-				},
-				{
-					Property: "$blueprint",
-					Operator: "=",
-					Value:    entity.Blueprint,
-				},
-			},
-			Combinator: "and",
-		})
-		if err != nil {
-			return nil, err
-		}
-		portEntities = append(portEntities, portAutoEntities...)
+	owned := make(map[string]struct{}, len(entities))
+	for _, e := range entities {
+		owned[e.Identifier] = struct{}{}
 	}
-
-	if len(portEntities) > 0 {
-		result := true
-		return &result, nil
-	}
-	result := false
-	return &result, nil
+	return owned, nil
 }
 
 func HashAllEntities(entities []port.EntityRequest) (string, error) {

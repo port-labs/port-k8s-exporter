@@ -274,6 +274,16 @@ type BulkUpsertResponse struct {
 	Errors   []BulkEntityError  `json:"errors"`
 }
 
+type BulkDeleteRequest struct {
+	Entities []string `json:"entities"`
+}
+
+type BulkDeleteResponse struct {
+	OK              bool              `json:"ok"`
+	DeletedEntities []string          `json:"deletedEntities"`
+	Errors          []BulkEntityError `json:"errors"`
+}
+
 type Migration struct {
 	Status string `json:"status"`
 }
