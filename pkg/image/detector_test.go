@@ -6,10 +6,12 @@ import (
 	"compress/gzip"
 	"context"
 	"fmt"
+	"io"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/authn"
+	"github.com/google/go-containerregistry/pkg/compression"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/registry"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -17,6 +19,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
+	"github.com/google/go-containerregistry/pkg/v1/types"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -96,6 +99,46 @@ HOME_URL="https://www.debian.org/"
 	assert.Equal(t, "12", info.VersionID)
 	assert.Equal(t, "Debian GNU/Linux 12 (bookworm)", info.PrettyName)
 	assert.Equal(t, "https://www.debian.org/", info.HomeURL)
+}
+
+func buildTar(files map[string][]byte) []byte {
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	for name, data := range files {
+		_ = tw.WriteHeader(&tar.Header{
+			Name: name,
+			Mode: 0644,
+			Size: int64(len(data)),
+		})
+		_, _ = tw.Write(data)
+	}
+	_ = tw.Close()
+	return buf.Bytes()
+}
+
+// Layers don't have to be gzip: OCI images can use zstd layers.
+func TestDetectorWithZstdLayer(t *testing.T) {
+	server, addr := setupTestRegistry(t)
+	defer server.Close()
+
+	data := buildTar(map[string][]byte{
+		"etc/os-release": []byte("ID=alpine\nVERSION_ID=3.20\n"),
+	})
+	layer, err := tarball.LayerFromOpener(func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(data)), nil
+	}, tarball.WithCompression(compression.ZStd), tarball.WithMediaType(types.OCILayerZStd))
+	assert.NoError(t, err)
+	mediaType, err := layer.MediaType()
+	assert.NoError(t, err)
+	assert.Equal(t, types.OCILayerZStd, mediaType)
+
+	pushImage(t, addr, "test/zstd", "v1", layer)
+
+	detector := NewDetector(authn.DefaultKeychain, 10)
+	info, err := detector.Detect(context.Background(), fmt.Sprintf("%s/test/zstd:v1", addr))
+	assert.NoError(t, err)
+	assert.Equal(t, "alpine", info.ID)
+	assert.Equal(t, "3.20", info.VersionID)
 }
 
 func TestDetectorCacheHit(t *testing.T) {

@@ -3,7 +3,6 @@ package image
 import (
 	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
@@ -61,9 +60,10 @@ func (d *Detector) Detect(ctx context.Context, imageRef string) (*OsInfo, error)
 
 	// Search layers top-down (last layer first) for os-release
 	for i := len(layers) - 1; i >= 0; i-- {
-		rc, err := layers[i].Compressed()
+		// Uncompressed handles gzip, zstd and plain tar layers
+		rc, err := layers[i].Uncompressed()
 		if err != nil {
-			logger.Debugf("Failed to read compressed layer %d for %q: %v", i, imageRef, err)
+			logger.Debugf("Failed to read layer %d for %q: %v", i, imageRef, err)
 			continue
 		}
 
@@ -114,14 +114,8 @@ func (d *Detector) DetectBatch(ctx context.Context, imageRefs []string) map[stri
 	return results
 }
 
-func findOsReleaseInLayer(compressed io.Reader) (*OsInfo, error) {
-	gr, err := gzip.NewReader(compressed)
-	if err != nil {
-		return nil, err
-	}
-	defer gr.Close()
-
-	tr := tar.NewReader(gr)
+func findOsReleaseInLayer(layerTar io.Reader) (*OsInfo, error) {
+	tr := tar.NewReader(layerTar)
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
